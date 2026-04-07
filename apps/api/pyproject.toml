@@ -1,0 +1,15 @@
+[project]
+name = "artemis-api"
+version = "0.1.0"
+description = "Artemis backend API"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi",
+  "uvicorn",
+  "sqlalchemy",
+  "psycopg2-binary",
+  "alembic",
+  "pydantic",
+  "python-dotenv",
+  "python-multipart",
+]
