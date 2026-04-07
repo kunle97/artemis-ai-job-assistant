@@ -10,7 +10,11 @@ from sqlalchemy.orm import Session
 
 from src.deps.auth import get_current_user
 from src.domain.profile.repository import CandidateProfileRepository
-from src.domain.profile.schemas import CandidateProfileCreate, CandidateProfileRead
+from src.domain.profile.schemas import (
+    CandidateProfileCreate,
+    CandidateProfileRead,
+    CandidateProfileWrite,
+)
 from src.domain.profile.service import CandidateProfileService
 from src.infrastructure.db.session import get_db
 
@@ -19,21 +23,19 @@ router = APIRouter(prefix="/profile", tags=["profile"])
 
 @router.post("", response_model=CandidateProfileRead)
 def create_profile(
-    payload: CandidateProfileCreate,
+    payload: CandidateProfileWrite,
     current_user=Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """
     Create a profile for the authenticated user.
-
-    Any client-provided user_id is ignored in favor of the authenticated user.
     """
     repository = CandidateProfileRepository(db)
     service = CandidateProfileService(repository)
 
     safe_payload = CandidateProfileCreate(
-        **payload.model_dump(exclude={"user_id"}),
         user_id=current_user.id,
+        **payload.model_dump(),
     )
 
     try:

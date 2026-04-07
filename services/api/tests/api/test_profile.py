@@ -22,7 +22,6 @@ def test_create_profile(client, sample_user_payload):
         "/profile",
         headers={"Authorization": f"Bearer {token}"},
         json={
-            "user_id": register_response.json()["id"],
             "location": "New York, NY",
             "skills": ["Python", "FastAPI"],
             "current_title": "Software Engineer",
@@ -54,7 +53,6 @@ def test_get_profile(client, sample_user_payload):
         "/profile",
         headers={"Authorization": f"Bearer {token}"},
         json={
-            "user_id": register_response.json()["id"],
             "location": "Remote",
             "skills": ["React"],
         },
@@ -86,7 +84,6 @@ def test_duplicate_profile_returns_400(client, sample_user_payload):
     token = login_response.json()["access_token"]
 
     payload = {
-        "user_id": register_response.json()["id"],
         "location": "Remote",
         "skills": ["Python"],
     }

@@ -127,3 +127,17 @@ Code must remain modular and separable into services.
   - API behavior
   - important parsing/normalization logic
 - Prefer deterministic test inputs over brittle real-world documents when possible
+
+------------------------------------------------------------------------
+
+## Auth and Resource Scoping Rules
+
+- Authenticated resource endpoints should prefer implicit user scoping over client-supplied user IDs
+- Prefer:
+  - `GET /profile`
+  - `POST /profile`
+  - `GET /resumes`
+  - `POST /resumes/upload`
+- Avoid requiring clients to send their own `user_id` for self-scoped resources
+- Authentication logic belongs in `src/deps/auth.py`
+- Authorization logic belongs in `src/deps/authorization.py` when ownership or role checks are needed

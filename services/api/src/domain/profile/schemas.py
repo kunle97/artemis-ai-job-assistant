@@ -6,11 +6,11 @@ Pydantic models for creating and returning structured candidate profiles.
 
 from datetime import datetime
 from uuid import UUID
+
 from pydantic import BaseModel, ConfigDict, Field
 
 
-class CandidateProfileCreate(BaseModel):
-    user_id: UUID
+class CandidateProfileWrite(BaseModel):
     phone: str | None = None
     location: str | None = None
     linkedin_url: str | None = None
@@ -28,6 +28,10 @@ class CandidateProfileCreate(BaseModel):
     salary_min: int | None = None
     salary_target: int | None = None
     default_answers: dict = Field(default_factory=dict)
+
+
+class CandidateProfileCreate(CandidateProfileWrite):
+    user_id: UUID
 
 
 class CandidateProfileRead(BaseModel):
