@@ -8,7 +8,7 @@ in the Artemis system.
 import uuid
 from sqlalchemy import Column, String, DateTime
 from sqlalchemy.dialects.postgresql import UUID
-from datetime import datetime
+from datetime import datetime, UTC
 
 from app.infrastructure.db.base import Base
 
@@ -21,5 +21,5 @@ class User(Base):
     password_hash = Column(String, nullable=True)
     full_name = Column(String(255), nullable=True)
 
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(UTC))
+    updated_at = Column(DateTime, default=lambda: datetime.now(UTC))

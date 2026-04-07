@@ -15,6 +15,7 @@ from app.domains.resume.repository import ResumeRepository
 from app.domains.resume.schemas import ResumeRead
 from app.domains.resume.service import ResumeService
 from app.domains.resume.parser import ResumeParser
+from app.domains.profile.repository import CandidateProfileRepository
 from app.integrations.storage.local_storage import LocalStorageService
 
 router = APIRouter(prefix="/resumes", tags=["resumes"])
@@ -27,9 +28,16 @@ def upload_resume(
     db: Session = Depends(get_db),
 ):
     repository = ResumeRepository(db)
+    profile_repository = CandidateProfileRepository(db)
     storage_service = LocalStorageService()
     parser = ResumeParser()
-    service = ResumeService(repository, storage_service, parser)
+
+    service = ResumeService(
+        repository=repository,
+        storage_service=storage_service,
+        parser=parser,
+        profile_repository=profile_repository,
+    )
 
     try:
         return service.upload_resume(user_id=user_id, upload_file=file)
@@ -40,8 +48,15 @@ def upload_resume(
 @router.get("/{user_id}", response_model=list[ResumeRead])
 def list_resumes(user_id: UUID, db: Session = Depends(get_db)):
     repository = ResumeRepository(db)
+    profile_repository = CandidateProfileRepository(db)
     storage_service = LocalStorageService()
     parser = ResumeParser()
-    service = ResumeService(repository, storage_service, parser)
+
+    service = ResumeService(
+        repository=repository,
+        storage_service=storage_service,
+        parser=parser,
+        profile_repository=profile_repository,
+    )
 
     return service.list_resumes(user_id=user_id)

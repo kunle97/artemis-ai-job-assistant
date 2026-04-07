@@ -22,3 +22,12 @@ class CandidateProfileRepository:
         self.db.commit()
         self.db.refresh(profile)
         return profile
+
+    def update(self, profile: CandidateProfile, **profile_data):
+        for key, value in profile_data.items():
+            setattr(profile, key, value)
+
+        self.db.add(profile)
+        self.db.commit()
+        self.db.refresh(profile)
+        return profile

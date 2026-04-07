@@ -4,11 +4,11 @@ Resume domain schemas.
 Pydantic models for returning uploaded resume metadata and parsed results.
 """
 
-from datetime import datetime
+from datetime import datetime, UTC
 from uuid import UUID
-from typing import Optional, Dict, Any
+from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class ResumeRead(BaseModel):
@@ -16,13 +16,12 @@ class ResumeRead(BaseModel):
     user_id: UUID
     file_name: str
     file_path: str
-    mime_type: Optional[str] = None
-    extracted_text: Optional[str] = None
-    parsed_json: Optional[Dict[str, Any]] = None
+    mime_type: str | None = None
+    extracted_text: str | None = None
+    parsed_json: dict[str, Any] | None = None
     variant_type: str
     is_primary: bool
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)

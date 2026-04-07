@@ -1,7 +1,8 @@
 """
 Resume domain service.
 
-Coordinates resume upload, local file storage, parsing, and persistence.
+Coordinates resume upload, local file storage, parsing, persistence,
+and candidate profile synchronization.
 """
 
 from pathlib import Path
@@ -9,6 +10,8 @@ from pathlib import Path
 from app.domains.resume.repository import ResumeRepository
 from app.integrations.storage.local_storage import LocalStorageService
 from app.domains.resume.parser import ResumeParser
+from app.domains.profile.repository import CandidateProfileRepository
+from app.domains.profile.service import CandidateProfileService
 
 
 class ResumeService:
@@ -23,21 +26,24 @@ class ResumeService:
         repository: ResumeRepository,
         storage_service: LocalStorageService,
         parser: ResumeParser,
+        profile_repository: CandidateProfileRepository,
     ):
         self.repository = repository
         self.storage_service = storage_service
         self.parser = parser
+        self.profile_service = CandidateProfileService(profile_repository)
 
     def upload_resume(self, user_id, upload_file):
         """
-        Save an uploaded resume, extract text, and persist metadata.
+        Save an uploaded resume, extract text, persist metadata,
+        and sync parsed data into the candidate profile.
         """
         self._validate_file(upload_file)
 
         stored_path = self.storage_service.save_upload(upload_file)
         parsed_result = self.parser.parse(stored_path)
 
-        return self.repository.create(
+        resume = self.repository.create(
             user_id=user_id,
             file_name=upload_file.filename,
             file_path=stored_path,
@@ -47,6 +53,15 @@ class ResumeService:
             variant_type="master",
             is_primary=False,
         )
+
+        normalized_data = (parsed_result.get("parsed_json") or {}).get("normalized_data")
+        if normalized_data:
+            self.profile_service.upsert_profile_from_resume(
+                user_id=user_id,
+                normalized_data=normalized_data,
+            )
+
+        return resume
 
     def list_resumes(self, user_id):
         """

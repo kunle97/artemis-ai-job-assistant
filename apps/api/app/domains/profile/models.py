@@ -8,7 +8,7 @@ and additional inputs. This becomes the canonical source of truth for applicatio
 import uuid
 from sqlalchemy import Column, String, Integer, Boolean, DateTime, ForeignKey, JSON
 from sqlalchemy.dialects.postgresql import UUID
-from datetime import datetime
+from datetime import datetime, UTC
 
 from app.infrastructure.db.base import Base
 
@@ -46,5 +46,5 @@ class CandidateProfile(Base):
 
     default_answers = Column(JSON, default=dict)
 
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(UTC))
+    updated_at = Column(DateTime, default=lambda: datetime.now(UTC))
