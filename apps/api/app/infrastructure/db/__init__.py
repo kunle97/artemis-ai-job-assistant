@@ -7,5 +7,6 @@ This is important for table creation and future migrations.
 
 from app.domains.auth.models import User
 from app.domains.profile.models import CandidateProfile
+from app.domains.resume.models import Resume
 
 # IMPORTANT: keep these imports so models are registered
