@@ -1,3 +1,4 @@
-/apps/api/venv/
-/apps/api/uploads/
+/services/api/venv/
+/services/api/uploads/
+
 extra-application-questions.txt
