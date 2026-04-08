@@ -6,6 +6,7 @@ Handles user registration, login, and authenticated session retrieval.
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.security import OAuth2PasswordRequestForm
+from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from src.deps.auth import get_current_user
@@ -45,10 +46,13 @@ def login_user(
     repository = UserRepository(db)
     service = UserService(repository)
 
-    payload = UserLogin(
-        email=form_data.username,
-        password=form_data.password,
-    )
+    try:
+        payload = UserLogin(
+            email=form_data.username,
+            password=form_data.password,
+        )
+    except ValidationError as exc:
+        raise HTTPException(status_code=400, detail="Invalid login payload.")
 
     try:
         token = service.login_user(payload)

@@ -1,8 +1,21 @@
 """
-Database initialization module.
+Database model registry.
 
-Imports all models so SQLAlchemy metadata is aware of them.
-This is important for table creation and future migrations.
+This module ensures all SQLAlchemy models are imported so that
+they are registered with the global Base metadata.
+
+Any time a new model is added, it must be imported here so that
+`Base.metadata.create_all()` can detect and create its table.
 """
 
-# Models are registered in src/main.py to avoid circular imports.
+from src.domain.auth.models import User
+from src.domain.profile.models import CandidateProfile
+from src.domain.resume.models import Resume
+from src.domain.jobs.models import Job
+
+__all__ = [
+    "User",
+    "CandidateProfile",
+    "Resume",
+    "Job",
+]

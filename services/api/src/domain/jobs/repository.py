@@ -1,0 +1,40 @@
+"""
+Job repository.
+
+Handles DB operations for jobs.
+"""
+
+from sqlalchemy.orm import Session
+
+from src.domain.jobs.models import Job
+
+
+class JobRepository:
+    def __init__(self, db: Session):
+        self.db = db
+
+    def get_by_source_and_source_job_id(self, source: str, source_job_id: str):
+        return (
+            self.db.query(Job)
+            .filter(Job.source == source, Job.source_job_id == source_job_id)
+            .first()
+        )
+
+    def create(self, **job_data):
+        job = Job(**job_data)
+        self.db.add(job)
+        self.db.commit()
+        self.db.refresh(job)
+        return job
+
+    def get_or_create(self, **job_data):
+        existing = self.get_by_source_and_source_job_id(
+            source=job_data["source"],
+            source_job_id=job_data["source_job_id"],
+        )
+        if existing:
+            return existing
+        return self.create(**job_data)
+
+    def list_all(self):
+        return self.db.query(Job).order_by(Job.created_at.desc()).all()
