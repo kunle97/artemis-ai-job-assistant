@@ -141,3 +141,22 @@ Code must remain modular and separable into services.
 - Avoid requiring clients to send their own `user_id` for self-scoped resources
 - Authentication logic belongs in `src/deps/auth.py`
 - Authorization logic belongs in `src/deps/authorization.py` when ownership or role checks are needed
+
+------------------------------------------------------------------------
+
+## Resume Parsing Architecture
+
+- All resume parsing logic must be modularized under:
+  `src/domain/resume/extractors/`
+
+- Each extractor should have a single responsibility:
+  - `header.py` → name, title, contact info
+  - `sections.py` → experience, education, skills
+  - `dates.py` → date parsing and experience calculation
+  - `links.py` → URL extraction and classification
+
+- `normalizer.py` must act as an orchestrator only and should not contain heavy parsing logic
+
+- Extractor files should remain under ~300 lines
+
+------------------------------------------------------------------------
