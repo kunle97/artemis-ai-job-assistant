@@ -13,6 +13,13 @@ class ApplicationRepository:
     def __init__(self, db: Session):
         self.db = db
 
+    def get_by_id(self, application_id):
+        return (
+            self.db.query(Application)
+            .filter(Application.id == application_id)
+            .first()
+        )
+
     def get_by_user_and_job(self, user_id, job_id):
         return (
             self.db.query(Application)

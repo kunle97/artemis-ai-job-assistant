@@ -16,6 +16,10 @@ from src.routes.resumes import router as resumes_router
 from src.routes.jobs import router as jobs_router
 from src.routes.applications import router as applications_router
 from src.routes.application_answers import router as application_answers_router
+from src.routes.application_answer_resolution import (
+    router as application_answer_resolution_router,
+)
+from src.routes.application_readiness import router as application_readiness_router
     
 app = FastAPI(title="Artemis API")
 
@@ -26,3 +30,5 @@ app.include_router(resumes_router)
 app.include_router(jobs_router)
 app.include_router(applications_router)
 app.include_router(application_answers_router)
+app.include_router(application_answer_resolution_router)
+app.include_router(application_readiness_router)
