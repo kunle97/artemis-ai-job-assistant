@@ -43,7 +43,7 @@ class ResumeParser:
             }
 
         extracted_text = self._extract_text(path)
-        normalized_data = self.normalizer.normalize(extracted_text)
+        normalized_data = self.normalizer.normalize(extracted_text, file_path=file_path)
 
         return {
             "extracted_text": extracted_text,

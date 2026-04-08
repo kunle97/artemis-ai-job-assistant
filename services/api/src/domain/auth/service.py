@@ -6,6 +6,7 @@ Contains user-related business logic and coordinates auth domain operations.
 
 from src.domain.auth.repository import UserRepository
 from src.domain.auth.schemas import UserCreate, UserLogin
+from src.integrations.auth.passwords import hash_password, verify_password
 from src.integrations.auth.jwt import create_access_token
 
 
@@ -18,8 +19,7 @@ class UserService:
         if existing_user:
             raise ValueError("A user with this email already exists.")
 
-        # Password hashing will be added later.
-        password_hash = payload.password
+        password_hash = hash_password(payload.password)
 
         return self.repository.create(
             email=payload.email,
@@ -35,8 +35,10 @@ class UserService:
         if not user:
             raise ValueError("Invalid email or password.")
 
-        # TODO: replace with hashed password check before production
-        if user.password_hash != payload.password:
+        if not user.password_hash:
+            raise ValueError("Invalid email or password.")
+
+        if not verify_password(payload.password, user.password_hash):
             raise ValueError("Invalid email or password.")
 
         return create_access_token(subject=str(user.id))

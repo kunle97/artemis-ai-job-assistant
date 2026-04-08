@@ -31,8 +31,8 @@ def test_login_user_returns_token(client, sample_user_payload):
 
     login_response = client.post(
         "/auth/login",
-        json={
-            "email": sample_user_payload["email"],
+        data={
+            "username": sample_user_payload["email"],
             "password": sample_user_payload["password"],
         },
     )
@@ -49,8 +49,8 @@ def test_login_user_with_bad_password_returns_401(client, sample_user_payload):
 
     login_response = client.post(
         "/auth/login",
-        json={
-            "email": sample_user_payload["email"],
+        data={
+            "username": sample_user_payload["email"],
             "password": "wrong-password",
         },
     )
@@ -64,8 +64,8 @@ def test_get_current_session(client, sample_user_payload):
 
     login_response = client.post(
         "/auth/login",
-        json={
-            "email": sample_user_payload["email"],
+        data={
+            "username": sample_user_payload["email"],
             "password": sample_user_payload["password"],
         },
     )

@@ -13,8 +13,8 @@ def test_upload_resume_and_list_resumes(client, sample_user_payload):
 
     login_response = client.post(
         "/auth/login",
-        json={
-            "email": sample_user_payload["email"],
+        data={
+            "username": sample_user_payload["email"],
             "password": sample_user_payload["password"],
         },
     )
@@ -64,8 +64,8 @@ def test_upload_resume_syncs_profile(client, sample_user_payload):
 
     login_response = client.post(
         "/auth/login",
-        json={
-            "email": sample_user_payload["email"],
+        data={
+            "username": sample_user_payload["email"],
             "password": sample_user_payload["password"],
         },
     )
@@ -114,8 +114,8 @@ def test_upload_resume_rejects_unsupported_type(client, sample_user_payload):
 
     login_response = client.post(
         "/auth/login",
-        json={
-            "email": sample_user_payload["email"],
+        data={
+            "username": sample_user_payload["email"],
             "password": sample_user_payload["password"],
         },
     )

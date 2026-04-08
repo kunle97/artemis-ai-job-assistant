@@ -49,7 +49,10 @@ def upload_resume(
     service = _build_resume_service(db)
 
     try:
-        return service.upload_resume(user_id=current_user.id, upload_file=file)
+        return service.upload_resume(
+            user_id=current_user.id,
+            upload_file=file,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 

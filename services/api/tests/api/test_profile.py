@@ -11,8 +11,8 @@ def test_create_profile(client, sample_user_payload):
 
     login_response = client.post(
         "/auth/login",
-        json={
-            "email": sample_user_payload["email"],
+        data={
+            "username": sample_user_payload["email"],
             "password": sample_user_payload["password"],
         },
     )
@@ -42,8 +42,8 @@ def test_get_profile(client, sample_user_payload):
 
     login_response = client.post(
         "/auth/login",
-        json={
-            "email": sample_user_payload["email"],
+        data={
+            "username": sample_user_payload["email"],
             "password": sample_user_payload["password"],
         },
     )
@@ -76,8 +76,8 @@ def test_duplicate_profile_returns_400(client, sample_user_payload):
 
     login_response = client.post(
         "/auth/login",
-        json={
-            "email": sample_user_payload["email"],
+        data={
+            "username": sample_user_payload["email"],
             "password": sample_user_payload["password"],
         },
     )

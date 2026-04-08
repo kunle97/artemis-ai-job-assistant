@@ -5,6 +5,7 @@ Handles user registration, login, and authenticated session retrieval.
 """
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
 from src.deps.auth import get_current_user
@@ -28,9 +29,26 @@ def register_user(payload: UserCreate, db: Session = Depends(get_db)):
 
 
 @router.post("/login", response_model=TokenRead)
-def login_user(payload: UserLogin, db: Session = Depends(get_db)):
+def login_user(
+    form_data: OAuth2PasswordRequestForm = Depends(),
+    db: Session = Depends(get_db),
+):
+    """
+    Authenticate a user and return a bearer token.
+
+    Swagger's OAuth2 "Authorize" flow expects form-based login with:
+    - username
+    - password
+
+    We use the username field to carry the user's email address.
+    """
     repository = UserRepository(db)
     service = UserService(repository)
+
+    payload = UserLogin(
+        email=form_data.username,
+        password=form_data.password,
+    )
 
     try:
         token = service.login_user(payload)
