@@ -13,6 +13,9 @@ class JobRepository:
     def __init__(self, db: Session):
         self.db = db
 
+    def get_by_id(self, job_id):
+        return self.db.query(Job).filter(Job.id == job_id).first()
+
     def get_by_source_and_source_job_id(self, source: str, source_job_id: str):
         return (
             self.db.query(Job)

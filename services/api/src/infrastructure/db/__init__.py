@@ -12,10 +12,14 @@ from src.domain.auth.models import User
 from src.domain.profile.models import CandidateProfile
 from src.domain.resume.models import Resume
 from src.domain.jobs.models import Job
+from src.domain.applications.models import Application
+from src.domain.application_answers.models import ApplicationAnswer
 
 __all__ = [
     "User",
     "CandidateProfile",
     "Resume",
     "Job",
+    "Application",
+    "ApplicationAnswer",
 ]

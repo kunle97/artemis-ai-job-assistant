@@ -14,7 +14,9 @@ from src.routes.profile import router as profile_router
 from src.routes.auth import router as auth_router
 from src.routes.resumes import router as resumes_router
 from src.routes.jobs import router as jobs_router
-
+from src.routes.applications import router as applications_router
+from src.routes.application_answers import router as application_answers_router
+    
 app = FastAPI(title="Artemis API")
 
 app.include_router(health_router)
@@ -22,3 +24,5 @@ app.include_router(auth_router)
 app.include_router(profile_router)
 app.include_router(resumes_router)
 app.include_router(jobs_router)
+app.include_router(applications_router)
+app.include_router(application_answers_router)
