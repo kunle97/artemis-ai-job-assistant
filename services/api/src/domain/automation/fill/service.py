@@ -6,6 +6,7 @@ Executes safe high-confidence field entry without submitting the form.
 
 from __future__ import annotations
 
+import logging
 import uuid
 from pathlib import Path
 
@@ -38,12 +39,16 @@ from src.domain.automation.planning.helpers import (
     build_unresolved_reason,
 )
 
+logger = logging.getLogger(__name__)
+
 
 class AutomationFillService:
     def __init__(self, planning_service: AutomationPlanningService):
         self.planning_service = planning_service
 
     def fill_safe_fields(self, user_id, payload: AutomationFillRequest) -> AutomationFillResult:
+        logger.info(f"[AutomationFill] Starting safe fill for: {payload.application_url}")
+
         plan = self.planning_service.build_fill_plan(
             user_id=user_id,
             payload=AutomationFillPlanRequest(
@@ -87,6 +92,10 @@ class AutomationFillService:
         filled = sum(1 for result in fill_results if result.fill_status == "filled")
         skipped = len(fill_results) - filled
         unresolved_fields = self._build_unresolved_fields(fill_results)
+
+        logger.info(
+            f"[AutomationFill] Safe fill complete: filled={filled}, skipped={skipped}, unresolved={len(unresolved_fields)}"
+        )
 
         return AutomationFillResult(
             application_url=payload.application_url,
@@ -158,7 +167,10 @@ class AutomationFillService:
                 resolved_value=value,
                 fill_status="skipped_unknown_type",
             )
-        except Exception:
+        except Exception as exc:
+            logger.warning(
+                f"[AutomationFill] Error filling field label={field.get('label')} role={role}: {type(exc).__name__}"
+            )
             return self._build_result(
                 field=field,
                 resolved_value=value,
@@ -224,5 +236,6 @@ class AutomationFillService:
 
             page.screenshot(path=str(path), full_page=True)
             return str(path)
-        except Exception:
+        except Exception as exc:
+            logger.warning(f"[AutomationFill] Failed to save screenshot: {type(exc).__name__}")
             return None

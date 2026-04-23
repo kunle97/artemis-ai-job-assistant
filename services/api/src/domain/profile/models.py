@@ -7,7 +7,7 @@ from __future__ import annotations
 import uuid
 
 from sqlalchemy import Boolean, Column, ForeignKey, String
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import relationship
 
 from src.infrastructure.db.base import Base
@@ -46,6 +46,11 @@ class CandidateProfile(Base):
     autofill_race = Column(Boolean, nullable=False, default=False)
     autofill_veteran_status = Column(Boolean, nullable=False, default=False)
     autofill_disability_status = Column(Boolean, nullable=False, default=False)
+
+    skills = Column(JSONB, nullable=True)
+    
+    work_authorization = Column(String, nullable=True)
+    visa_sponsorship = Column(String, nullable=True)
 
     user = relationship("User", back_populates="candidate_profile")
 

@@ -6,6 +6,8 @@ Classifies inspected fields and resolves values from the user's profile.
 
 from __future__ import annotations
 
+import logging
+
 from src.domain.automation.planning.helpers import (
     detect_platform_name,
     get_classifier_for_url,
@@ -16,6 +18,8 @@ from src.domain.automation.planning.models import (
     AutomationFillPlanRequest,
     AutomationPlannedField,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class AutomationPlanningService:
@@ -33,6 +37,8 @@ class AutomationPlanningService:
         user_id,
         payload: AutomationFillPlanRequest,
     ) -> AutomationFillPlan:
+        logger.info(f"[AutomationPlanning] Building fill plan for: {payload.application_url}")
+
         classifier = get_classifier_for_url(payload.application_url)
 
         user = self.user_repo.get_by_id(user_id)
@@ -74,6 +80,11 @@ class AutomationPlanningService:
                     needs_review=needs_review,
                 )
             )
+
+        review_count = sum(1 for field in planned_fields if field.needs_review)
+        logger.info(
+            f"[AutomationPlanning] Fill plan complete: total_fields={len(planned_fields)}, needs_review={review_count}"
+        )
 
         return AutomationFillPlan(
             application_url=payload.application_url,

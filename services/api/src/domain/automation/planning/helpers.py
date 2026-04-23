@@ -1,7 +1,8 @@
 """
 Helpers for automation planning.
 
-Includes classifier selection, field value resolution, and platform detection.
+Includes classifier selection, field value resolution, unresolved field filtering,
+and platform detection.
 """
 
 from src.domain.automation.planning.classifiers.ashby import AshbyAutomationFieldClassifier
@@ -56,23 +57,10 @@ def resolve_work_authorization_value(*, inspected_field: dict, profile) -> str |
 
 
 def resolve_compliance_value(*, inspected_field: dict, profile) -> str | None:
-    label = (inspected_field.get("label") or "").strip().lower()
-
-    if "ai system" in label or "language model" in label or "automated agent" in label:
-        return getattr(profile, "ai_usage_disclosure", None)
-
     return None
 
 
 def resolve_consent_value(*, inspected_field: dict, profile) -> str | None:
-    label = (inspected_field.get("label") or "").strip().lower()
-
-    if "sms" in label or "text messages" in label or "receive communications" in label:
-        return getattr(profile, "sms_consent", None)
-
-    if "record and transcribe" in label or "notetaker" in label or "prefer not to be recorded" in label:
-        return getattr(profile, "recording_consent", None)
-
     return None
 
 
@@ -89,7 +77,7 @@ def resolve_demographic_value(*, inspected_field: dict, profile) -> str | None:
         return getattr(profile, "veteran_status", None)
 
     if "disability" in label:
-        return getattr(profile, "disability", None)
+        return getattr(profile, "disability_status", None)
 
     return None
 
@@ -136,18 +124,22 @@ def resolve_field_value(
         return getattr(profile, "location", None), False
 
     if classified_role == FIELD_ROLE_COUNTRY:
-        return getattr(profile, "country", None), False
+        value = getattr(profile, "country", None)
+        return value, value is None
 
     if classified_role == FIELD_ROLE_PREFERRED_PROGRAMMING_LANGUAGE:
-        value = getattr(profile, "preferred_programming_language", None)
-        return value, value is None
+        skills = getattr(profile, "skills", None) or []
+
+        if isinstance(skills, list) and skills:
+            return skills[0], False
+
+        return None, True
 
     if classified_role == FIELD_ROLE_REFERRAL_SOURCE:
-        value = getattr(profile, "referral_source", None)
-        return value, value is None
+        return None, True
 
     if classified_role == FIELD_ROLE_STATE_OF_RESIDENCE:
-        value = getattr(profile, "state_of_residence", None)
+        value = getattr(profile, "state", None)
         return value, value is None
 
     if classified_role == FIELD_ROLE_ZIP_CODE:
@@ -197,11 +189,6 @@ def detect_platform_name(application_url: str) -> str:
 
     return "generic"
 
-def resolve_compliance_value(*, inspected_field: dict, profile) -> str | None:
-    return None
-
-def resolve_consent_value(*, inspected_field: dict, profile) -> str | None:
-    return None
 
 def should_include_unresolved_field(field: dict) -> bool:
     label = (field.get("label") or "").strip().lower()
@@ -213,6 +200,9 @@ def should_include_unresolved_field(field: dict) -> bool:
         "skipped_no_value",
         "skipped_option_not_applied",
         "skipped_option_not_found",
+        "skipped_not_found",
+        "skipped_unknown_type",
+        "error",
     }:
         return False
 
@@ -245,5 +235,14 @@ def build_unresolved_reason(field: dict) -> str:
 
     if status == "skipped_option_not_found":
         return "Resolved a value, but no matching selectable option was found on the page."
+
+    if status == "skipped_not_found":
+        return "The target field could not be located on the page."
+
+    if status == "skipped_unknown_type":
+        return "This field type is not yet supported by the fill engine."
+
+    if status == "error":
+        return "An unexpected automation error occurred while trying to fill this field."
 
     return "This field requires user review before filling."

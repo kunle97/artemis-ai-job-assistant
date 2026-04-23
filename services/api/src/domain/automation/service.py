@@ -1,13 +1,11 @@
 """
 Automation domain service.
-
-Handles page inspection and normalizes inputs so callers can pass either:
-- a raw application URL string
-- or an object with an `application_url` attribute
 """
 
 from __future__ import annotations
+
 import logging
+
 logger = logging.getLogger(__name__)
 
 
@@ -21,12 +19,12 @@ class AutomationService:
         logger.info(f"[Automation] Inspecting page: {application_url}")
 
         result = self.page_inspector.inspect(application_url)
-        field_count = len(result.get("fields", [])) if isinstance(result, dict) else len(result.fields)
 
+        field_count = len(result.get("fields", [])) if isinstance(result, dict) else len(result.fields)
         logger.info(f"[Automation] Inspection complete: {field_count} fields found")
 
         return result
-    
+
     def _extract_application_url(self, payload) -> str:
         if isinstance(payload, str):
             application_url = payload.strip()
@@ -37,4 +35,3 @@ class AutomationService:
             raise ValueError("application_url is required")
 
         return application_url
-    
