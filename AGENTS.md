@@ -160,3 +160,17 @@ Code must remain modular and separable into services.
 - Extractor files should remain under ~300 lines
 
 ------------------------------------------------------------------------
+
+## Service and Helper Function Placement
+
+- Keep service files focused on orchestration and business flow.
+- Do not define general-purpose helper functions inside `service.py` files.
+- Move reusable pure helper logic into a nearby `helpers.py` file within the same domain folder.
+- Examples of helper logic that belong in `helpers.py`:
+  - value resolution helpers
+  - label / field parsing helpers
+  - unresolved field filtering helpers
+  - formatting / coercion helpers
+- `service.py` methods may still contain small flow-specific logic, but reusable helper behavior should live outside the service file.
+
+------------------------------------------------------------------------

@@ -78,7 +78,7 @@ class AutomationFieldClassifier:
             return FIELD_ROLE_LAST_NAME
         if "email" in text:
             return FIELD_ROLE_EMAIL
-        if "phone" in text or "mobile" in text:
+        if "phone" in text or "mobile" in text or "phone number" in text:
             return FIELD_ROLE_PHONE
         if "linkedin" in text:
             return FIELD_ROLE_LINKEDIN

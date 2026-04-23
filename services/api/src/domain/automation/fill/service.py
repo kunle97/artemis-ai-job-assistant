@@ -33,6 +33,10 @@ from src.domain.automation.fill.models import (
     AutomationFillResult,
     AutomationUnresolvedField,
 )
+from src.domain.automation.planning.helpers import (
+    should_include_unresolved_field,
+    build_unresolved_reason,
+)
 
 
 class AutomationFillService:
@@ -189,20 +193,12 @@ class AutomationFillService:
         self,
         fill_results: list[AutomationFillFieldResult],
     ) -> list[AutomationUnresolvedField]:
-        unresolved_statuses = {
-            "skipped_option_not_applied",
-            "skipped_option_not_found",
-            "skipped_review",
-            "skipped_no_value",
-            "skipped_not_found",
-            "skipped_unknown_type",
-            "error",
-        }
-
         unresolved_fields: list[AutomationUnresolvedField] = []
 
         for result in fill_results:
-            if result.fill_status not in unresolved_statuses:
+            result_dict = result.model_dump()
+
+            if not should_include_unresolved_field(result_dict):
                 continue
 
             unresolved_fields.append(
@@ -212,23 +208,11 @@ class AutomationFillService:
                     classified_role=result.classified_role,
                     resolved_value=result.resolved_value,
                     fill_status=result.fill_status,
-                    reason=self._get_unresolved_reason(result),
+                    reason=build_unresolved_reason(result_dict),
                 )
             )
 
         return unresolved_fields
-
-    def _get_unresolved_reason(self, result: AutomationFillFieldResult) -> str:
-        mapping = {
-            "skipped_option_not_applied": "Resolved a value, but Artemis could not reliably apply it in the UI.",
-            "skipped_option_not_found": "Resolved a value, but no matching selectable option was found on the page.",
-            "skipped_review": "This field requires user review before filling.",
-            "skipped_no_value": "No value is currently stored for this field.",
-            "skipped_not_found": "The target field could not be located on the page.",
-            "skipped_unknown_type": "This field type is not yet supported by the fill engine.",
-            "error": "An unexpected automation error occurred while trying to fill this field.",
-        }
-        return mapping.get(result.fill_status, "This field still needs manual attention.")
 
     def _save_screenshot(self, page: Page) -> str | None:
         try:

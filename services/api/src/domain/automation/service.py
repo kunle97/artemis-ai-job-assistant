@@ -21,8 +21,9 @@ class AutomationService:
         logger.info(f"[Automation] Inspecting page: {application_url}")
 
         result = self.page_inspector.inspect(application_url)
+        field_count = len(result.get("fields", [])) if isinstance(result, dict) else len(result.fields)
 
-        logger.info(f"[Automation] Inspection complete: {len(result.fields)} fields found")
+        logger.info(f"[Automation] Inspection complete: {field_count} fields found")
 
         return result
     
