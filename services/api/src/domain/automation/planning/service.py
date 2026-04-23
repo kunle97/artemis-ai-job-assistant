@@ -18,6 +18,12 @@ from src.domain.automation.planning.constants import (
     FIELD_ROLE_PHONE,
     FIELD_ROLE_LINKEDIN_URL,
     FIELD_ROLE_LOCATION,
+    FIELD_ROLE_COUNTRY,
+    FIELD_ROLE_PREFERRED_PROGRAMMING_LANGUAGE,
+    FIELD_ROLE_REFERRAL_SOURCE,
+    FIELD_ROLE_STATE_OF_RESIDENCE,
+    FIELD_ROLE_ZIP_CODE,
+    FIELD_ROLE_COVER_LETTER_UPLOAD,
 )
 from src.domain.automation.planning.models import (
     AutomationFillPlan,
@@ -102,8 +108,7 @@ class AutomationPlanningService:
         profile,
     ) -> tuple[str | None, bool]:
 
-        # Skip irrelevant fields
-        if classified_role in {FIELD_ROLE_IGNORE, FIELD_ROLE_SUBMIT}:
+        if classified_role in {FIELD_ROLE_IGNORE, FIELD_ROLE_SUBMIT, FIELD_ROLE_COVER_LETTER_UPLOAD}:
             return None, False
 
         if classified_role == FIELD_ROLE_RESUME_UPLOAD:
@@ -116,10 +121,14 @@ class AutomationPlanningService:
             return getattr(profile, "last_name", None) or getattr(user, "last_name", None), False
 
         if classified_role == FIELD_ROLE_FULL_NAME:
-            first = getattr(profile, "first_name", None) or getattr(user, "first_name", "") or ""
-            last = getattr(profile, "last_name", None) or getattr(user, "last_name", "") or ""
-            full = f"{first} {last}".strip()
-            return full or None, False
+            full_name = getattr(profile, "full_name", None)
+            if full_name:
+                return full_name, False
+
+            first = getattr(profile, "first_name", None) or getattr(user, "first_name", None) or ""
+            last = getattr(profile, "last_name", None) or getattr(user, "last_name", None) or ""
+            combined = f"{first} {last}".strip()
+            return combined or None, False
 
         if classified_role == FIELD_ROLE_EMAIL:
             return getattr(profile, "email", None) or getattr(user, "email", None), False
@@ -133,7 +142,22 @@ class AutomationPlanningService:
         if classified_role == FIELD_ROLE_LOCATION:
             return getattr(profile, "location", None), False
 
-        # Everything else → user must review
+        if classified_role == FIELD_ROLE_COUNTRY:
+            return getattr(profile, "country", None), False
+
+        if classified_role == FIELD_ROLE_PREFERRED_PROGRAMMING_LANGUAGE:
+            return getattr(profile, "preferred_programming_language", None), False
+
+        if classified_role == FIELD_ROLE_REFERRAL_SOURCE:
+            return getattr(profile, "referral_source", None), False
+
+        if classified_role == FIELD_ROLE_STATE_OF_RESIDENCE:
+            return getattr(profile, "state_of_residence", None), False
+
+        if classified_role == FIELD_ROLE_ZIP_CODE:
+            value = getattr(profile, "zip_code", None)
+            return str(value) if value is not None else None, False
+
         return None, True
 
     def _detect_platform_name(self, application_url: str) -> str:

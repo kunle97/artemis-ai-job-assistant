@@ -13,6 +13,7 @@ from src.domain.automation.planning.constants import (
     FIELD_ROLE_COUNTRY,
     FIELD_ROLE_COVER_LETTER_UPLOAD,
     FIELD_ROLE_DEMOGRAPHIC,
+    FIELD_ROLE_IGNORE,
     FIELD_ROLE_PREFERRED_PROGRAMMING_LANGUAGE,
     FIELD_ROLE_REFERRAL_SOURCE,
     FIELD_ROLE_RESUME_UPLOAD,
@@ -33,6 +34,17 @@ class GreenhouseAutomationFieldClassifier(GenericAutomationFieldClassifier):
         text = " ".join(
             part for part in [label, name, placeholder] if part
         ).strip().lower()
+
+        if field_type == "button" and text in {
+            "attach",
+            "upload",
+            "upload file",
+            "dropbox",
+            "google drive",
+            "enter manually",
+            "toggle flyout",
+        }:
+            return FIELD_ROLE_IGNORE
 
         if "country" in text and "city, country" not in text:
             return FIELD_ROLE_COUNTRY

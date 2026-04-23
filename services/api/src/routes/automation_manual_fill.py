@@ -21,7 +21,6 @@ def _build_planning_service(db: Session) -> AutomationPlanningService:
     return AutomationPlanningService(
         user_repo=UserRepository(db),
         profile_repo=CandidateProfileRepository(db),
-        answer_repo=ApplicationAnswerRepository(db),
     )
 
 
