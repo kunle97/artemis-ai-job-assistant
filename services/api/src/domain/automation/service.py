@@ -7,6 +7,8 @@ Handles page inspection and normalizes inputs so callers can pass either:
 """
 
 from __future__ import annotations
+import logging
+logger = logging.getLogger(__name__)
 
 
 class AutomationService:
@@ -15,8 +17,15 @@ class AutomationService:
 
     def inspect_application_page(self, payload):
         application_url = self._extract_application_url(payload)
-        return self.page_inspector.inspect(application_url)
 
+        logger.info(f"[Automation] Inspecting page: {application_url}")
+
+        result = self.page_inspector.inspect(application_url)
+
+        logger.info(f"[Automation] Inspection complete: {len(result.fields)} fields found")
+
+        return result
+    
     def _extract_application_url(self, payload) -> str:
         if isinstance(payload, str):
             application_url = payload.strip()

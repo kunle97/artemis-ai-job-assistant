@@ -26,7 +26,12 @@ from src.routes.automation_planning import router as automation_planning_router
 from src.routes.automation_fill import router as automation_fill_router
 from src.routes.automation_manual_fill import router as automation_manual_fill_router
 from src.routes.automation_test_fill import router as automation_test_fill_router
-    
+import logging
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
+) 
 app = FastAPI(title="Artemis API")
 
 app.include_router(health_router)
