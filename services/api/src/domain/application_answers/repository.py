@@ -1,8 +1,10 @@
 """
 Application answer repository.
 
-Handles database operations for reusable application answers.
+Stores and retrieves reusable answers to common application questions.
 """
+
+from __future__ import annotations
 
 from sqlalchemy.orm import Session
 
@@ -13,58 +15,26 @@ class ApplicationAnswerRepository:
     def __init__(self, db: Session):
         self.db = db
 
-    def get_by_user_and_key(self, user_id, question_key: str):
-        return (
-            self.db.query(ApplicationAnswer)
-            .filter(
-                ApplicationAnswer.user_id == user_id,
-                ApplicationAnswer.question_key == question_key,
-            )
-            .first()
-        )
-
-    def create(self, **answer_data):
-        answer = ApplicationAnswer(**answer_data)
-        self.db.add(answer)
-        self.db.commit()
-        self.db.refresh(answer)
-        return answer
-
-    def update(self, answer: ApplicationAnswer, **answer_data):
-        for key, value in answer_data.items():
-            setattr(answer, key, value)
-
-        self.db.add(answer)
-        self.db.commit()
-        self.db.refresh(answer)
-        return answer
-
-    def upsert(
+    def create(
         self,
+        *,
         user_id,
-        question_key: str,
-        category: str | None,
-        question_text: str | None,
+        question_text: str,
         answer_text: str,
-    ):
-        existing = self.get_by_user_and_key(user_id=user_id, question_key=question_key)
-        if existing:
-            return self.update(
-                existing,
-                category=category,
-                question_text=question_text,
-                answer_text=answer_text,
-            )
-
-        return self.create(
+        category: str | None = None,
+    ) -> ApplicationAnswer:
+        record = ApplicationAnswer(
             user_id=user_id,
-            question_key=question_key,
-            category=category,
             question_text=question_text,
             answer_text=answer_text,
+            category=category,
         )
+        self.db.add(record)
+        self.db.commit()
+        self.db.refresh(record)
+        return record
 
-    def list_by_user_id(self, user_id):
+    def list_by_user_id(self, user_id) -> list[ApplicationAnswer]:
         return (
             self.db.query(ApplicationAnswer)
             .filter(ApplicationAnswer.user_id == user_id)

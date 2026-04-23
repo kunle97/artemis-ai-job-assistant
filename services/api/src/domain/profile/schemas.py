@@ -1,60 +1,63 @@
 """
-Profile domain schemas.
-
-Pydantic models for creating and returning structured candidate profiles.
+Candidate profile schemas.
 """
 
-from datetime import datetime
-from uuid import UUID
+from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict
 
 
-class CandidateProfileWrite(BaseModel):
+class CandidateProfileUpsertRequest(BaseModel):
     phone: str | None = None
-    location: str | None = None
     linkedin_url: str | None = None
     github_url: str | None = None
     portfolio_url: str | None = None
-    years_experience: int | None = None
-    work_authorization: str | None = None
-    requires_sponsorship: bool = False
-    current_title: str | None = None
-    summary: str | None = None
-    skills: list[str] = Field(default_factory=list)
-    industries: list[str] = Field(default_factory=list)
-    target_titles: list[str] = Field(default_factory=list)
-    remote_preference: str | None = None
-    salary_min: int | None = None
-    salary_target: int | None = None
-    default_answers: dict = Field(default_factory=dict)
+    city: str | None = None
+    state: str | None = None
+    country: str | None = None
+    zip_code: str | None = None
+    salary_target: str | None = None
+
+    gender: str | None = None
+    race: str | None = None
+    veteran_status: str | None = None
+    disability_status: str | None = None
+
+    autofill_gender: bool | None = None
+    autofill_race: bool | None = None
+    autofill_veteran_status: bool | None = None
+    autofill_disability_status: bool | None = None
 
 
-class CandidateProfileCreate(CandidateProfileWrite):
-    user_id: UUID
+CandidateProfileCreate = CandidateProfileUpsertRequest
 
 
-class CandidateProfileRead(BaseModel):
-    id: UUID
-    user_id: UUID
-    phone: str | None = None
-    location: str | None = None
-    linkedin_url: str | None = None
-    github_url: str | None = None
-    portfolio_url: str | None = None
-    years_experience: int | None = None
-    work_authorization: str | None = None
-    requires_sponsorship: bool
-    current_title: str | None = None
-    summary: str | None = None
-    skills: list[str]
-    industries: list[str]
-    target_titles: list[str]
-    remote_preference: str | None = None
-    salary_min: int | None = None
-    salary_target: int | None = None
-    default_answers: dict
-    created_at: datetime
-    updated_at: datetime
-
+class CandidateProfileResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    user_id: str
+
+    phone: str | None = None
+    linkedin_url: str | None = None
+    github_url: str | None = None
+    portfolio_url: str | None = None
+
+    city: str | None = None
+    state: str | None = None
+    country: str | None = None
+    zip_code: str | None = None
+
+    salary_target: str | None = None
+
+    gender: str | None = None
+    race: str | None = None
+    veteran_status: str | None = None
+    disability_status: str | None = None
+
+    autofill_gender: bool = False
+    autofill_race: bool = False
+    autofill_veteran_status: bool = False
+    autofill_disability_status: bool = False
+
+    location: str | None = None

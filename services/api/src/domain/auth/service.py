@@ -1,44 +1,37 @@
 """
-Auth domain service.
-
-Contains user-related business logic and coordinates auth domain operations.
+Auth service.
 """
 
-from src.domain.auth.repository import UserRepository
-from src.domain.auth.schemas import UserCreate, UserLogin
+from fastapi import HTTPException
+
+from src.domain.auth.schemas import UserCreate
 from src.integrations.auth.passwords import hash_password, verify_password
 from src.integrations.auth.jwt import create_access_token
 
 
-class UserService:
-    def __init__(self, repository: UserRepository):
+class AuthService:
+    def __init__(self, repository):
         self.repository = repository
 
-    def create_user(self, payload: UserCreate):
+    def register_user(self, payload: UserCreate):
         existing_user = self.repository.get_by_email(payload.email)
         if existing_user:
-            raise ValueError("A user with this email already exists.")
-
-        password_hash = hash_password(payload.password)
+            raise HTTPException(status_code=400, detail="User already exists.")
 
         return self.repository.create(
             email=payload.email,
-            password_hash=password_hash,
-            full_name=payload.full_name,
+            password=hash_password(payload.password),
+            first_name=payload.first_name,
+            last_name=payload.last_name,
         )
 
-    def get_user(self, user_id):
-        return self.repository.get_by_id(user_id)
+    def login_user(self, email: str, password: str):
+        user = self.repository.get_by_email(email)
+        if not user or not verify_password(password, user.password):
+            raise HTTPException(status_code=401, detail="Invalid email or password.")
 
-    def login_user(self, payload: UserLogin) -> str:
-        user = self.repository.get_by_email(payload.email)
-        if not user:
-            raise ValueError("Invalid email or password.")
-
-        if not user.password_hash:
-            raise ValueError("Invalid email or password.")
-
-        if not verify_password(payload.password, user.password_hash):
-            raise ValueError("Invalid email or password.")
-
-        return create_access_token(subject=str(user.id))
+        access_token = create_access_token(subject=str(user.id))
+        return {
+            "access_token": access_token,
+            "token_type": "bearer",
+        }

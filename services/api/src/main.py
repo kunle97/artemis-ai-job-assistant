@@ -20,6 +20,12 @@ from src.routes.application_answer_resolution import (
     router as application_answer_resolution_router,
 )
 from src.routes.application_readiness import router as application_readiness_router
+from src.routes.application_planning import router as application_planning_router
+from src.routes.automation import router as automation_router
+from src.routes.automation_planning import router as automation_planning_router
+from src.routes.automation_fill import router as automation_fill_router
+from src.routes.automation_manual_fill import router as automation_manual_fill_router
+from src.routes.automation_test_fill import router as automation_test_fill_router
     
 app = FastAPI(title="Artemis API")
 
@@ -32,3 +38,9 @@ app.include_router(applications_router)
 app.include_router(application_answers_router)
 app.include_router(application_answer_resolution_router)
 app.include_router(application_readiness_router)
+app.include_router(application_planning_router)
+app.include_router(automation_router)
+app.include_router(automation_planning_router)
+app.include_router(automation_fill_router)
+app.include_router(automation_test_fill_router)
+app.include_router(automation_manual_fill_router)

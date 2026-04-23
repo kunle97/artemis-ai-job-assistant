@@ -1,14 +1,11 @@
 """
-Auth domain models.
-
-This file defines the User entity, which represents a registered user
-in the Artemis system.
+User model.
 """
 
-import uuid
-from sqlalchemy import Column, String, DateTime
-from sqlalchemy.dialects.postgresql import UUID
-from datetime import datetime, timezone
+from __future__ import annotations
+
+from sqlalchemy import Column, Integer, String
+from sqlalchemy.orm import relationship
 
 from src.infrastructure.db.base import Base
 
@@ -16,10 +13,15 @@ from src.infrastructure.db.base import Base
 class User(Base):
     __tablename__ = "users"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    email = Column(String(255), unique=True, nullable=False)
-    password_hash = Column(String, nullable=True)
-    full_name = Column(String(255), nullable=True)
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String, unique=True, nullable=False, index=True)
+    password = Column(String, nullable=True)
+    first_name = Column(String, nullable=True)
+    last_name = Column(String, nullable=True)
 
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    candidate_profile = relationship(
+        "CandidateProfile",
+        back_populates="user",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )

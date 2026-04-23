@@ -14,6 +14,7 @@ from src.domain.resume.models import Resume
 from src.domain.jobs.models import Job
 from src.domain.applications.models import Application
 from src.domain.application_answers.models import ApplicationAnswer
+from src.domain.application_answers.intents.models import ApplicationAnswerIntent
 
 __all__ = [
     "User",
@@ -22,4 +23,5 @@ __all__ = [
     "Job",
     "Application",
     "ApplicationAnswer",
+    "ApplicationAnswerIntent",
 ]

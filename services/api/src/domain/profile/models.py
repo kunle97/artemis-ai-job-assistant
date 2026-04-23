@@ -1,14 +1,14 @@
 """
-Profile domain models.
-
-Represents the structured candidate profile extracted from a user's resume
-and additional inputs. This becomes the canonical source of truth for applications.
+Candidate profile model.
 """
 
+from __future__ import annotations
+
 import uuid
-from sqlalchemy import Column, String, Integer, Boolean, DateTime, ForeignKey, JSON
+
+from sqlalchemy import Boolean, Column, ForeignKey, String
 from sqlalchemy.dialects.postgresql import UUID
-from datetime import datetime, timezone
+from sqlalchemy.orm import relationship
 
 from src.infrastructure.db.base import Base
 
@@ -17,34 +17,47 @@ class CandidateProfile(Base):
     __tablename__ = "candidate_profiles"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id"),
+        nullable=False,
+        unique=True,
+        index=True,
+    )
 
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
-
-    phone = Column(String(50), nullable=True)
-    location = Column(String(255), nullable=True)
-
+    phone = Column(String, nullable=True)
     linkedin_url = Column(String, nullable=True)
     github_url = Column(String, nullable=True)
     portfolio_url = Column(String, nullable=True)
 
-    years_experience = Column(Integer, nullable=True)
+    city = Column(String, nullable=True)
+    state = Column(String, nullable=True)
+    country = Column(String, nullable=True)
+    zip_code = Column(String, nullable=True)
 
-    work_authorization = Column(String(100), nullable=True)
-    requires_sponsorship = Column(Boolean, default=False)
+    salary_target = Column(String, nullable=True)
 
-    current_title = Column(String(255), nullable=True)
-    summary = Column(String, nullable=True)
+    gender = Column(String, nullable=True)
+    race = Column(String, nullable=True)
+    veteran_status = Column(String, nullable=True)
+    disability_status = Column(String, nullable=True)
 
-    skills = Column(JSON, default=list)
-    industries = Column(JSON, default=list)
-    target_titles = Column(JSON, default=list)
+    autofill_gender = Column(Boolean, nullable=False, default=False)
+    autofill_race = Column(Boolean, nullable=False, default=False)
+    autofill_veteran_status = Column(Boolean, nullable=False, default=False)
+    autofill_disability_status = Column(Boolean, nullable=False, default=False)
 
-    remote_preference = Column(String(50), nullable=True)
+    user = relationship("User", back_populates="candidate_profile")
 
-    salary_min = Column(Integer, nullable=True)
-    salary_target = Column(Integer, nullable=True)
+    @property
+    def location(self) -> str | None:
+        parts = [self.city, self.state]
+        parts = [p.strip() for p in parts if p]
 
-    default_answers = Column(JSON, default=dict)
+        if parts:
+            return ", ".join(parts)
 
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+        if self.country:
+            return self.country
+
+        return None

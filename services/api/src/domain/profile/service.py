@@ -5,7 +5,7 @@ Contains business logic for candidate profiles and coordinates profile-related o
 """
 
 from src.domain.profile.repository import CandidateProfileRepository
-from src.domain.profile.schemas import CandidateProfileCreate
+from src.domain.profile.schemas import CandidateProfileUpsertRequest
 
 
 class CandidateProfileService:
@@ -15,7 +15,7 @@ class CandidateProfileService:
     def get_profile_by_user_id(self, user_id):
         return self.repository.get_by_user_id(user_id)
 
-    def create_profile(self, payload: CandidateProfileCreate):
+    def create_profile(self, payload: CandidateProfileUpsertRequest):
         existing_profile = self.repository.get_by_user_id(payload.user_id)
         if existing_profile:
             raise ValueError("This user already has a candidate profile.")
