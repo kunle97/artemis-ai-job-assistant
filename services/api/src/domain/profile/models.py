@@ -48,7 +48,9 @@ class CandidateProfile(Base):
     autofill_disability_status = Column(Boolean, nullable=False, default=False)
 
     skills = Column(JSONB, nullable=True)
-    
+
+    current_company = Column(String, nullable=True)
+
     work_authorization = Column(String, nullable=True)
     visa_sponsorship = Column(String, nullable=True)
 

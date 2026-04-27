@@ -15,19 +15,25 @@ from playwright.sync_api import Page, sync_playwright
 from src.domain.automation.planning.constants import (
     FIELD_ROLE_COVER_LETTER_UPLOAD,
     FIELD_ROLE_IGNORE,
+    FIELD_ROLE_LOCATION,
     FIELD_ROLE_RESUME_UPLOAD,
     FIELD_ROLE_SUBMIT,
+    PLATFORM_LEVER,
 )
 from src.domain.automation.planning.service import AutomationPlanningService
 from src.domain.automation.planning.models import AutomationFillPlanRequest
 from src.domain.automation.fill.handlers.radio_groups import fill_radio_group
 from src.domain.automation.fill.handlers.select_like import fill_select_like
-from src.domain.automation.fill.handlers.text_fields import fill_text_field
+from src.domain.automation.fill.handlers.text_fields import (
+    fill_autocomplete_location_field,
+    fill_text_field,
+)
 from src.domain.automation.fill.handlers.uploads import (
     skip_cover_letter_upload,
     upload_resume,
 )
 from src.domain.automation.fill.helpers import is_backing_input_label
+from src.integrations.automation.helpers import normalize_application_url
 from src.domain.automation.fill.models import (
     AutomationFillFieldResult,
     AutomationFillRequest,
@@ -47,18 +53,20 @@ class AutomationFillService:
         self.planning_service = planning_service
 
     def fill_safe_fields(self, user_id, payload: AutomationFillRequest) -> AutomationFillResult:
-        logger.info(f"[AutomationFill] Starting safe fill for: {payload.application_url}")
+        application_url = normalize_application_url(payload.application_url)
+        logger.info(f"[AutomationFill] Starting safe fill for: {application_url}")
 
         plan = self.planning_service.build_fill_plan(
             user_id=user_id,
             payload=AutomationFillPlanRequest(
-                application_url=payload.application_url,
+                application_url=application_url,
                 inspected_fields=payload.inspected_fields,
             ),
         )
 
         fill_results: list[AutomationFillFieldResult] = []
         screenshot_path: str | None = None
+        platform = PLATFORM_LEVER if "lever.co" in application_url else None
 
         with sync_playwright() as playwright:
             browser = playwright.chromium.launch(headless=True)
@@ -67,7 +75,7 @@ class AutomationFillService:
 
             try:
                 page.goto(
-                    payload.application_url,
+                    application_url,
                     wait_until="domcontentloaded",
                     timeout=30000,
                 )
@@ -80,6 +88,7 @@ class AutomationFillService:
                         page=page,
                         field=field_dict,
                         resume_file_path=payload.resume_file_path,
+                        platform=platform,
                     )
                     fill_results.append(result)
 
@@ -98,7 +107,7 @@ class AutomationFillService:
         )
 
         return AutomationFillResult(
-            application_url=payload.application_url,
+            application_url=application_url,
             fields=fill_results,
             filled_count=filled,
             skipped_count=skipped,
@@ -113,6 +122,7 @@ class AutomationFillService:
         page: Page,
         field: dict,
         resume_file_path: str | None,
+        platform: str | None = None,
     ) -> AutomationFillFieldResult:
         role = field.get("classified_role")
         value = field.get("resolved_value")
@@ -160,6 +170,8 @@ class AutomationFillService:
                 return fill_radio_group(page, field, value)
 
             if field_type in {"input", "textarea"}:
+                if role == FIELD_ROLE_LOCATION and platform == PLATFORM_LEVER:
+                    return fill_autocomplete_location_field(page, field, value)
                 return fill_text_field(page, field, value)
 
             return self._build_result(

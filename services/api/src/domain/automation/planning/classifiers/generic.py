@@ -10,6 +10,7 @@ from src.domain.automation.planning.constants import (
     FIELD_ROLE_CONSENT,
     FIELD_ROLE_COUNTRY,
     FIELD_ROLE_COVER_LETTER_UPLOAD,
+    FIELD_ROLE_CURRENT_COMPANY,
     FIELD_ROLE_DEMOGRAPHIC,
     FIELD_ROLE_EMAIL,
     FIELD_ROLE_FIRST_NAME,
@@ -102,6 +103,9 @@ class GenericAutomationFieldClassifier:
 
         if self._is_location(haystack):
             return FIELD_ROLE_LOCATION
+
+        if self._is_current_company(haystack):
+            return FIELD_ROLE_CURRENT_COMPANY
 
         if self._is_preferred_programming_language(haystack):
             return FIELD_ROLE_PREFERRED_PROGRAMMING_LANGUAGE
@@ -261,6 +265,18 @@ class GenericAutomationFieldClassifier:
                 "city, country",
                 "location/timezone",
                 "where are you located",
+            ]
+        )
+
+    def _is_current_company(self, haystack: str) -> bool:
+        return any(
+            token in haystack
+            for token in [
+                "current company",
+                "current employer",
+                "company name",
+                "employer name",
+                "organization",
             ]
         )
 

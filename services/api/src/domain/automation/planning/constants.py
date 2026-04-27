@@ -57,7 +57,11 @@ FIELD_ROLE_AREA_OF_EXPERTISE = "area_of_expertise"
 
 FIELD_ROLE_SALARY_EXPECTATION = "salary_expectation"
 
+FIELD_ROLE_CURRENT_COMPANY = "current_company"
+
 FIELD_ROLE_UNKNOWN = "unknown"
+
+PLATFORM_LEVER = "lever"
 
 IGNORE_BUTTON_LABELS = {
     "dropbox",

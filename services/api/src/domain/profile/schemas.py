@@ -28,6 +28,8 @@ class CandidateProfileUpsertRequest(BaseModel):
     autofill_veteran_status: bool | None = None
     autofill_disability_status: bool | None = None
 
+    current_company: str | None = None
+
 
 CandidateProfileCreate = CandidateProfileUpsertRequest
 
@@ -59,5 +61,7 @@ class CandidateProfileResponse(BaseModel):
     autofill_race: bool = False
     autofill_veteran_status: bool = False
     autofill_disability_status: bool = False
+
+    current_company: str | None = None
 
     location: str | None = None

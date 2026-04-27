@@ -8,11 +8,13 @@ and platform detection.
 from src.domain.automation.planning.classifiers.ashby import AshbyAutomationFieldClassifier
 from src.domain.automation.planning.classifiers.greenhouse import GreenhouseAutomationFieldClassifier
 from src.domain.automation.planning.classifiers.generic import GenericAutomationFieldClassifier
+from src.domain.automation.planning.classifiers.lever import LeverAutomationFieldClassifier
 from src.domain.automation.planning.constants import (
     FIELD_ROLE_COMPLIANCE,
     FIELD_ROLE_CONSENT,
     FIELD_ROLE_COUNTRY,
     FIELD_ROLE_COVER_LETTER_UPLOAD,
+    FIELD_ROLE_CURRENT_COMPANY,
     FIELD_ROLE_DEMOGRAPHIC,
     FIELD_ROLE_EMAIL,
     FIELD_ROLE_FIRST_NAME,
@@ -40,6 +42,9 @@ def get_classifier_for_url(application_url: str):
 
     if "ashbyhq" in lowered or "ashby" in lowered:
         return AshbyAutomationFieldClassifier()
+
+    if "lever.co" in lowered:
+        return LeverAutomationFieldClassifier()
 
     return GenericAutomationFieldClassifier()
 
@@ -122,6 +127,10 @@ def resolve_field_value(
 
     if classified_role == FIELD_ROLE_LOCATION:
         return getattr(profile, "location", None), False
+
+    if classified_role == FIELD_ROLE_CURRENT_COMPANY:
+        value = getattr(profile, "current_company", None)
+        return value, value is None
 
     if classified_role == FIELD_ROLE_COUNTRY:
         value = getattr(profile, "country", None)
