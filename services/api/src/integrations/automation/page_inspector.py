@@ -16,8 +16,11 @@ from __future__ import annotations
 import uuid
 from pathlib import Path
 
+import random
+
 from playwright.sync_api import sync_playwright
 
+from src.integrations.automation.browser import create_stealth_context
 from src.integrations.automation.helpers import prepare_application_page, extract_fields, save_screenshot, normalize_application_url
 
 
@@ -25,14 +28,12 @@ class ApplicationPageInspector:
     @staticmethod
     def inspect(application_url: str) -> dict:
         with sync_playwright() as playwright:
-            browser = playwright.chromium.launch(headless=True)
-            context = browser.new_context()
-            page = context.new_page()
+            browser, context, page = create_stealth_context(playwright)
 
             try:
                 normalized_application_url = normalize_application_url(application_url)
                 page.goto(normalized_application_url, wait_until="domcontentloaded", timeout=30000)
-                page.wait_for_timeout(1800)
+                page.wait_for_timeout(random.randint(1800, 3200))
 
                 prepare_application_page(page, application_url)
                 page.wait_for_timeout(1000)

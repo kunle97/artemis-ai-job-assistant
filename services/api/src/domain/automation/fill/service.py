@@ -7,6 +7,7 @@ Executes safe high-confidence field entry without submitting the form.
 from __future__ import annotations
 
 import logging
+import random
 import uuid
 from pathlib import Path
 
@@ -34,6 +35,7 @@ from src.domain.automation.fill.handlers.uploads import (
 )
 from src.domain.automation.fill.helpers import is_backing_input_label
 from src.integrations.automation.helpers import normalize_application_url
+from src.integrations.automation.browser import create_stealth_context
 from src.domain.automation.fill.models import (
     AutomationFillFieldResult,
     AutomationFillRequest,
@@ -69,9 +71,7 @@ class AutomationFillService:
         platform = PLATFORM_LEVER if "lever.co" in application_url else None
 
         with sync_playwright() as playwright:
-            browser = playwright.chromium.launch(headless=True)
-            context = browser.new_context()
-            page = context.new_page()
+            browser, context, page = create_stealth_context(playwright)
 
             try:
                 page.goto(
@@ -79,7 +79,8 @@ class AutomationFillService:
                     wait_until="domcontentloaded",
                     timeout=30000,
                 )
-                page.wait_for_timeout(1500)
+                # Random pause — mimics human reading time, reduces bot signal
+                page.wait_for_timeout(random.randint(1800, 3200))
 
                 for planned_field in plan.fields:
                     field_dict = planned_field.model_dump()
