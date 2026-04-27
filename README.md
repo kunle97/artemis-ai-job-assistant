@@ -9,6 +9,7 @@ It helps users:
 - score job fit
 - draft application answers
 - assist with repetitive application workflows
+- auto fills application forms to the best of its ability witht he least amount of user intervention
 
 ## Planned Stack
 

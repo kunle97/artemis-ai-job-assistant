@@ -174,3 +174,17 @@ Code must remain modular and separable into services.
 - `service.py` methods may still contain small flow-specific logic, but reusable helper behavior should live outside the service file.
 
 ------------------------------------------------------------------------
+
+## Logging Rules
+
+- All service files across every domain and subdomain must include meaningful logs.
+- Service logs should capture important lifecycle events such as:
+  - operation start
+  - operation completion
+  - key counts / summaries
+  - notable failures
+- Do not spam logs with every branch or every field-level action unless debugging a specific issue.
+- Do not log sensitive payload contents, full profile objects, tokens, or large raw responses.
+- Prefer concise, readable logs that make debugging easier.
+
+------------------------------------------------------------------------
