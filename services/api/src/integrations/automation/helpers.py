@@ -488,8 +488,20 @@ def normalize_application_url(application_url: str) -> str:
 
     return url
 
-def save_screenshot(page) -> str:
-    screenshot_dir = Path("uploads/automation")
+def _platform_subfolder(url: str | None) -> str:
+    lowered = (url or "").lower()
+    if "greenhouse" in lowered:
+        return "greenhouse"
+    if "ashbyhq" in lowered or "ashby" in lowered:
+        return "ashby"
+    if "lever" in lowered:
+        return "lever"
+    return "generic"
+
+
+def save_screenshot(page, url: str | None = None) -> str:
+    platform = _platform_subfolder(url)
+    screenshot_dir = Path("uploads/automation") / platform
     screenshot_dir.mkdir(parents=True, exist_ok=True)
 
     filename = f"{uuid.uuid4()}.png"

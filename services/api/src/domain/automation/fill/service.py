@@ -92,7 +92,7 @@ class AutomationFillService:
                     )
                     fill_results.append(result)
 
-                screenshot_path = self._save_screenshot(page)
+                screenshot_path = self._save_screenshot(page, application_url=application_url)
 
             finally:
                 context.close()
@@ -238,9 +238,14 @@ class AutomationFillService:
 
         return unresolved_fields
 
-    def _save_screenshot(self, page: Page) -> str | None:
+    def _save_screenshot(self, page: Page, application_url: str | None = None) -> str | None:
         try:
-            screenshot_dir = Path("uploads/automation")
+            platform = PLATFORM_LEVER if "lever.co" in (application_url or "") else (
+                "greenhouse" if "greenhouse" in (application_url or "") else (
+                    "ashby" if "ashby" in (application_url or "") else "generic"
+                )
+            )
+            screenshot_dir = Path("uploads/automation") / platform
             screenshot_dir.mkdir(parents=True, exist_ok=True)
 
             filename = f"{uuid.uuid4()}-filled.png"

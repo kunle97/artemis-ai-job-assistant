@@ -39,7 +39,7 @@ class ApplicationPageInspector:
 
                 title = page.title()
                 fields = extract_fields(page)
-                screenshot_path = save_screenshot(page)
+                screenshot_path = save_screenshot(page, url=application_url)
 
                 return {
                     "application_url": normalized_application_url,
