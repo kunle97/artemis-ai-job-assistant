@@ -281,7 +281,21 @@ class GenericAutomationFieldClassifier:
         )
 
     def _is_preferred_programming_language(self, haystack: str) -> bool:
-        return "preferred programming language" in haystack
+        return any(
+            token in haystack
+            for token in [
+                "preferred programming language",
+                "primary programming language",
+                "main programming language",
+                "preferred language",
+                "primary language",
+                "primary skill",
+                "main skill",
+                "primary technology",
+                "main technology",
+                "tech stack",
+            ]
+        )
 
     def _is_referral_source(self, haystack: str) -> bool:
         return any(

@@ -163,7 +163,7 @@ class AutomationFillService:
             )
 
         try:
-            if field_type == "select_like":
+            if field_type in {"select_like", "select"}:
                 return fill_select_like(page, field, value)
 
             if field_type == "radio_group":

@@ -140,7 +140,13 @@ def resolve_field_value(
         skills = getattr(profile, "skills", None) or []
 
         if isinstance(skills, list) and skills:
-            return skills[0], False
+            first = skills[0]
+            # skills may be plain strings or dicts with a "name" key
+            if isinstance(first, dict):
+                value = first.get("name") or first.get("label") or first.get("skill")
+            else:
+                value = str(first) if first else None
+            return value, value is None
 
         return None, True
 
@@ -199,6 +205,28 @@ def detect_platform_name(application_url: str) -> str:
     return "generic"
 
 
+_NOISY_ROLES = {
+    "ignore",
+    "submit_action",
+    "open_ended_question",
+}
+
+_NOISY_LABELS = {
+    "",
+    "select...",
+    "toggle flyout",
+    "attach",
+    "dropbox",
+    "google drive",
+    "enter manually",
+    "locate me",
+    "other website",
+    "other",
+    "additional information",
+    "pronouns",
+}
+
+
 def should_include_unresolved_field(field: dict) -> bool:
     label = (field.get("label") or "").strip().lower()
     role = field.get("classified_role")
@@ -215,19 +243,14 @@ def should_include_unresolved_field(field: dict) -> bool:
     }:
         return False
 
-    if role == "ignore":
+    if role in _NOISY_ROLES:
         return False
 
-    if label in {
-        "",
-        "select...",
-        "toggle flyout",
-        "attach",
-        "dropbox",
-        "google drive",
-        "enter manually",
-        "locate me",
-    }:
+    # Unknown fields with no classifiable role are UI noise — not actionable
+    if role == "unknown" and status == "skipped_review":
+        return False
+
+    if label in _NOISY_LABELS:
         return False
 
     return True
