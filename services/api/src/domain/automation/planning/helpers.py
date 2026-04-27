@@ -27,6 +27,7 @@ from src.domain.automation.planning.constants import (
     FIELD_ROLE_PREFERRED_PROGRAMMING_LANGUAGE,
     FIELD_ROLE_REFERRAL_SOURCE,
     FIELD_ROLE_RESUME_UPLOAD,
+    FIELD_ROLE_SALARY_EXPECTATION,
     FIELD_ROLE_STATE_OF_RESIDENCE,
     FIELD_ROLE_SUBMIT,
     FIELD_ROLE_WORK_AUTHORIZATION,
@@ -47,6 +48,31 @@ def get_classifier_for_url(application_url: str):
         return LeverAutomationFieldClassifier()
 
     return GenericAutomationFieldClassifier()
+
+
+def resolve_salary_value(*, profile) -> str | None:
+    """Return a salary string from profile.salary_target.
+
+    Handles several stored formats:
+    - Already a range:  "120000-150000" or "120,000 - 150,000"  → returned as-is
+    - Plain number:     "120000" or "$120,000"                   → returned as-is
+    - None / empty                                               → None
+    """
+    import re
+
+    raw = getattr(profile, "salary_target", None)
+    if not raw:
+        return None
+
+    value = str(raw).strip()
+    if not value:
+        return None
+
+    # Strip leading/trailing whitespace but preserve the value structure
+    # — let the field accept whatever the user stored (range or single number)
+    # Normalise common formatting so it reads cleanly: remove extra spaces around dashes
+    value = re.sub(r"\s*[-–—]\s*", " - ", value)
+    return value
 
 
 def resolve_work_authorization_value(*, inspected_field: dict, profile) -> str | None:
@@ -149,6 +175,10 @@ def resolve_field_value(
             return value, value is None
 
         return None, True
+
+    if classified_role == FIELD_ROLE_SALARY_EXPECTATION:
+        value = resolve_salary_value(profile=profile)
+        return value, value is None
 
     if classified_role == FIELD_ROLE_REFERRAL_SOURCE:
         return None, True

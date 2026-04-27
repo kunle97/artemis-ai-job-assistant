@@ -27,6 +27,7 @@ from src.domain.automation.planning.constants import (
     FIELD_ROLE_PREFERRED_PROGRAMMING_LANGUAGE,
     FIELD_ROLE_REFERRAL_SOURCE,
     FIELD_ROLE_RESUME_UPLOAD,
+    FIELD_ROLE_SALARY_EXPECTATION,
     FIELD_ROLE_STATE_OF_RESIDENCE,
     FIELD_ROLE_SUBMIT,
     FIELD_ROLE_WORK_AUTHORIZATION,
@@ -118,6 +119,9 @@ class GenericAutomationFieldClassifier:
 
         if self._is_area_of_expertise(haystack):
             return FIELD_ROLE_AREA_OF_EXPERTISE
+
+        if self._is_salary(haystack):
+            return FIELD_ROLE_SALARY_EXPECTATION
 
         if self._is_work_authorization(haystack):
             return FIELD_ROLE_WORK_AUTHORIZATION
@@ -294,6 +298,26 @@ class GenericAutomationFieldClassifier:
                 "primary technology",
                 "main technology",
                 "tech stack",
+            ]
+        )
+
+    def _is_salary(self, haystack: str) -> bool:
+        return any(
+            token in haystack
+            for token in [
+                "salary expectation",
+                "salary range",
+                "expected salary",
+                "desired salary",
+                "compensation expectation",
+                "expected compensation",
+                "desired compensation",
+                "compensation range",
+                "what is your salary",
+                "what are your salary",
+                "what compensation",
+                "pay expectation",
+                "pay range",
             ]
         )
 
