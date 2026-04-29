@@ -28,6 +28,7 @@ def fill_text_field(page, field: dict, value: str | None) -> AutomationFillField
         name=name,
         label=label,
         placeholder=placeholder,
+        input_subtype=field.get("input_subtype"),
     )
 
     if locator is None:

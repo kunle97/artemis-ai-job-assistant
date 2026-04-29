@@ -17,7 +17,7 @@ def normalize_text(text: str | None) -> str:
     text = text.replace("don't", "do not")
     text = text.replace("dont", "do not")
 
-    return re.sub(r"[^a-z0-9\\s]", "", text).strip()
+    return re.sub(r"[^a-z0-9\s]", "", text).strip()
 
 
 def normalize_choice_text(text: str | None) -> str:
@@ -44,7 +44,7 @@ def normalize_choice_text(text: str | None) -> str:
     for source, target in synonym_map.items():
         text = text.replace(source, target)
 
-    return re.sub(r"[^a-z0-9\\s]", "", text).strip()
+    return re.sub(r"[^a-z0-9\s]", "", text).strip()
 
 
 def score_choice_match(target_value: str | None, option_text: str | None) -> int:

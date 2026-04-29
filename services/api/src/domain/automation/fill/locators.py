@@ -13,7 +13,17 @@ def locate_field(
     name: str | None,
     label: str | None,
     placeholder: str | None,
+    input_subtype: str | None = None,
 ):
+    # For tel fields use input[type="tel"] — avoids filling the flag/country-code
+    # dropdown that Greenhouse renders alongside the phone number input.
+    if input_subtype == "tel":
+        try:
+            locator = page.locator('input[type="tel"]').first
+            if locator.count() > 0:
+                return locator
+        except Exception:
+            pass
     if name:
         try:
             locator = page.locator(f'[name="{name}"]').first

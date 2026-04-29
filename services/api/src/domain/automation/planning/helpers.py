@@ -96,18 +96,53 @@ def resolve_consent_value(*, inspected_field: dict, profile) -> str | None:
 
 
 def resolve_demographic_value(*, inspected_field: dict, profile) -> str | None:
-    label = (inspected_field.get("label") or "").strip().lower()
+    """Resolve a demographic field value from the candidate profile.
 
-    if "gender" in label:
+    Checks the field ``name`` attribute first (reliable for Lever eeo[*] fields),
+    then falls back to label keyword matching. Respects the per-category
+    autofill opt-in flags on the profile.
+    """
+    label = (inspected_field.get("label") or "").strip().lower()
+    field_name = (inspected_field.get("name") or "").strip().lower()
+
+    def _is_gender() -> bool:
+        return "eeo[gender]" in field_name or "gender" in label
+
+    def _is_race() -> bool:
+        return "eeo[race]" in field_name or "race" in label or "ethnicity" in label
+
+    def _is_veteran() -> bool:
+        return (
+            "eeo[veteran]" in field_name
+            or "veteran" in label
+            or "protected veteran" in label
+        )
+
+    def _is_disability() -> bool:
+        return (
+            "eeo[disability]" in field_name
+            or "disability" in label
+            or "individual with a disability" in label
+        )
+
+    if _is_gender():
+        if not getattr(profile, "autofill_gender", False):
+            return None
         return getattr(profile, "gender", None)
 
-    if "race" in label or "ethnicity" in label:
+    if _is_race():
+        if not getattr(profile, "autofill_race", False):
+            return None
         return getattr(profile, "race", None)
 
-    if "veteran" in label:
+    if _is_veteran():
+        if not getattr(profile, "autofill_veteran_status", False):
+            return None
         return getattr(profile, "veteran_status", None)
 
-    if "disability" in label:
+    if _is_disability():
+        if not getattr(profile, "autofill_disability_status", False):
+            return None
         return getattr(profile, "disability_status", None)
 
     return None

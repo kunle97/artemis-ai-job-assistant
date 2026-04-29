@@ -57,10 +57,10 @@ class CandidateProfileResponse(BaseModel):
     veteran_status: str | None = None
     disability_status: str | None = None
 
-    autofill_gender: bool = False
-    autofill_race: bool = False
-    autofill_veteran_status: bool = False
-    autofill_disability_status: bool = False
+    autofill_gender: bool = True
+    autofill_race: bool = True
+    autofill_veteran_status: bool = True
+    autofill_disability_status: bool = True
 
     current_company: str | None = None
 
