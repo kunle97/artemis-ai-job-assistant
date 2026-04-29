@@ -19,11 +19,13 @@ from src.domain.automation.planning.constants import (
     FIELD_ROLE_EMAIL,
     FIELD_ROLE_FIRST_NAME,
     FIELD_ROLE_FULL_NAME,
+    FIELD_ROLE_GITHUB_URL,
     FIELD_ROLE_IGNORE,
     FIELD_ROLE_LAST_NAME,
     FIELD_ROLE_LINKEDIN_URL,
     FIELD_ROLE_LOCATION,
     FIELD_ROLE_PHONE,
+    FIELD_ROLE_PORTFOLIO_URL,
     FIELD_ROLE_PREFERRED_PROGRAMMING_LANGUAGE,
     FIELD_ROLE_REFERRAL_SOURCE,
     FIELD_ROLE_RESUME_UPLOAD,
@@ -185,6 +187,14 @@ def resolve_field_value(
 
     if classified_role == FIELD_ROLE_LINKEDIN_URL:
         return getattr(profile, "linkedin_url", None), False
+
+    if classified_role == FIELD_ROLE_GITHUB_URL:
+        value = getattr(profile, "github_url", None)
+        return value, value is None
+
+    if classified_role == FIELD_ROLE_PORTFOLIO_URL:
+        value = getattr(profile, "portfolio_url", None) or getattr(profile, "website_url", None)
+        return value, value is None
 
     if classified_role == FIELD_ROLE_LOCATION:
         return getattr(profile, "location", None), False

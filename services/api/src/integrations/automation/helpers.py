@@ -345,6 +345,106 @@ def extract_fields(page) -> list[dict]:
     const fields = [];
     const seenRadioNames = new Set();
 
+    // === Detect Ashby-style Yes/No pill button groups ===
+    // These appear as pairs of <button>Yes</button><button>No</button> inside a
+    // question container. We group them into a radio_group so they can be
+    // classified and filled like any other binary choice field.
+    const pillButtonElements = new Set();
+    const pillGroupFields = [];
+
+    const yesNoCandidates = allControls.filter((el) => {
+        if (el.tagName.toLowerCase() !== 'button') return false;
+        const t = (getText(el) || '').toLowerCase().trim();
+        return t === 'yes' || t === 'no';
+    });
+
+    const seenPillContainers = new Set();
+
+    for (const btn of yesNoCandidates) {
+        if (pillButtonElements.has(btn)) continue;
+
+        // Walk up to find the smallest container that holds both a Yes and a No button.
+        let pillContainer = null;
+        let current = btn.parentElement;
+        let depth = 0;
+        while (current && depth < 6) {
+        const btns = Array.from(current.querySelectorAll('button')).filter(isVisible);
+        const hasYes = btns.some((b) => (getText(b) || '').toLowerCase().trim() === 'yes');
+        const hasNo = btns.some((b) => (getText(b) || '').toLowerCase().trim() === 'no');
+        if (hasYes && hasNo) {
+            pillContainer = current;
+            break;
+        }
+        current = current.parentElement;
+        depth += 1;
+        }
+
+        if (!pillContainer) continue;
+        if (seenPillContainers.has(pillContainer)) continue;
+        seenPillContainers.add(pillContainer);
+
+        const containerBtns = Array.from(pillContainer.querySelectorAll('button')).filter(isVisible);
+        const yesBtn = containerBtns.find((b) => (getText(b) || '').toLowerCase().trim() === 'yes');
+        const noBtn = containerBtns.find((b) => (getText(b) || '').toLowerCase().trim() === 'no');
+        if (!yesBtn || !noBtn) continue;
+
+        // Find the question text for this pill group.
+        let questionLabel = null;
+
+        // 1. Look for visible text nodes inside the container that aren't the pill buttons.
+        const textNodes = Array.from(
+        pillContainer.querySelectorAll('label, p, span, div, h1, h2, h3, h4, legend')
+        )
+        .filter(isVisible)
+        .filter((n) => !n.contains(yesBtn) && !n.contains(noBtn));
+
+        for (const node of textNodes) {
+        const t = getText(node);
+        if (!t) continue;
+        const lower = t.toLowerCase().trim();
+        if (['yes', 'no', 'true', 'false'].includes(lower)) continue;
+        if (t.length < 4 || t.length > 300) continue;
+        questionLabel = t;
+        break;
+        }
+
+        // 2. Fall back to the previous sibling element of the container.
+        if (!questionLabel) {
+        let prev = pillContainer.previousElementSibling;
+        let hops = 0;
+        while (prev && hops < 3) {
+            if (isVisible(prev)) {
+            const t = getText(prev);
+            if (t && t.length >= 4 && t.length <= 300) {
+                questionLabel = t;
+                break;
+            }
+            }
+            prev = prev.previousElementSibling;
+            hops += 1;
+        }
+        }
+
+        // Only emit if we found a meaningful question label.
+        if (!questionLabel) continue;
+
+        pillButtonElements.add(yesBtn);
+        pillButtonElements.add(noBtn);
+
+        pillGroupFields.push({
+        field_type: 'radio_group',
+        input_subtype: 'pill',
+        label: questionLabel,
+        name: null,
+        placeholder: null,
+        required: false,
+        options: [
+            { label: getText(yesBtn), value: (getText(yesBtn) || 'yes').toLowerCase().trim() },
+            { label: getText(noBtn), value: (getText(noBtn) || 'no').toLowerCase().trim() },
+        ],
+        });
+    }
+
     for (const el of allControls) {
         const tag = el.tagName.toLowerCase();
         const type = (el.getAttribute('type') || '').toLowerCase();
@@ -353,6 +453,8 @@ def extract_fields(page) -> list[dict]:
         const placeholder = clean(el.getAttribute('placeholder'));
 
         if (tag === 'button') {
+        // Skip buttons that were consumed as part of a pill group above.
+        if (pillButtonElements.has(el)) continue;
         fields.push({
             field_type: 'button',
             input_subtype: null,
@@ -470,6 +572,11 @@ def extract_fields(page) -> list[dict]:
             required: getRequired(el),
         });
         }
+    }
+
+    // Append pill groups discovered above.
+    for (const pillField of pillGroupFields) {
+        fields.push(pillField);
     }
 
     return fields;

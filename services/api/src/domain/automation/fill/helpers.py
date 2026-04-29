@@ -29,6 +29,7 @@ def normalize_choice_text(text: str | None) -> str:
         "prefer not to self-identify": "prefer not to answer",
         "do not wish to answer": "prefer not to answer",
         "choose not to disclose": "prefer not to answer",
+        "prefer not to disclose": "prefer not to answer",
         "decline to answer": "prefer not to answer",
         "i do not wish to answer": "prefer not to answer",
         "i prefer not to answer": "prefer not to answer",

@@ -49,7 +49,7 @@ class AshbyAutomationFieldClassifier(BaseAutomationFieldClassifier):
         if "preferred pronouns" in text:
             return FIELD_ROLE_DEMOGRAPHIC
 
-        if "gender" in text or "ethnicity" in text or "disability" in text:
+        if "gender" in text or "ethnicity" in text or "disability" in text or "race" in text or "veteran" in text:
             return FIELD_ROLE_DEMOGRAPHIC
 
         if "consent" in text:
@@ -127,5 +127,13 @@ class AshbyAutomationFieldClassifier(BaseAutomationFieldClassifier):
                 return FIELD_ROLE_LOCATION
             if "how did you hear about" in text:
                 return FIELD_ROLE_REFERRAL_SOURCE
+
+        if field_type == "radio_group":
+            if "gender" in text or "ethnicity" in text or "race" in text or "veteran" in text or "disability" in text:
+                return FIELD_ROLE_DEMOGRAPHIC
+            if "visa" in text or "sponsorship" in text or "authorized to work" in text:
+                return FIELD_ROLE_WORK_AUTHORIZATION
+            if "consent" in text:
+                return FIELD_ROLE_CONSENT
 
         return FIELD_ROLE_UNKNOWN
