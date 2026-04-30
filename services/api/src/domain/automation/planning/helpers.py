@@ -144,6 +144,9 @@ def resolve_demographic_value(*, inspected_field: dict, profile) -> str | None:
             or "individual with a disability" in label
         )
 
+    def _is_pronouns() -> bool:
+        return "pronoun" in label or "pronoun" in field_name
+
     if _is_gender():
         if not getattr(profile, "autofill_gender", False):
             return None
@@ -163,6 +166,11 @@ def resolve_demographic_value(*, inspected_field: dict, profile) -> str | None:
         if not getattr(profile, "autofill_disability_status", False):
             return None
         return getattr(profile, "disability_status", None)
+
+    if _is_pronouns():
+        if not getattr(profile, "autofill_pronouns", False):
+            return None
+        return getattr(profile, "pronouns", None)
 
     return None
 
@@ -323,7 +331,6 @@ _NOISY_LABELS = {
     "other website",
     "other",
     "additional information",
-    "pronouns",
 }
 
 

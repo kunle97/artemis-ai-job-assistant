@@ -67,9 +67,9 @@ class LeverAutomationFieldClassifier(GenericAutomationFieldClassifier):
         if field_name in {"urls[portfolio]", "urls[portfolio url]", "urls[website]"}:
             return FIELD_ROLE_PORTFOLIO_URL
 
-        # --- Pronouns / ignore ---
+        # --- Pronouns ---
         if field_name == "pronouns" or "pronoun" in text:
-            return FIELD_ROLE_IGNORE
+            return FIELD_ROLE_DEMOGRAPHIC
 
         # --- Referral ---
         if "how did you hear about us" in text or "how did you hear about this" in text:

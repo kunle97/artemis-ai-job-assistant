@@ -42,10 +42,13 @@ class CandidateProfile(Base):
     veteran_status = Column(String, nullable=True)
     disability_status = Column(String, nullable=True)
 
+    pronouns = Column(String, nullable=True)
+
     autofill_gender = Column(Boolean, nullable=False, default=False)
     autofill_race = Column(Boolean, nullable=False, default=False)
     autofill_veteran_status = Column(Boolean, nullable=False, default=False)
     autofill_disability_status = Column(Boolean, nullable=False, default=False)
+    autofill_pronouns = Column(Boolean, nullable=False, default=False)
 
     skills = Column(JSONB, nullable=True)
     experience_sections = Column(JSONB, nullable=True)

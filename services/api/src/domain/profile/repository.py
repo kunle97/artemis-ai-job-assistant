@@ -61,6 +61,8 @@ class CandidateProfileRepository:
             profile.veteran_status = payload.veteran_status
         if payload.disability_status is not None:
             profile.disability_status = payload.disability_status
+        if payload.pronouns is not None:
+            profile.pronouns = payload.pronouns
 
         if payload.autofill_gender is not None:
             profile.autofill_gender = payload.autofill_gender
@@ -70,6 +72,8 @@ class CandidateProfileRepository:
             profile.autofill_veteran_status = payload.autofill_veteran_status
         if payload.autofill_disability_status is not None:
             profile.autofill_disability_status = payload.autofill_disability_status
+        if payload.autofill_pronouns is not None:
+            profile.autofill_pronouns = payload.autofill_pronouns
 
         if payload.preferred_relocation_cities is not None:
             profile.preferred_relocation_cities = payload.preferred_relocation_cities

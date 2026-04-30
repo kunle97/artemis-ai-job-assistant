@@ -22,11 +22,13 @@ class CandidateProfileUpsertRequest(BaseModel):
     race: str | None = None
     veteran_status: str | None = None
     disability_status: str | None = None
+    pronouns: str | None = None
 
     autofill_gender: bool | None = None
     autofill_race: bool | None = None
     autofill_veteran_status: bool | None = None
     autofill_disability_status: bool | None = None
+    autofill_pronouns: bool | None = None
 
     current_company: str | None = None
 
@@ -59,11 +61,13 @@ class CandidateProfileResponse(BaseModel):
     race: str | None = None
     veteran_status: str | None = None
     disability_status: str | None = None
+    pronouns: str | None = None
 
     autofill_gender: bool = False
     autofill_race: bool = False
     autofill_veteran_status: bool = False
     autofill_disability_status: bool = False
+    autofill_pronouns: bool = False
 
     current_company: str | None = None
 
