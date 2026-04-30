@@ -54,6 +54,9 @@ class CandidateProfile(Base):
     work_authorization = Column(String, nullable=True)
     visa_sponsorship = Column(String, nullable=True)
 
+    preferred_relocation_cities = Column(JSONB, nullable=True)
+    work_arrangement = Column(String, nullable=True)
+
     user = relationship("User", back_populates="candidate_profile")
 
     @property

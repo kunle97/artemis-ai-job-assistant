@@ -28,10 +28,12 @@ from src.domain.automation.planning.constants import (
     FIELD_ROLE_PORTFOLIO_URL,
     FIELD_ROLE_PREFERRED_PROGRAMMING_LANGUAGE,
     FIELD_ROLE_REFERRAL_SOURCE,
+    FIELD_ROLE_RELOCATION,
     FIELD_ROLE_RESUME_UPLOAD,
     FIELD_ROLE_SALARY_EXPECTATION,
     FIELD_ROLE_STATE_OF_RESIDENCE,
     FIELD_ROLE_SUBMIT,
+    FIELD_ROLE_WORK_ARRANGEMENT,
     FIELD_ROLE_WORK_AUTHORIZATION,
     FIELD_ROLE_ZIP_CODE,
 )
@@ -75,6 +77,21 @@ def resolve_salary_value(*, profile) -> str | None:
     # Normalise common formatting so it reads cleanly: remove extra spaces around dashes
     value = re.sub(r"\s*[-–—]\s*", " - ", value)
     return value
+
+
+def resolve_relocation_value(*, inspected_field: dict, profile) -> str | None:
+    """Resolve a relocation question from the candidate profile.
+
+    - If preferred_relocation_cities is a non-empty list → willing to relocate → "Yes"
+    - If preferred_relocation_cities is null/empty → not willing → "No"
+
+    Returns "Yes" or "No" so it scores well against typical Yes/No radio options
+    and option-matching comboboxes.
+    """
+    cities = getattr(profile, "preferred_relocation_cities", None)
+    if cities:
+        return "Yes"
+    return "No"
 
 
 def resolve_work_authorization_value(*, inspected_field: dict, profile) -> str | None:
@@ -262,6 +279,14 @@ def resolve_field_value(
             inspected_field=inspected_field,
             profile=profile,
         )
+        return value, value is None
+
+    if classified_role == FIELD_ROLE_RELOCATION:
+        value = resolve_relocation_value(inspected_field=inspected_field, profile=profile)
+        return value, value is None
+
+    if classified_role == FIELD_ROLE_WORK_ARRANGEMENT:
+        value = getattr(profile, "work_arrangement", None)
         return value, value is None
 
     return None, True

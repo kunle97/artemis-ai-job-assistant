@@ -26,10 +26,12 @@ from src.domain.automation.planning.constants import (
     FIELD_ROLE_PORTFOLIO_URL,
     FIELD_ROLE_PREFERRED_PROGRAMMING_LANGUAGE,
     FIELD_ROLE_REFERRAL_SOURCE,
+    FIELD_ROLE_RELOCATION,
     FIELD_ROLE_RESUME_UPLOAD,
     FIELD_ROLE_SALARY_EXPECTATION,
     FIELD_ROLE_STATE_OF_RESIDENCE,
     FIELD_ROLE_SUBMIT,
+    FIELD_ROLE_WORK_ARRANGEMENT,
     FIELD_ROLE_WORK_AUTHORIZATION,
     FIELD_ROLE_ZIP_CODE,
 )
@@ -102,6 +104,9 @@ class GenericAutomationFieldClassifier:
         if self._is_country(haystack):
             return FIELD_ROLE_COUNTRY
 
+        if self._is_relocation(haystack):
+            return FIELD_ROLE_RELOCATION
+
         if self._is_location(haystack):
             return FIELD_ROLE_LOCATION
 
@@ -125,6 +130,9 @@ class GenericAutomationFieldClassifier:
 
         if self._is_work_authorization(haystack):
             return FIELD_ROLE_WORK_AUTHORIZATION
+
+        if self._is_work_arrangement(haystack):
+            return FIELD_ROLE_WORK_ARRANGEMENT
 
         if self._is_compliance(haystack):
             return FIELD_ROLE_COMPLIANCE
@@ -261,6 +269,8 @@ class GenericAutomationFieldClassifier:
             return False
         if self._is_zip_code(haystack):
             return False
+        if self._is_relocation(haystack):
+            return False
         return any(
             token in haystack
             for token in [
@@ -349,6 +359,48 @@ class GenericAutomationFieldClassifier:
                 "employment-based visa",
                 "visa status",
                 "work authorization",
+            ]
+        )
+
+    def _is_relocation(self, haystack: str) -> bool:
+        return any(
+            token in haystack
+            for token in [
+                "willing to relocate",
+                "open to relocation",
+                "able to relocate",
+                "relocation",
+                "relocate for this role",
+                "relocate for the role",
+                "relocate to",
+                "would you relocate",
+                "are you willing to relocate",
+                "open to relocating",
+            ]
+        )
+
+    def _is_work_arrangement(self, haystack: str) -> bool:
+        return any(
+            token in haystack
+            for token in [
+                "work arrangement",
+                "work preference",
+                "work type",
+                "working style",
+                "remote or onsite",
+                "remote or on-site",
+                "remote or in-office",
+                "in-office or remote",
+                "in office or remote",
+                "onsite or remote",
+                "on-site or remote",
+                "hybrid or remote",
+                "remote hybrid onsite",
+                "office preference",
+                "work location preference",
+                "preferred work location",
+                "how do you prefer to work",
+                "what is your preferred work style",
             ]
         )
 

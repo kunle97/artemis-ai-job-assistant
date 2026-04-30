@@ -30,6 +30,9 @@ class CandidateProfileUpsertRequest(BaseModel):
 
     current_company: str | None = None
 
+    preferred_relocation_cities: list[str] | None = None
+    work_arrangement: str | None = None
+
 
 CandidateProfileCreate = CandidateProfileUpsertRequest
 
@@ -63,5 +66,8 @@ class CandidateProfileResponse(BaseModel):
     autofill_disability_status: bool = True
 
     current_company: str | None = None
+
+    preferred_relocation_cities: list[str] | None = None
+    work_arrangement: str | None = None
 
     location: str | None = None

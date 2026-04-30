@@ -39,6 +39,10 @@ FIELD_ROLE_COVER_LETTER_UPLOAD = "cover_letter_upload"
 
 FIELD_ROLE_WORK_AUTHORIZATION = "work_authorization"
 
+FIELD_ROLE_RELOCATION = "relocation"
+
+FIELD_ROLE_WORK_ARRANGEMENT = "work_arrangement"
+
 FIELD_ROLE_COMPLIANCE = "compliance_question"
 
 FIELD_ROLE_CONSENT = "consent_question"

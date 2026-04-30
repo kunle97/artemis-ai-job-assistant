@@ -71,6 +71,11 @@ class CandidateProfileRepository:
         if payload.autofill_disability_status is not None:
             profile.autofill_disability_status = payload.autofill_disability_status
 
+        if payload.preferred_relocation_cities is not None:
+            profile.preferred_relocation_cities = payload.preferred_relocation_cities
+        if payload.work_arrangement is not None:
+            profile.work_arrangement = payload.work_arrangement
+
         self.db.add(profile)
         self.db.commit()
         self.db.refresh(profile)
