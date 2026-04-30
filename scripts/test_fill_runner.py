@@ -6,6 +6,9 @@ Usage:
 
 Flags:
     --clear-screenshots   Delete all files in uploads/automation/ before running.
+
+Each run saves a timestamped JSON file per job under:
+    scripts/test_results/<RUN_TIMESTAMP>/<slug>.json
 """
 
 from __future__ import annotations
@@ -14,6 +17,7 @@ import argparse
 import glob
 import json
 import os
+import re
 import sys
 import threading
 import time
@@ -31,6 +35,8 @@ SCREENSHOTS_DIR = os.path.join(
     os.path.dirname(__file__),
     "../services/api/uploads/automation",
 )
+
+RESULTS_DIR = os.path.join(os.path.dirname(__file__), "test_results")
 
 RESUME_PATH = "/Users/kunle/Documents/dev/artemis-ai-job-assistant/services/api/uploads/resumes/5cd41e3c-df8c-4716-8dd1-245348603d97.pdf"
 
@@ -65,9 +71,87 @@ JOBS = [
         "application_url": "https://jobs.ashbyhq.com/counsel/3f041963-9a9f-4371-8d4a-f7b321d0224d/application?utm_source=LinkedInPromoted",
         "resume_file_path": RESUME_PATH,
     },
+    {
+        "label": "Equal Experts - Greenhouse",
+        "application_url": "https://job-boards.greenhouse.io/equalexperts/jobs/8454247002",
+        "resume_file_path": RESUME_PATH,
+    },
 ]
 
-# ─── LOGGING HELPERS ─────────────────────────────────────────────────────────
+# ─── RESULT EXPORTER ─────────────────────────────────────────────────────────
+
+def _slug(label: str) -> str:
+    """Convert a job label to a filesystem-safe slug."""
+    return re.sub(r"[^a-z0-9]+", "-", label.lower()).strip("-")
+
+
+def save_result(run_dir: str, job: dict, body: dict, elapsed: float) -> str:
+    """Write the raw API response plus metadata to a JSON file.
+
+    Returns the path of the written file.
+    """
+    os.makedirs(run_dir, exist_ok=True)
+
+    inspect = body.get("inspect", {})
+    fill = body.get("fill", {})
+    fields = fill.get("fields", [])
+    total = len(fields)
+    filled_count = fill.get("filled_count", 0)
+
+    export = {
+        "meta": {
+            "label": job["label"],
+            "application_url": job["application_url"],
+            "timestamp": datetime.now().isoformat(),
+            "elapsed_s": elapsed,
+        },
+        "inspect": {
+            "status": inspect.get("status"),
+            "title": inspect.get("title"),
+            "field_count": len(inspect.get("fields", [])),
+            "notes": inspect.get("notes", []),
+            "screenshot_path": inspect.get("screenshot_path"),
+            "fields": inspect.get("fields", []),
+        },
+        "fill": {
+            "filled_count": filled_count,
+            "skipped_count": fill.get("skipped_count", 0),
+            "total_fields": total,
+            "fill_rate_pct": round(filled_count / total * 100, 1) if total else 0.0,
+            "notes": fill.get("notes", []),
+            "screenshot_path": fill.get("screenshot_path"),
+            "fields": fields,
+            "unresolved_fields": fill.get("unresolved_fields", []),
+        },
+    }
+
+    filename = f"{_slug(job['label'])}.json"
+    path = os.path.join(run_dir, filename)
+    with open(path, "w", encoding="utf-8") as fh:
+        json.dump(export, fh, indent=2, ensure_ascii=False)
+
+    return path
+
+
+def _save_error(run_dir: str, job: dict, error_type: str, detail: str | None) -> None:
+    """Write a minimal error record when the API call fails."""
+    os.makedirs(run_dir, exist_ok=True)
+    export = {
+        "meta": {
+            "label": job["label"],
+            "application_url": job["application_url"],
+            "timestamp": datetime.now().isoformat(),
+        },
+        "error": error_type,
+        "detail": detail,
+    }
+    filename = f"{_slug(job['label'])}.json"
+    path = os.path.join(run_dir, filename)
+    with open(path, "w", encoding="utf-8") as fh:
+        json.dump(export, fh, indent=2, ensure_ascii=False)
+
+
+
 
 def ts() -> str:
     return datetime.now().strftime("%H:%M:%S")
@@ -134,7 +218,7 @@ def authenticate() -> str:
 
 # ─── FILL RUNNER ─────────────────────────────────────────────────────────────
 
-def run_test_fill(token: str, job: dict) -> None:
+def run_test_fill(token: str, job: dict, run_dir: str) -> None:
     label = job["label"]
     section(f"[{label}]  {job['application_url']}")
 
@@ -175,10 +259,12 @@ def run_test_fill(token: str, job: dict) -> None:
     except requests.exceptions.Timeout:
         stop_spinner.set()
         log("❌ Request timed out after 180 s")
+        _save_error(run_dir, job, "timeout", None)
         return
     except requests.exceptions.ConnectionError as exc:
         stop_spinner.set()
         log(f"❌ Connection error: {exc}")
+        _save_error(run_dir, job, "connection_error", str(exc))
         return
 
     stop_spinner.set()
@@ -187,12 +273,14 @@ def run_test_fill(token: str, job: dict) -> None:
 
     if resp.status_code != 200:
         log(f"❌ Non-200 response body:\n{resp.text}")
+        _save_error(run_dir, job, f"http_{resp.status_code}", resp.text)
         return
 
     try:
         body = resp.json()
     except Exception:
         log(f"❌ Could not parse JSON response:\n{resp.text}")
+        _save_error(run_dir, job, "json_parse_error", resp.text)
         return
 
     # ── Inspect summary ──────────────────────────────────────────────────────
@@ -243,6 +331,10 @@ def run_test_fill(token: str, job: dict) -> None:
             log(f"       fill_status    : {u.get('fill_status')}")
             log(f"       reason         : {u.get('reason')}")
 
+    # ── Save result to disk ───────────────────────────────────────────────────
+    result_path = save_result(run_dir, job, body, elapsed)
+    log(f"\n  💾 Result saved → {result_path}")
+
 
 # ─── MAIN ────────────────────────────────────────────────────────────────────
 
@@ -263,11 +355,16 @@ def main() -> None:
         log("--clear-screenshots flag set — clearing screenshots...")
         clear_screenshots()
 
+    run_ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    run_dir = os.path.join(RESULTS_DIR, run_ts)
+    os.makedirs(run_dir, exist_ok=True)
+    log(f"Results  : {run_dir}")
+
     token = authenticate()
 
     for i, job in enumerate(JOBS, start=1):
         log(f"\n▶ Job {i}/{len(JOBS)}: {job['label']}")
-        run_test_fill(token, job)
+        run_test_fill(token, job, run_dir)
         if i < len(JOBS):
             log("Waiting 3 s before next job...")
             time.sleep(3)

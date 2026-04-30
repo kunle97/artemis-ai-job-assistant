@@ -54,14 +54,16 @@ class ResumeService:
             is_primary=False,
         )
 
+        missing_fields: list[str] = []
         normalized_data = (parsed_result.get("parsed_json") or {}).get("normalized_data")
         if normalized_data:
-            self.profile_service.upsert_profile_from_resume(
+            result = self.profile_service.upsert_profile_from_resume(
                 user_id=user_id,
                 normalized_data=normalized_data,
             )
+            missing_fields = result.get("missing_fields", [])
 
-        return resume
+        return resume, missing_fields
 
     def list_resumes(self, user_id):
         """

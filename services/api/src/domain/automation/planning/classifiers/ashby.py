@@ -24,6 +24,7 @@ from src.domain.automation.planning.constants import (
     FIELD_ROLE_PHONE,
     FIELD_ROLE_PORTFOLIO,
     FIELD_ROLE_REFERRAL_SOURCE,
+    FIELD_ROLE_RELOCATION,
     FIELD_ROLE_RESUME_UPLOAD,
     FIELD_ROLE_SALARY_EXPECTATION,
     FIELD_ROLE_SUBMIT,
@@ -133,6 +134,8 @@ class AshbyAutomationFieldClassifier(BaseAutomationFieldClassifier):
                 return FIELD_ROLE_DEMOGRAPHIC
             if "visa" in text or "sponsorship" in text or "authorized to work" in text:
                 return FIELD_ROLE_WORK_AUTHORIZATION
+            if "relocat" in text:
+                return FIELD_ROLE_RELOCATION
             if "consent" in text:
                 return FIELD_ROLE_CONSENT
 

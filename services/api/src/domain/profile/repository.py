@@ -80,3 +80,37 @@ class CandidateProfileRepository:
         self.db.commit()
         self.db.refresh(profile)
         return profile
+
+    def upsert_from_parsed_data(self, user_id, parsed: dict):
+        """
+        Create or update a profile using fields parsed from a resume.
+        Only fills blank fields — never overwrites existing data.
+        """
+        profile = self.get_or_create_by_user_id(user_id)
+
+        def _fill(current, incoming):
+            if current is None or current == "" or current == []:
+                return incoming
+            return current
+
+        # Phone: always use the resume value when present (the resume is authoritative).
+        if parsed.get("phone"):
+            profile.phone = parsed["phone"]
+        profile.linkedin_url = _fill(profile.linkedin_url, parsed.get("linkedin_url"))
+        profile.github_url = _fill(profile.github_url, parsed.get("github_url"))
+        profile.portfolio_url = _fill(profile.portfolio_url, parsed.get("portfolio_url"))
+        profile.current_company = _fill(profile.current_company, parsed.get("current_company"))
+
+        incoming_exp = parsed.get("experience_sections") or []
+        if incoming_exp and not (profile.experience_sections or []):
+            profile.experience_sections = incoming_exp
+
+        incoming_skills = parsed.get("skills") or []
+        existing_skills = profile.skills or []
+        merged = existing_skills + [s for s in incoming_skills if s not in existing_skills]
+        profile.skills = merged or None
+
+        self.db.add(profile)
+        self.db.commit()
+        self.db.refresh(profile)
+        return profile

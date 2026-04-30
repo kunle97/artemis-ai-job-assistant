@@ -23,7 +23,7 @@ def normalize_text(text: str | None) -> str:
 def normalize_choice_text(text: str | None) -> str:
     text = normalize_text(text)
 
-    synonym_map = {
+    _decline_synonyms = {
         "prefer not to self identify": "prefer not to answer",
         "prefer not to selfidentify": "prefer not to answer",
         "prefer not to self-identify": "prefer not to answer",
@@ -31,16 +31,29 @@ def normalize_choice_text(text: str | None) -> str:
         "choose not to disclose": "prefer not to answer",
         "prefer not to disclose": "prefer not to answer",
         "decline to answer": "prefer not to answer",
+        "decline to self identify": "prefer not to answer",
+        "decline to self-identify": "prefer not to answer",
+        "decline to selfidentify": "prefer not to answer",
+        "i decline to self identify": "prefer not to answer",
+        "i decline to selfidentify": "prefer not to answer",
         "i do not wish to answer": "prefer not to answer",
         "i prefer not to answer": "prefer not to answer",
+    }
+
+    _disability_synonyms = {
         "i do not have a disability": "no disability",
         "no i do not have a disability": "no disability",
         "no i dont have a disability": "no disability",
         "no i do not have disability": "no disability",
+    }
+
+    _veteran_synonyms = {
         "i am not a protected veteran": "not a protected veteran",
         "no i am not a protected veteran": "not a protected veteran",
         "not a veteran": "not a protected veteran",
     }
+
+    synonym_map = {**_decline_synonyms, **_disability_synonyms, **_veteran_synonyms}
 
     for source, target in synonym_map.items():
         text = text.replace(source, target)

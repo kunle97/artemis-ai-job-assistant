@@ -12,7 +12,7 @@ from src.deps.auth import get_current_user
 from src.domain.profile.repository import CandidateProfileRepository
 from src.domain.resume.parser import ResumeParser
 from src.domain.resume.repository import ResumeRepository
-from src.domain.resume.schemas import ResumeRead
+from src.domain.resume.schemas import ResumeRead, ResumeUploadResponse
 from src.domain.resume.service import ResumeService
 from src.infrastructure.db.session import get_db
 from src.integrations.storage.local_storage import LocalStorageService
@@ -37,7 +37,15 @@ def _build_resume_service(db: Session) -> ResumeService:
     )
 
 
-@router.post("/upload", response_model=ResumeRead)
+# Suggested resume format note surfaced in the upload response.
+_FORMAT_HINT = (
+    "For best autofill results, use a clean single-column resume with clearly labelled "
+    "sections (Experience, Education, Skills) and your LinkedIn/GitHub URLs visible in "
+    "the header."
+)
+
+
+@router.post("/upload", response_model=ResumeUploadResponse)
 def upload_resume(
     file: UploadFile = File(...),
     current_user=Depends(get_current_user),
@@ -45,16 +53,24 @@ def upload_resume(
 ):
     """
     Upload a resume for the authenticated user.
+    Returns the saved resume and any profile fields that could not be auto-populated.
     """
     service = _build_resume_service(db)
 
     try:
-        return service.upload_resume(
+        resume, missing_fields = service.upload_resume(
             user_id=current_user.id,
             upload_file=file,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+
+    message = _FORMAT_HINT if missing_fields else "Profile updated from resume."
+    return ResumeUploadResponse(
+        resume=resume,
+        missing_profile_fields=missing_fields,
+        message=message,
+    )
 
 
 @router.get("", response_model=list[ResumeRead])

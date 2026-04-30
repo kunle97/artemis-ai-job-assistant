@@ -24,7 +24,7 @@ def fill_radio_group(page, field: dict, value: str | None) -> AutomationFillFiel
             status="skipped_no_value",
         )
 
-    best_option = _find_best_radio_option(options, value)
+    best_option, best_index = _find_best_radio_option(options, value)
     if not best_option:
         return _result(
             label=label,
@@ -49,6 +49,7 @@ def fill_radio_group(page, field: dict, value: str | None) -> AutomationFillFiel
             name=name,
             option_label=option_label,
             option_value=option_value,
+            option_index=best_index,
         )
 
     return _result(
@@ -60,11 +61,12 @@ def fill_radio_group(page, field: dict, value: str | None) -> AutomationFillFiel
     )
 
 
-def _find_best_radio_option(options: list[dict], target_value: str) -> dict | None:
+def _find_best_radio_option(options: list[dict], target_value: str) -> tuple[dict | None, int]:
     best_option = None
     best_score = -1
+    best_index = -1
 
-    for option in options:
+    for i, option in enumerate(options):
         label = option.get("label") or ""
         value = option.get("value") or ""
         score = max(
@@ -75,11 +77,12 @@ def _find_best_radio_option(options: list[dict], target_value: str) -> dict | No
         if score > best_score:
             best_score = score
             best_option = option
+            best_index = i
 
     if best_score < 50:
-        return None
+        return None, -1
 
-    return best_option
+    return best_option, best_index
 
 
 def _click_pill_option(page, *, field_label: str | None, option_label: str | None) -> bool:
@@ -121,18 +124,50 @@ def _click_pill_option(page, *, field_label: str | None, option_label: str | Non
     return False
 
 
-def _click_radio_option(page, *, name: str | None, option_label: str | None, option_value: str | None) -> bool:
+def _click_radio_option(
+    page,
+    *,
+    name: str | None,
+    option_label: str | None,
+    option_value: str | None,
+    option_index: int = -1,
+) -> bool:
+    if name and option_index >= 0:
+        try:
+            radio = page.locator(f'input[type="radio"][name="{name}"]').nth(option_index)
+            # Ashby hides the real <input> and styles its <label> as the visual
+            # control. We must click the label to trigger their JS handlers.
+            radio_id = radio.get_attribute("id")
+            if radio_id:
+                lbl = page.locator(f'label[for="{radio_id}"]')
+                if lbl.count() > 0:
+                    lbl.scroll_into_view_if_needed()
+                    lbl.click()
+                    return True
+            # Fallback: dispatch a synthetic click directly on the input.
+            radio.dispatch_event("click")
+            return True
+        except Exception:
+            pass
+
+    # Strategy 2: unique value-based selector (works for non-Ashby platforms
+    # where each option has a distinct value attribute).
     if name and option_value:
         try:
-            locator = page.locator(
-                f'input[type="radio"][name="{name}"][value="{option_value}"]'
-            ).first
-            if locator.count() > 0:
-                locator.check(force=True)
+            group = page.locator(f'input[type="radio"][name="{name}"][value="{option_value}"]')
+            if group.count() == 1:
+                radio_id = group.first.get_attribute("id")
+                if radio_id:
+                    lbl = page.locator(f'label[for="{radio_id}"]')
+                    if lbl.count() > 0:
+                        lbl.click()
+                        return True
+                group.first.dispatch_event("click")
                 return True
         except Exception:
             pass
 
+    # Strategy 3: page-wide label fallback — used when name is absent.
     if option_label:
         try:
             locator = page.get_by_label(option_label, exact=False).first
@@ -143,7 +178,7 @@ def _click_radio_option(page, *, name: str | None, option_label: str | None, opt
             pass
 
         try:
-            text_locator = page.get_by_text(option_label, exact=False).first
+            text_locator = page.get_by_text(option_label, exact=True).first
             if text_locator.count() > 0:
                 text_locator.click()
                 return True

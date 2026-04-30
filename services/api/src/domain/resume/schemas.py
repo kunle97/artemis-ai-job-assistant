@@ -25,3 +25,11 @@ class ResumeRead(BaseModel):
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class ResumeUploadResponse(BaseModel):
+    resume: ResumeRead
+    missing_profile_fields: list[str] = []
+    message: str = ""
+
+    model_config = ConfigDict(from_attributes=True)

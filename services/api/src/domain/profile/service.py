@@ -4,8 +4,11 @@ Profile domain service.
 Contains business logic for candidate profiles and coordinates profile-related operations.
 """
 
+import logging
+
 from src.domain.profile.repository import CandidateProfileRepository
-from src.domain.profile.schemas import CandidateProfileUpsertRequest
+
+logger = logging.getLogger(__name__)
 
 
 class CandidateProfileService:
@@ -15,114 +18,51 @@ class CandidateProfileService:
     def get_profile_by_user_id(self, user_id):
         return self.repository.get_by_user_id(user_id)
 
-    def create_profile(self, payload: CandidateProfileUpsertRequest):
-        existing_profile = self.repository.get_by_user_id(payload.user_id)
-        if existing_profile:
-            raise ValueError("This user already has a candidate profile.")
-
-        return self.repository.create(**payload.model_dump())
-
-    def upsert_profile_from_resume(self, user_id, normalized_data: dict):
+    def upsert_profile_from_resume(self, user_id, normalized_data: dict) -> dict:
         """
         Create or update a candidate profile from parsed resume data.
-
-        Rules:
-        - do not overwrite existing populated fields with empty values
-        - merge skills without duplicates
-        - map detected URLs into likely profile fields
+        Only fills blank fields — never overwrites existing data.
+        Returns a dict with a 'missing_fields' list.
         """
-        existing_profile = self.repository.get_by_user_id(user_id)
-        mapped_data = self._map_resume_data_to_profile_fields(normalized_data)
+        logger.info("[ProfileService] Upserting profile from resume for user %s", user_id)
 
-        if not existing_profile:
-            return self.repository.create(
-                user_id=user_id,
-                phone=mapped_data["phone"],
-                location=mapped_data["location"],
-                linkedin_url=mapped_data["linkedin_url"],
-                github_url=mapped_data["github_url"],
-                portfolio_url=mapped_data["portfolio_url"],
-                years_experience=mapped_data["years_experience"],
-                work_authorization=None,
-                requires_sponsorship=False,
-                current_title=mapped_data["current_title"],
-                summary=mapped_data["summary"],
-                skills=mapped_data["skills"],
-                industries=[],
-                target_titles=[],
-                remote_preference=None,
-                salary_min=None,
-                salary_target=None,
-                default_answers={},
-            )
-
-        update_data = {
-            "phone": self._prefer_existing(existing_profile.phone, mapped_data["phone"]),
-            "linkedin_url": self._prefer_existing(
-                existing_profile.linkedin_url,
-                mapped_data["linkedin_url"],
-            ),
-            "github_url": self._prefer_existing(
-                existing_profile.github_url,
-                mapped_data["github_url"],
-            ),
-            "portfolio_url": self._prefer_existing(
-                existing_profile.portfolio_url,
-                mapped_data["portfolio_url"],
-            ),
-            "years_experience": self._prefer_existing(
-                existing_profile.years_experience,
-                mapped_data["years_experience"],
-            ),
-            "current_title": self._prefer_existing(
-                existing_profile.current_title,
-                mapped_data["current_title"],
-            ),
-            "summary": self._prefer_existing(
-                existing_profile.summary,
-                mapped_data["summary"],
-            ),
-            "skills": self._merge_lists(
-                existing_profile.skills or [],
-                mapped_data["skills"],
-            ),
-        }
-
-        return self.repository.update(existing_profile, **update_data)
-
-    def _map_resume_data_to_profile_fields(self, normalized_data: dict) -> dict:
-        """
-        Map normalized resume data into candidate profile fields.
-        """
-        years_experience = normalized_data.get("years_experience")
-        if years_experience is not None:
-            years_experience = int(years_experience)
-
-        return {
+        parsed = {
             "phone": normalized_data.get("phone"),
-            "location": None,
             "linkedin_url": normalized_data.get("linkedin_url"),
             "github_url": normalized_data.get("github_url"),
             "portfolio_url": normalized_data.get("portfolio_url"),
-            "years_experience": years_experience,
-            "current_title": normalized_data.get("headline_title")
-            or normalized_data.get("current_job_title"),
-            "summary": normalized_data.get("summary"),
-            "skills": normalized_data.get("skills", []),
+            "skills": normalized_data.get("skills") or [],
+            "current_company": normalized_data.get("current_company"),
+            "experience_sections": normalized_data.get("experience_sections") or [],
         }
 
-    def _prefer_existing(self, existing_value, incoming_value):
-        """
-        Keep the existing value when it is already populated;
-        otherwise use the incoming value.
-        """
-        if existing_value is not None and existing_value != "":
-            return existing_value
-        return incoming_value
+        profile = self.repository.upsert_from_parsed_data(user_id, parsed)
 
-    def _merge_lists(self, existing: list, incoming: list) -> list:
-        merged = []
-        for value in existing + incoming:
-            if value not in merged:
-                merged.append(value)
-        return merged
+        missing = self._detect_missing_fields(profile, normalized_data)
+        logger.info(
+            "[ProfileService] Profile upserted for user %s. Missing fields: %s",
+            user_id,
+            missing or "none",
+        )
+        return {"missing_fields": missing}
+
+    def _detect_missing_fields(self, profile, normalized_data: dict) -> list[str]:
+        """
+        Return the names of profile fields that are still blank after the upsert.
+        """
+        missing = []
+
+        if not profile.phone:
+            missing.append("phone")
+        if not profile.linkedin_url:
+            missing.append("linkedin_url")
+        if not profile.github_url:
+            missing.append("github_url")
+        if not profile.skills:
+            missing.append("skills")
+        if not profile.city and not profile.state:
+            missing.append("location")
+        if not profile.work_authorization:
+            missing.append("work_authorization")
+
+        return missing

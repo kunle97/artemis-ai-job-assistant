@@ -221,6 +221,9 @@ class GenericAutomationFieldClassifier:
                 "text messages",
                 "sms from",
                 "sms consent",
+                "phone number country",
+                "country code",
+                "dial code",
             ]
         ):
             return False

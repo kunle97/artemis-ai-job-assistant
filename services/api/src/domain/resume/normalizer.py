@@ -37,7 +37,9 @@ class ResumeNormalizer:
         lower_text = extracted_text.lower()
 
         header_data = self.header_extractor.extract(lines)
-        section_data = self.section_extractor.extract(lines, header_data["header_lines"])
+        section_data = self.section_extractor.extract(
+            lines, header_data["header_lines"], raw_text=extracted_text
+        )
         link_data = self.link_extractor.extract(extracted_text, file_path=file_path)
         date_data = self.date_extractor.extract(lines)
 
@@ -45,6 +47,7 @@ class ResumeNormalizer:
             "full_name": header_data["full_name"],
             "headline_title": header_data["headline_title"],
             "current_job_title": section_data["current_job_title"],
+            "current_company": section_data.get("current_company"),
             "email": header_data["email"],
             "phone": header_data["phone"],
             "urls": link_data["urls"],
@@ -64,6 +67,7 @@ class ResumeNormalizer:
             "full_name": None,
             "headline_title": None,
             "current_job_title": None,
+            "current_company": None,
             "email": None,
             "phone": None,
             "urls": [],

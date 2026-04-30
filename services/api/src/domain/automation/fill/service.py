@@ -34,7 +34,7 @@ from src.domain.automation.fill.handlers.uploads import (
     upload_resume,
 )
 from src.domain.automation.fill.helpers import is_backing_input_label
-from src.integrations.automation.helpers import normalize_application_url
+from src.integrations.automation.helpers import normalize_application_url, prepare_application_page
 from src.integrations.automation.browser import create_stealth_context
 from src.domain.automation.fill.models import (
     AutomationFillFieldResult,
@@ -81,6 +81,9 @@ class AutomationFillService:
                 )
                 # Random pause — mimics human reading time, reduces bot signal
                 page.wait_for_timeout(random.randint(1800, 3200))
+
+                prepare_application_page(page, application_url)
+                page.wait_for_timeout(800)
 
                 for planned_field in plan.fields:
                     field_dict = planned_field.model_dump()

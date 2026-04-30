@@ -2,3 +2,4 @@
 /services/api/uploads/
 extra-application-questions.txt
 test-application-urls.py
+/scripts/test_results
