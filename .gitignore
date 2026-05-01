@@ -3,3 +3,16 @@
 extra-application-questions.txt
 test-application-urls.py
 /scripts/test_results
+
+# Environment files — never commit real secrets
+# API service
+services/api/.env
+services/api/.env.local
+services/api/.env.staging
+services/api/.env.production
+
+# Web service
+services/web/.env
+services/web/.env.local
+services/web/.env.staging
+services/web/.env.production

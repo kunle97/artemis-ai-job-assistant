@@ -443,6 +443,9 @@ class GenericAutomationFieldClassifier:
                 "physical disability",
                 "disability",
                 "ethnicity",
+                "pronoun",
+                "hispanic",
+                "latino",
             ]
         )
 

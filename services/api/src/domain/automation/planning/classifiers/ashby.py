@@ -50,7 +50,7 @@ class AshbyAutomationFieldClassifier(BaseAutomationFieldClassifier):
         if "preferred pronouns" in text:
             return FIELD_ROLE_DEMOGRAPHIC
 
-        if "gender" in text or "ethnicity" in text or "disability" in text or "race" in text or "veteran" in text:
+        if "gender" in text or "ethnicity" in text or "disability" in text or "race" in text or "veteran" in text or "hispanic" in text or "latino" in text:
             return FIELD_ROLE_DEMOGRAPHIC
 
         if "consent" in text:

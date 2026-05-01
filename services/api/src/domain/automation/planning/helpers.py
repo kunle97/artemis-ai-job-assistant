@@ -147,10 +147,26 @@ def resolve_demographic_value(*, inspected_field: dict, profile) -> str | None:
     def _is_pronouns() -> bool:
         return "pronoun" in label or "pronoun" in field_name
 
+    def _is_hispanic_latino() -> bool:
+        return "hispanic" in label or "latino" in label
+
     if _is_gender():
         if not getattr(profile, "autofill_gender", False):
             return None
         return getattr(profile, "gender", None)
+
+    if _is_hispanic_latino():
+        # Hispanic/Latino is a prerequisite question on Greenhouse EEOC forms.
+        # Derive the Yes/No answer from the stored race value.
+        if not getattr(profile, "autofill_race", False):
+            return None
+        race = getattr(profile, "race", None)
+        if not race:
+            return None
+        race_lower = race.lower()
+        if "hispanic" in race_lower or "latino" in race_lower:
+            return "Yes"
+        return "No"
 
     if _is_race():
         if not getattr(profile, "autofill_race", False):

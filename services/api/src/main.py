@@ -31,7 +31,10 @@ import logging
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
-) 
+)
+
+# Promote fill handler to DEBUG so combobox fill steps are visible in logs.
+logging.getLogger("src.domain.automation.fill.handlers.select_like").setLevel(logging.DEBUG)
 app = FastAPI(title="Artemis API")
 
 app.include_router(health_router)

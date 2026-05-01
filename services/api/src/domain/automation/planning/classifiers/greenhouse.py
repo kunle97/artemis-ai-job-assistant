@@ -97,6 +97,9 @@ class GreenhouseAutomationFieldClassifier(GenericAutomationFieldClassifier):
                 "nationality",
                 "race",
                 "veteran status",
+                "pronoun",
+                "hispanic",
+                "latino",
             ]
         ):
             return FIELD_ROLE_DEMOGRAPHIC

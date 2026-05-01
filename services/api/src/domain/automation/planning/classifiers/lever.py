@@ -100,6 +100,8 @@ class LeverAutomationFieldClassifier(GenericAutomationFieldClassifier):
                 "disability",
                 "protected veteran",
                 "individual with a disability",
+                "hispanic",
+                "latino",
             ]
         ):
             return FIELD_ROLE_DEMOGRAPHIC

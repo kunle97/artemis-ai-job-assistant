@@ -138,6 +138,17 @@ def find_field_container(page: Page, label: str | None):
 
 
 def find_toggle_button(container):
+    # React Select dropdown indicator — a div/span with class *__dropdown-indicator,
+    # not a <button>. Note: do NOT use [class*="__indicator"] as it matches
+    # the indicators *container* div (select__indicators) whose click does not
+    # reliably toggle the dropdown on all platforms.
+    try:
+        locator = container.locator('[class*="__dropdown-indicator"]').first
+        if locator.count() > 0:
+            return locator
+    except Exception:
+        pass
+
     button_selectors = [
         'button[aria-label*="Toggle"]',
         'button[aria-label*="toggle"]',

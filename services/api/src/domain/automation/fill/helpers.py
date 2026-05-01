@@ -38,9 +38,17 @@ def normalize_choice_text(text: str | None) -> str:
         "i decline to selfidentify": "prefer not to answer",
         "i do not wish to answer": "prefer not to answer",
         "i prefer not to answer": "prefer not to answer",
+        # Greenhouse EEOC label
+        "decline to self identify": "prefer not to answer",
     }
 
     _disability_synonyms = {
+        # Greenhouse CC-305 full option text (must come before shorter patterns to
+        # prevent partial replacement that produces a double-"no" artefact).
+        "no i do not have a disability and have not had one in the past": "no disability",
+        "yes i have a disability or have had one in the past": "yes disability",
+        "yes i have a disability or previously had a disability": "yes disability",
+        # Standard / shorter patterns
         "i do not have a disability": "no disability",
         "no i do not have a disability": "no disability",
         "no i dont have a disability": "no disability",
@@ -48,6 +56,7 @@ def normalize_choice_text(text: str | None) -> str:
     }
 
     _veteran_synonyms = {
+        # Greenhouse VEVRAA short option text
         "i am not a protected veteran": "not a protected veteran",
         "no i am not a protected veteran": "not a protected veteran",
         "not a veteran": "not a protected veteran",
@@ -57,6 +66,12 @@ def normalize_choice_text(text: str | None) -> str:
 
     for source, target in synonym_map.items():
         text = text.replace(source, target)
+
+    # Strip phone dial-code suffixes that Greenhouse appends to country names in the
+    # phone-country-code selector (e.g. "United States +1" → "United States").
+    # After re.sub removes "+", these appear as trailing digits like "united states 1".
+    # We do a best-effort strip: remove a trailing standalone number (1–4 digits).
+    text = re.sub(r"\s+\d{1,4}$", "", text.strip())
 
     return re.sub(r"[^a-z0-9\s]", "", text).strip()
 

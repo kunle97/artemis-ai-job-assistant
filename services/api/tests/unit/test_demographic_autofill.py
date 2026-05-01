@@ -213,6 +213,7 @@ def test_all_flags_false_no_leakage():
         {"label": "Veteran Status", "name": None},
         {"label": "Disability Status", "name": None},
         {"label": "Preferred Pronouns", "name": None},
+        {"label": "Are you Hispanic/Latino?", "name": None},
     ]:
         assert resolve_demographic_value(inspected_field=field, profile=profile) is None
 
@@ -229,3 +230,63 @@ def test_gender_flag_true_but_no_value_stored():
         profile=profile,
     )
     assert result is None
+
+
+# ---------------------------------------------------------------------------
+# Hispanic / Latino (Greenhouse EEOC prerequisite question)
+# ---------------------------------------------------------------------------
+
+
+def test_hispanic_latino_skipped_when_race_flag_is_false():
+    profile = _Profile(autofill_race=False, race="Asian")
+    result = resolve_demographic_value(
+        inspected_field={"label": "Are you Hispanic/Latino?", "name": None},
+        profile=profile,
+    )
+    assert result is None
+
+
+def test_hispanic_latino_returns_no_for_non_hispanic_race():
+    profile = _Profile(autofill_race=True, race="Asian")
+    result = resolve_demographic_value(
+        inspected_field={"label": "Are you Hispanic/Latino?", "name": None},
+        profile=profile,
+    )
+    assert result == "No"
+
+
+def test_hispanic_latino_returns_yes_when_race_is_hispanic():
+    profile = _Profile(autofill_race=True, race="Hispanic or Latino")
+    result = resolve_demographic_value(
+        inspected_field={"label": "Are you Hispanic/Latino?", "name": None},
+        profile=profile,
+    )
+    assert result == "Yes"
+
+
+def test_hispanic_latino_returns_yes_when_race_contains_latino():
+    profile = _Profile(autofill_race=True, race="Latino")
+    result = resolve_demographic_value(
+        inspected_field={"label": "Are you Hispanic/Latino?", "name": None},
+        profile=profile,
+    )
+    assert result == "Yes"
+
+
+def test_hispanic_latino_returns_none_when_race_not_stored():
+    profile = _Profile(autofill_race=True, race=None)
+    result = resolve_demographic_value(
+        inspected_field={"label": "Are you Hispanic/Latino?", "name": None},
+        profile=profile,
+    )
+    assert result is None
+
+
+def test_hispanic_latino_matched_by_label_variant():
+    """'Are you Latino?' uses 'latino' keyword, should also match."""
+    profile = _Profile(autofill_race=True, race="Asian")
+    result = resolve_demographic_value(
+        inspected_field={"label": "Are you Latino?", "name": None},
+        profile=profile,
+    )
+    assert result == "No"
