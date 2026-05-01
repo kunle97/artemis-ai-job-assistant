@@ -38,39 +38,19 @@ SCREENSHOTS_DIR = os.path.join(
 
 RESULTS_DIR = os.path.join(os.path.dirname(__file__), "test_results")
 
-RESUME_PATH = "/Users/kunle/Documents/dev/artemis-ai-job-assistant/services/api/uploads/resumes/5cd41e3c-df8c-4716-8dd1-245348603d97.pdf"
+RESUME_PATH = "/Users/kunle/Documents/dev/artemis-ai-job-assistant/services/api/uploads/resumes/9c310282-3ebd-4e8a-a92a-25bf715d8156.pdf"
 
 JOBS = [
-    {
-        "label": "PermitFlow – Ashby",
-        "application_url": "https://jobs.ashbyhq.com/permitflow/8d780d11-57e8-4570-a599-b8dc3d4377a1/application?utm_source=LinkedInPaid",
-        "resume_file_path": RESUME_PATH,
-    },
-    {
-        "label": "micro1 – micro1.ai",
-        "application_url": "https://jobs.micro1.ai/post/58718af4-5f86-4322-859b-add0b1ea3c24",
-        "resume_file_path": RESUME_PATH,
-    },
-    {
-        "label": "Kiddom – Lever",
-        "application_url": "https://jobs.lever.co/kiddom/8934d8a1-9b84-4e1d-ad3e-950e98151b16/",
-        "resume_file_path": RESUME_PATH,
-    },
-    {
-        "label": "Happy Cog - Generic",
-        "application_url": "https://happycog.hire.trakstar.com/jobs/fk0zh1o/",
-        "resume_file_path": RESUME_PATH,
-    },
-    {
-        "label": "Rebuildg - Generic",
-        "application_url": "https://jobs.gem.com/rebuild-work/am9icG9zdDrIj-ZLWP1CGtohCcoC5LS4?utm_source=GemLink&utm_medium=c291cmNlOpoCTMzFkEOBcQNxhb5VjIY",
-        "resume_file_path": RESUME_PATH,
-    },
-    {
-        "label": "Counsel Health - Ashby",
-        "application_url": "https://jobs.ashbyhq.com/counsel/3f041963-9a9f-4371-8d4a-f7b321d0224d/application?utm_source=LinkedInPromoted",
-        "resume_file_path": RESUME_PATH,
-    },
+    # {
+    #     "label": "PermitFlow – Ashby",
+    #     "application_url": "https://jobs.ashbyhq.com/permitflow/8d780d11-57e8-4570-a599-b8dc3d4377a1/application?utm_source=LinkedInPaid",
+    #     "resume_file_path": RESUME_PATH,
+    # },
+    # {
+    #     "label": "Kiddom – Lever",
+    #     "application_url": "https://jobs.lever.co/kiddom/8934d8a1-9b84-4e1d-ad3e-950e98151b16/",
+    #     "resume_file_path": RESUME_PATH,
+    # },
     {
         "label": "Equal Experts - Greenhouse",
         "application_url": "https://job-boards.greenhouse.io/equalexperts/jobs/8454247002",

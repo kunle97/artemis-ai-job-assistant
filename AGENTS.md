@@ -175,6 +175,19 @@ Code must remain modular and separable into services.
 
 ------------------------------------------------------------------------
 
+## Storage Rules
+
+- File storage is a shared cross-cutting concern, not a domain-specific one.
+- The storage backend must be abstracted behind a `StorageService` protocol defined in `src/integrations/storage/base.py`.
+- Backend selection (local vs S3) belongs in `src/integrations/storage/factory.py`.
+- The active storage service must be injected as a FastAPI dependency from `src/deps/storage.py`, following the same pattern as `src/deps/auth.py`.
+- Routes must never instantiate a storage service directly — they receive it via `Depends(get_storage)`.
+- Domain services (e.g. `ResumeService`) receive the storage service as a constructor argument — they do not create it.
+- Pure storage helpers (e.g. reading a stored file back, resolving a pre-signed URL) belong in `src/integrations/storage/helpers.py`, not in any domain service or storage backend class.
+- This pattern applies to all future file uploads (resume files, profile pictures, cover letters, etc.).
+
+------------------------------------------------------------------------
+
 ## Logging Rules
 
 - All service files across every domain and subdomain must include meaningful logs.

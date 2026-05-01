@@ -20,6 +20,8 @@ from src.domain.automation.planning.constants import (
     FIELD_ROLE_RESUME_UPLOAD,
     FIELD_ROLE_SUBMIT,
     PLATFORM_LEVER,
+    PLATFORM_GREENHOUSE,
+    PLATFORM_ASHBY,
 )
 from src.domain.automation.planning.service import AutomationPlanningService
 from src.domain.automation.planning.models import AutomationFillPlanRequest
@@ -68,7 +70,7 @@ class AutomationFillService:
 
         fill_results: list[AutomationFillFieldResult] = []
         screenshot_path: str | None = None
-        platform = PLATFORM_LEVER if "lever.co" in application_url else None
+        platform = _detect_platform(application_url)
 
         with sync_playwright() as playwright:
             browser, context, page = create_stealth_context(playwright)
@@ -143,7 +145,7 @@ class AutomationFillService:
             return skip_cover_letter_upload(field)
 
         if role == FIELD_ROLE_RESUME_UPLOAD:
-            return upload_resume(page, field, resume_file_path)
+            return upload_resume(page, field, resume_file_path, platform=platform)
 
         if field.get("needs_review"):
             return self._build_result(
@@ -244,11 +246,7 @@ class AutomationFillService:
 
     def _save_screenshot(self, page: Page, application_url: str | None = None) -> str | None:
         try:
-            platform = PLATFORM_LEVER if "lever.co" in (application_url or "") else (
-                "greenhouse" if "greenhouse" in (application_url or "") else (
-                    "ashby" if "ashby" in (application_url or "") else "generic"
-                )
-            )
+            platform = _detect_platform(application_url or "")
             screenshot_dir = Path("uploads/automation") / platform
             screenshot_dir.mkdir(parents=True, exist_ok=True)
 
@@ -260,3 +258,14 @@ class AutomationFillService:
         except Exception as exc:
             logger.warning(f"[AutomationFill] Failed to save screenshot: {type(exc).__name__}")
             return None
+
+
+def _detect_platform(url: str) -> str:
+    """Infer the ATS platform from the application URL."""
+    if "lever.co" in url:
+        return PLATFORM_LEVER
+    if "greenhouse.io" in url or "boards.greenhouse" in url:
+        return PLATFORM_GREENHOUSE
+    if "ashbyhq.com" in url or "ashby" in url:
+        return PLATFORM_ASHBY
+    return "generic"

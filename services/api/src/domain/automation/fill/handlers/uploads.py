@@ -1,121 +1,206 @@
 """
-Handlers for file uploads.
+Handlers for file uploads (Ashby, Lever, Greenhouse).
 """
 
 from __future__ import annotations
 
 from pathlib import Path
+from playwright.sync_api import Page
 
 from src.domain.automation.fill.models import AutomationFillFieldResult
-from src.domain.automation.fill.locators import find_field_container, locate_field
 
 
-def upload_resume(page, field: dict, resume_path: str | None) -> AutomationFillFieldResult:
+def upload_resume(page: Page, field: dict, resume_path: str | None, platform: str | None = None):
     label = field.get("label")
-    name = field.get("name")
     role = field.get("classified_role", "resume_upload")
-    placeholder = field.get("placeholder")
 
     if not resume_path:
-        return _result(
-            label=label,
-            name=name,
-            role=role,
-            value=None,
-            status="skipped_no_file",
-        )
+        return _result(field, None, "skipped_no_file")
 
     file_path = Path(resume_path)
-    if not file_path.exists() or not file_path.is_file():
-        return _result(
-            label=label,
-            name=name,
-            role=role,
-            value=resume_path,
-            status="skipped_invalid_resume_path",
-        )
 
-    locator = None
+    if not file_path.exists():
+        return _result(field, resume_path, "skipped_invalid_resume_path")
 
     try:
-        container = find_field_container(page, label)
-        if container is not None:
-            file_inputs = container.locator('input[type="file"]')
-            if file_inputs.count() > 0:
-                locator = file_inputs.first
-    except Exception:
-        locator = None
+        # 🔥 Platform-specific handling (THIS is the fix)
+        if platform == "greenhouse":
+            return _upload_greenhouse(page, field, file_path)
 
-    if locator is None:
-        try:
-            inputs = page.locator('input[type="file"]')
-            count = inputs.count()
+        if platform == "lever":
+            return _upload_lever(page, field, file_path)
 
-            for i in range(count):
-                candidate = inputs.nth(i)
-                try:
-                    candidate_html = (candidate.evaluate("el => el.outerHTML") or "").lower()
-                except Exception:
-                    candidate_html = ""
+        # fallback (Ashby works already)
+        return _upload_generic(page, field, file_path)
 
-                if any(token in candidate_html for token in ["resume", "cv"]):
-                    locator = candidate
-                    break
-
-            if locator is None and count > 0:
-                locator = inputs.first
-        except Exception:
-            locator = None
-
-    if locator is None:
-        return _result(
-            label=label,
-            name=name,
-            role=role,
-            value=resume_path,
-            status="skipped_not_found",
-        )
-
-    try:
-        locator.set_input_files(str(file_path))
-        return _result(
-            label=label,
-            name=name,
-            role=role,
-            value=str(file_path),
-            status="filled",
-        )
     except Exception as exc:
         return _result(
-            label=label,
-            name=name,
-            role=role,
-            value=f"{str(file_path)} | error={type(exc).__name__}: {str(exc)}",
-            status="error",
+            field,
+            f"{str(file_path)} | error={type(exc).__name__}: {exc}",
+            "error",
         )
-    
-def skip_cover_letter_upload(field: dict) -> AutomationFillFieldResult:
-    return _result(
+
+
+# ========================
+# GREENHOUSE ONLY
+# ========================
+def _upload_greenhouse(page: Page, field: dict, file_path: Path):
+    try:
+        locator = page.locator("input#resume[type='file']").first
+
+        if locator.count() == 0:
+            locator = page.locator(
+                ".file-upload:has-text('Resume') input[type='file']"
+            ).first
+
+        if locator.count() == 0:
+            return _result(field, str(file_path), "skipped_not_found")
+
+        locator.set_input_files(str(file_path))
+
+        locator.evaluate(
+            """
+            (el) => {
+              el.dispatchEvent(new Event("input", { bubbles: true }));
+              el.dispatchEvent(new Event("change", { bubbles: true }));
+            }
+            """
+        )
+
+        page.wait_for_timeout(1500)
+
+        uploaded = locator.evaluate("(el) => el.files && el.files.length > 0")
+
+        if not uploaded:
+            return _result(field, str(file_path), "skipped_not_found")
+
+        filename = file_path.name
+
+        page.evaluate(
+            """
+            ({ filename }) => {
+              const input = document.querySelector("input#resume[type='file']");
+              if (!input) return;
+
+              const wrapper = input.closest(".file-upload__wrapper");
+              if (!wrapper) return;
+
+              let status = wrapper.querySelector("[data-artemis-upload-status='resume']");
+              if (!status) {
+                status = document.createElement("p");
+                status.setAttribute("data-artemis-upload-status", "resume");
+                status.style.marginTop = "8px";
+                status.style.fontSize = "12px";
+                status.style.color = "#0a7f35";
+                wrapper.appendChild(status);
+              }
+
+              status.textContent = `Uploaded: ${filename}`;
+            }
+            """,
+            {"filename": filename},
+        )
+
+        page.wait_for_timeout(500)
+
+        return _result(field, str(file_path), "filled")
+
+    except Exception as exc:
+        return _result(
+            field,
+            f"{str(file_path)} | error={type(exc).__name__}: {exc}",
+            "error",
+        )
+
+# ========================
+# LEVER (FIXED)
+# ========================
+def _upload_lever(page: Page, field: dict, file_path: Path):
+    try:
+        # 🔥 Lever uses invisible input
+        file_input = page.locator('input[type="file"]')
+
+        if file_input.count() == 0:
+            return _result(field, str(file_path), "skipped_not_found")
+
+        target = None
+
+        for i in range(file_input.count()):
+            el = file_input.nth(i)
+
+            try:
+                html = el.evaluate("el => el.outerHTML").lower()
+            except Exception:
+                continue
+
+            if "resume" in html or "upload" in html or "invisible-resume-upload" in html:
+                target = el
+                break
+
+        if target is None:
+            target = file_input.first
+
+        # 🔥 THIS is critical
+        target.set_input_files(str(file_path))
+
+        # trigger change manually (Lever sometimes needs it)
+        page.evaluate(
+            """
+            el => {
+                el.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+            """,
+            target,
+        )
+
+        page.wait_for_timeout(2500)
+
+        # UI verification
+        body = page.locator("body").inner_text().lower()
+
+        if file_path.name.lower() in body:
+            return _result(field, str(file_path), "filled")
+
+        # fallback: file attached but hidden UI
+        count = target.evaluate("el => el.files.length")
+
+        if count > 0:
+            return _result(field, str(file_path), "filled")
+
+        return _result(field, str(file_path), "skipped_ui_not_updated")
+
+    except Exception:
+        return _result(field, str(file_path), "skipped_not_found")
+
+
+# ========================
+# GENERIC (ASHBY ETC)
+# ========================
+def _upload_generic(page: Page, field: dict, file_path: Path):
+    try:
+        file_input = page.locator('input[type="file"]').first
+
+        file_input.set_input_files(str(file_path))
+        page.wait_for_timeout(1500)
+
+        return _result(field, str(file_path), "filled")
+
+    except Exception:
+        return _result(field, str(file_path), "skipped_not_found")
+
+
+# ========================
+# RESULT BUILDER
+# ========================
+def _result(field: dict, value: str | None, status: str):
+    return AutomationFillFieldResult(
         label=field.get("label"),
         name=field.get("name"),
-        role=field.get("classified_role", "cover_letter_upload"),
-        value=None,
-        status="skipped_cover_letter_upload",
-    )
-
-
-def _result(
-    *,
-    label: str | None,
-    name: str | None,
-    role: str,
-    value: str | None,
-    status: str,
-) -> AutomationFillFieldResult:
-    return AutomationFillFieldResult(
-        label=label,
-        name=name,
-        classified_role=role,
+        classified_role=field.get("classified_role", "unknown"),
         resolved_value=value,
         fill_status=status,
     )
+
+
+def skip_cover_letter_upload(field: dict):
+    return _result(field, None, "skipped_cover_letter_upload")

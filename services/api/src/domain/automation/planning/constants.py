@@ -66,6 +66,8 @@ FIELD_ROLE_CURRENT_COMPANY = "current_company"
 FIELD_ROLE_UNKNOWN = "unknown"
 
 PLATFORM_LEVER = "lever"
+PLATFORM_GREENHOUSE = "greenhouse"
+PLATFORM_ASHBY = "ashby"
 
 IGNORE_BUTTON_LABELS = {
     "dropbox",
