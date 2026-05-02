@@ -9,24 +9,24 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
 from src.deps.auth import get_current_user
+from src.deps.storage import get_storage
 from src.domain.profile.repository import CandidateProfileRepository
 from src.domain.resume.parser import ResumeParser
 from src.domain.resume.repository import ResumeRepository
 from src.domain.resume.schemas import ResumeRead, ResumeUploadResponse
 from src.domain.resume.service import ResumeService
 from src.infrastructure.db.session import get_db
-from src.integrations.storage.local_storage import LocalStorageService
+from src.integrations.storage.base import StorageService
 
 router = APIRouter(prefix="/resumes", tags=["resumes"])
 
 
-def _build_resume_service(db: Session) -> ResumeService:
+def _build_resume_service(db: Session, storage_service: StorageService) -> ResumeService:
     """
     Build the resume service and its dependencies.
     """
     repository = ResumeRepository(db)
     profile_repository = CandidateProfileRepository(db)
-    storage_service = LocalStorageService()
     parser = ResumeParser()
 
     return ResumeService(
@@ -50,12 +50,13 @@ def upload_resume(
     file: UploadFile = File(...),
     current_user=Depends(get_current_user),
     db: Session = Depends(get_db),
+    storage_service: StorageService = Depends(get_storage),
 ):
     """
     Upload a resume for the authenticated user.
     Returns the saved resume and any profile fields that could not be auto-populated.
     """
-    service = _build_resume_service(db)
+    service = _build_resume_service(db, storage_service)
 
     try:
         resume, missing_fields = service.upload_resume(
@@ -77,9 +78,10 @@ def upload_resume(
 def list_resumes(
     current_user=Depends(get_current_user),
     db: Session = Depends(get_db),
+    storage_service: StorageService = Depends(get_storage),
 ):
     """
     Return resumes for the authenticated user.
     """
-    service = _build_resume_service(db)
+    service = _build_resume_service(db, storage_service)
     return service.list_resumes(current_user.id)

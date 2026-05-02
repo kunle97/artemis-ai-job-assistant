@@ -80,7 +80,7 @@ class ApplicationPlanningService:
                 ApplicationPlanningItem(
                     field_key=self._derive_field_key(question_text),
                     question_text=question_text,
-                    matched_question_key=resolved.matched_question_key,
+                    matched_question_key=resolved.intent_key,
                     resolved_answer=resolved.resolved_answer,
                     source=resolved.source,
                     needs_review=resolved.needs_review,

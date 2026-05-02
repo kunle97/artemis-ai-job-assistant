@@ -79,6 +79,8 @@ class CandidateProfileRepository:
             profile.preferred_relocation_cities = payload.preferred_relocation_cities
         if payload.work_arrangement is not None:
             profile.work_arrangement = payload.work_arrangement
+        if payload.skills is not None:
+            profile.skills = payload.skills
 
         self.db.add(profile)
         self.db.commit()

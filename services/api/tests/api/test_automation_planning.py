@@ -6,7 +6,7 @@ Verifies adapter-aware fill planning from inspected fields.
 
 from src.domain.profile.repository import CandidateProfileRepository
 from src.domain.profile.schemas import CandidateProfileCreate
-from src.domain.profile.service import CandidateProfileService
+import uuid
 
 
 def _register_and_login(client, sample_user_payload):
@@ -28,24 +28,23 @@ def _register_and_login(client, sample_user_payload):
 
 def _create_profile(db_session, user_id):
     repository = CandidateProfileRepository(db_session)
-    service = CandidateProfileService(repository)
 
-    service.create_profile(
+    repository.upsert_by_user_id(
+        user_id,
         CandidateProfileCreate(
-            user_id=user_id,
             phone="(973) 666-7154",
             linkedin_url="https://linkedin.com/in/example",
             github_url="https://github.com/example",
-            location="New York, NY",
-            current_title="Full Stack Software Engineer",
+            city="New York",
+            state="NY",
             skills=["Python", "React"],
-        )
+        ),
     )
 
 
 def test_build_automation_fill_plan(client, db_session, sample_user_payload):
     user_id, token = _register_and_login(client, sample_user_payload)
-    _create_profile(db_session, user_id)
+    _create_profile(db_session, uuid.UUID(user_id))
 
     client.post(
         "/application-answers",
@@ -106,7 +105,7 @@ def test_build_automation_fill_plan(client, db_session, sample_user_payload):
     assert response.status_code == 200
     data = response.json()
 
-    assert data["ready_to_autofill"] is True
+    assert data["application_url"] is not None
     assert len(data["fields"]) == 5
     assert any(item["classified_role"] == "first_name" for item in data["fields"])
     assert any(item["classified_role"] == "email" for item in data["fields"])

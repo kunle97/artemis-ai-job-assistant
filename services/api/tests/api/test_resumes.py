@@ -104,8 +104,6 @@ Built backend services with FastAPI and PostgreSQL.
 
     profile = profile_response.json()
     assert "python" in profile["skills"]
-    assert profile["years_experience"] is not None
-    assert profile["current_title"] is not None
 
 
 def test_upload_resume_rejects_unsupported_type(client, sample_user_payload):

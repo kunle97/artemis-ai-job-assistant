@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from src.deps.auth import get_current_user
+from src.domain.application_answers.intents.repository import ApplicationAnswerIntentRepository
 from src.domain.application_answers.repository import ApplicationAnswerRepository
 from src.domain.application_answers.resolution import ApplicationAnswerResolver
 from src.domain.applications.planning import (
@@ -37,6 +38,7 @@ def _build_service(db: Session) -> ApplicationPlanningService:
 
     answer_resolver = ApplicationAnswerResolver(
         answer_repository=ApplicationAnswerRepository(db),
+        intent_repository=ApplicationAnswerIntentRepository(db),
         profile_repository=CandidateProfileRepository(db),
     )
 

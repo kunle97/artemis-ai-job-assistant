@@ -6,9 +6,11 @@ Stores reusable user-specific answers keyed by semantic intent.
 
 from __future__ import annotations
 
+import uuid as _uuid
 from datetime import UTC, datetime
 
 from sqlalchemy import DateTime, ForeignKey, String, Text, UniqueConstraint
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.infrastructure.db.base import Base
@@ -21,7 +23,7 @@ class ApplicationAnswerIntent(Base):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    user_id: Mapped[_uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
     intent_key: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
     answer_text: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(

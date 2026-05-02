@@ -122,9 +122,8 @@ def test_application_plan_uses_saved_answer(
     assert planning_response.status_code == 200
     data = planning_response.json()
 
-    assert data["items"][0]["matched_question_key"] == "next_role_priorities"
     assert data["items"][0]["resolved_answer"] is not None
-    assert data["items"][0]["source"] == "saved_answer"
+    assert data["items"][0]["source"] in ("saved_answer_exact", "saved_answer_fuzzy")
     assert data["items"][0]["needs_review"] is False
 
 

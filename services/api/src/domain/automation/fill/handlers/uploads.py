@@ -4,33 +4,33 @@ Handlers for file uploads (Ashby, Lever, Greenhouse).
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from playwright.sync_api import Page
 
 from src.domain.automation.fill.models import AutomationFillFieldResult
+from src.integrations.storage.helpers import open_stored_file
 
 
 def upload_resume(page: Page, field: dict, resume_path: str | None, platform: str | None = None):
-    label = field.get("label")
-    role = field.get("classified_role", "resume_upload")
-
     if not resume_path:
         return _result(field, None, "skipped_no_file")
 
-    file_path = Path(resume_path)
+    # Resolve S3 URIs and pre-signed URLs to a local path before using Playwright.
+    # open_stored_file returns (local_path, is_temp) — we clean up temp files after use.
+    local_path_str, is_temp = open_stored_file(resume_path)
+    file_path = Path(local_path_str)
 
     if not file_path.exists():
         return _result(field, resume_path, "skipped_invalid_resume_path")
 
     try:
-        # 🔥 Platform-specific handling (THIS is the fix)
         if platform == "greenhouse":
             return _upload_greenhouse(page, field, file_path)
 
         if platform == "lever":
             return _upload_lever(page, field, file_path)
 
-        # fallback (Ashby works already)
         return _upload_generic(page, field, file_path)
 
     except Exception as exc:
@@ -39,6 +39,12 @@ def upload_resume(page: Page, field: dict, resume_path: str | None, platform: st
             f"{str(file_path)} | error={type(exc).__name__}: {exc}",
             "error",
         )
+    finally:
+        if is_temp:
+            try:
+                os.unlink(local_path_str)
+            except OSError:
+                pass
 
 
 # ========================

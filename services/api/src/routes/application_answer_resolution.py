@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from src.deps.auth import get_current_user
+from src.domain.application_answers.intents.repository import ApplicationAnswerIntentRepository
 from src.domain.application_answers.repository import ApplicationAnswerRepository
 from src.domain.application_answers.resolution import (
     ApplicationAnswerResolver,
@@ -30,6 +31,7 @@ class ResolveApplicationAnswerRequest(BaseModel):
 def _build_resolver(db: Session) -> ApplicationAnswerResolver:
     return ApplicationAnswerResolver(
         answer_repository=ApplicationAnswerRepository(db),
+        intent_repository=ApplicationAnswerIntentRepository(db),
         profile_repository=CandidateProfileRepository(db),
     )
 

@@ -27,3 +27,7 @@ class LocalStorageService:
             shutil.copyfileobj(upload_file.file, buffer)
 
         return stored_path
+
+    def get_read_path(self, stored_path: str) -> str:
+        """Return the stored path unchanged — local files are read directly."""
+        return stored_path

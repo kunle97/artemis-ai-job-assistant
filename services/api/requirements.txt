@@ -141,3 +141,4 @@ whitenoise==6.7.0
 wrapt==1.16.0
 WTForms==3.1.2
 zipp==3.19.2
+moto[s3]==5.2.0

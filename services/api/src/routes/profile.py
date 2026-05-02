@@ -4,7 +4,7 @@ Candidate profile routes.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 
 from src.deps.auth import get_current_user
 from src.domain.profile.repository import CandidateProfileRepository
@@ -31,6 +31,9 @@ def create_or_update_profile(
     db=Depends(get_db),
 ):
     repo = CandidateProfileRepository(db)
+    existing = repo.get_by_user_id(current_user.id)
+    if existing is not None:
+        raise HTTPException(status_code=400, detail="User already has a candidate profile. Use PUT to update it.")
     profile = repo.upsert_by_user_id(current_user.id, payload)
     return profile
 

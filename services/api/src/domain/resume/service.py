@@ -8,7 +8,8 @@ and candidate profile synchronization.
 from pathlib import Path
 
 from src.domain.resume.repository import ResumeRepository
-from src.integrations.storage.local_storage import LocalStorageService
+from src.integrations.storage.base import StorageService
+from src.integrations.storage.helpers import open_stored_file
 from src.domain.resume.parser import ResumeParser
 from src.domain.profile.repository import CandidateProfileRepository
 from src.domain.profile.service import CandidateProfileService
@@ -24,7 +25,7 @@ class ResumeService:
     def __init__(
         self,
         repository: ResumeRepository,
-        storage_service: LocalStorageService,
+        storage_service: StorageService,
         parser: ResumeParser,
         profile_repository: CandidateProfileRepository,
     ):
@@ -41,7 +42,14 @@ class ResumeService:
         self._validate_file(upload_file)
 
         stored_path = self.storage_service.save_upload(upload_file)
-        parsed_result = self.parser.parse(stored_path)
+        read_path = self.storage_service.get_read_path(stored_path)
+        local_path, is_temp = open_stored_file(read_path)
+        try:
+            parsed_result = self.parser.parse(local_path)
+        finally:
+            if is_temp:
+                import os
+                os.unlink(local_path)
 
         resume = self.repository.create(
             user_id=user_id,

@@ -4,6 +4,8 @@ Candidate profile schemas.
 
 from __future__ import annotations
 
+from uuid import UUID
+
 from pydantic import BaseModel, ConfigDict
 
 
@@ -34,6 +36,7 @@ class CandidateProfileUpsertRequest(BaseModel):
 
     preferred_relocation_cities: list[str] | None = None
     work_arrangement: str | None = None
+    skills: list[str] | None = None
 
 
 CandidateProfileCreate = CandidateProfileUpsertRequest
@@ -42,8 +45,8 @@ CandidateProfileCreate = CandidateProfileUpsertRequest
 class CandidateProfileResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
-    id: str
-    user_id: str
+    id: UUID
+    user_id: UUID
 
     phone: str | None = None
     linkedin_url: str | None = None
@@ -73,5 +76,6 @@ class CandidateProfileResponse(BaseModel):
 
     preferred_relocation_cities: list[str] | None = None
     work_arrangement: str | None = None
+    skills: list[str] | None = None
 
     location: str | None = None
