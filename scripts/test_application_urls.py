@@ -35,11 +35,11 @@ JOBS = [
     #     "application_url": "https://job-boards.greenhouse.io/equalexperts/jobs/8454247002",
     #     "resume_file_path": RESUME_PATH,
     # },
-    {
-        "label": "Cognitiv - Greenhouse",
-        "application_url": "https://job-boards.greenhouse.io/cognitiv/jobs/4205032009?gh_src=349wrnj89us&source=LinkedIn",
-        "resume_file_path": RESUME_PATH,
-    },
+    # {
+    #     "label": "Cognitiv - Greenhouse",
+    #     "application_url": "https://job-boards.greenhouse.io/cognitiv/jobs/4205032009?gh_src=349wrnj89us&source=LinkedIn",
+    #     "resume_file_path": RESUME_PATH,
+    # },
     # {
     #     "label": "Nira Energy - Greenhouse",
     #     "application_url": "https://job-boards.greenhouse.io/niraenergy/jobs/4964468008",

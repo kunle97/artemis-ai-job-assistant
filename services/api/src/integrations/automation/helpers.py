@@ -606,7 +606,10 @@ def _platform_subfolder(url: str | None) -> str:
     return "generic"
 
 
-def save_screenshot(page, url: str | None = None) -> str:
+def save_screenshot(page, url: str | None = None) -> str | None:
+    from src.core.config import settings
+    if not settings.save_screenshots:
+        return None
     platform = _platform_subfolder(url)
     screenshot_dir = Path("uploads/automation") / platform
     screenshot_dir.mkdir(parents=True, exist_ok=True)

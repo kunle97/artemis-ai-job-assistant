@@ -245,6 +245,9 @@ class AutomationFillService:
         return unresolved_fields
 
     def _save_screenshot(self, page: Page, application_url: str | None = None) -> str | None:
+        from src.core.config import settings
+        if not settings.save_screenshots:
+            return None
         try:
             platform = _detect_platform(application_url or "")
             screenshot_dir = Path("uploads/automation") / platform

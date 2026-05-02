@@ -28,7 +28,7 @@ from test_application_urls import JOBS
 # ─── CONFIG ──────────────────────────────────────────────────────────────────
 
 BASE_URL = "http://localhost:8000"
-USERNAME = "janedoe@example.com"
+USERNAME = "adekunledev97@gmail.com"
 PASSWORD = "password"
 
 SCREENSHOTS_DIR = os.path.join(
