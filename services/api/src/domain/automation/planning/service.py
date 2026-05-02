@@ -27,9 +27,11 @@ class AutomationPlanningService:
         self,
         user_repo,
         profile_repo,
+        open_ended_provider=None,
     ):
         self.user_repo = user_repo
         self.profile_repo = profile_repo
+        self.open_ended_provider = open_ended_provider
 
     def build_fill_plan(
         self,
@@ -64,6 +66,7 @@ class AutomationPlanningService:
                 inspected_field=inspected_field,
                 user=user,
                 profile=profile,
+                open_ended_provider=self.open_ended_provider,
             )
 
             planned_fields.append(

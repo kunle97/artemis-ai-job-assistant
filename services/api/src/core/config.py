@@ -1,5 +1,9 @@
 # Core application settings loaded from environment variables via pydantic-settings.
+import os
+
 from pydantic_settings import BaseSettings
+
+_app_env = os.getenv("APP_ENV", "development")
 
 
 class Settings(BaseSettings):
@@ -20,7 +24,8 @@ class Settings(BaseSettings):
     s3_bucket_name: str | None = None
     s3_key_prefix: str = "resumes"
 
-    openai_api_key: str | None = None
+    groq_api_key: str | None = None
+    groq_model: str = "llama-3.3-70b-versatile"
 
     email_backend: str = "console"
     sendgrid_api_key: str | None = None
@@ -33,7 +38,7 @@ class Settings(BaseSettings):
     enable_automation: bool = True
 
     class Config:
-        env_file = ".env"
+        env_file = (".env", f".env.{_app_env}")
         env_file_encoding = "utf-8"
         extra = "ignore"
 

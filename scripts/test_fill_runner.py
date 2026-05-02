@@ -24,7 +24,7 @@ import time
 from datetime import datetime
 
 import requests
-
+from test_application_urls import JOBS
 # ─── CONFIG ──────────────────────────────────────────────────────────────────
 
 BASE_URL = "http://localhost:8000"
@@ -38,25 +38,6 @@ SCREENSHOTS_DIR = os.path.join(
 
 RESULTS_DIR = os.path.join(os.path.dirname(__file__), "test_results")
 
-RESUME_PATH = "/Users/kunle/Documents/dev/artemis-ai-job-assistant/services/api/uploads/resumes/9c310282-3ebd-4e8a-a92a-25bf715d8156.pdf"
-
-JOBS = [
-    {
-        "label": "PermitFlow – Ashby",
-        "application_url": "https://jobs.ashbyhq.com/permitflow/8d780d11-57e8-4570-a599-b8dc3d4377a1/application?utm_source=LinkedInPaid",
-        "resume_file_path": RESUME_PATH,
-    },
-    {
-        "label": "Kiddom – Lever",
-        "application_url": "https://jobs.lever.co/kiddom/8934d8a1-9b84-4e1d-ad3e-950e98151b16/",
-        "resume_file_path": RESUME_PATH,
-    },
-    {
-        "label": "Equal Experts - Greenhouse",
-        "application_url": "https://job-boards.greenhouse.io/equalexperts/jobs/8454247002",
-        "resume_file_path": RESUME_PATH,
-    },
-]
 
 # ─── RESULT EXPORTER ─────────────────────────────────────────────────────────
 

@@ -24,6 +24,7 @@ from src.domain.automation.planning.constants import (
     FIELD_ROLE_LAST_NAME,
     FIELD_ROLE_LINKEDIN_URL,
     FIELD_ROLE_LOCATION,
+    FIELD_ROLE_OPEN_ENDED,
     FIELD_ROLE_PHONE,
     FIELD_ROLE_PORTFOLIO_URL,
     FIELD_ROLE_PREFERRED_PROGRAMMING_LANGUAGE,
@@ -191,12 +192,61 @@ def resolve_demographic_value(*, inspected_field: dict, profile) -> str | None:
     return None
 
 
+def _build_open_ended_request(*, user_id, question_text, user, profile):
+    from src.domain.application_answers.open_ended.models import OpenEndedAnswerRequest
+
+    first_name = getattr(profile, "first_name", None) or getattr(user, "first_name", None)
+    last_name = getattr(profile, "last_name", None) or getattr(user, "last_name", None)
+
+    raw_skills = getattr(profile, "skills", None) or []
+    skill_names = []
+    for s in raw_skills[:10]:
+        if isinstance(s, dict):
+            skill_names.append(s.get("name") or s.get("label") or "")
+        else:
+            skill_names.append(str(s))
+    skills_summary = ", ".join(filter(None, skill_names)) or None
+
+    experience_sections = getattr(profile, "experience_sections", None) or []
+    role_lines = []
+    for exp in experience_sections[:2]:
+        if isinstance(exp, dict):
+            title = exp.get("title") or exp.get("role") or ""
+            company = exp.get("company") or exp.get("employer") or ""
+            line = " at ".join(filter(None, [title, company]))
+            if line:
+                role_lines.append(line)
+    experience_summary = "; ".join(role_lines) or None
+
+    current_location = None
+    city = getattr(profile, "city", None)
+    state = getattr(profile, "state", None)
+    if city and state:
+        current_location = f"{city}, {state}"
+    elif city or state:
+        current_location = city or state
+
+    preferred_relocation_cities = getattr(profile, "preferred_relocation_cities", None) or []
+
+    return OpenEndedAnswerRequest(
+        user_id=user_id,
+        question_text=question_text,
+        first_name=first_name,
+        last_name=last_name,
+        skills_summary=skills_summary,
+        experience_summary=experience_summary,
+        current_location=current_location,
+        preferred_relocation_cities=preferred_relocation_cities or None,
+    )
+
+
 def resolve_field_value(
     *,
     classified_role: str,
     inspected_field: dict,
     user,
     profile,
+    open_ended_provider=None,
 ) -> tuple[str | None, bool]:
     if classified_role in {FIELD_ROLE_IGNORE, FIELD_ROLE_SUBMIT, FIELD_ROLE_COVER_LETTER_UPLOAD}:
         return None, False
@@ -312,6 +362,27 @@ def resolve_field_value(
     if classified_role == FIELD_ROLE_WORK_ARRANGEMENT:
         value = getattr(profile, "work_arrangement", None)
         return value, value is None
+
+    if classified_role == FIELD_ROLE_OPEN_ENDED:
+        if open_ended_provider is None:
+            return None, True
+        question_text = (
+            inspected_field.get("label")
+            or inspected_field.get("placeholder")
+            or ""
+        ).strip()
+        if not question_text:
+            return None, True
+        request = _build_open_ended_request(
+            user_id=getattr(user, "id", None),
+            question_text=question_text,
+            user=user,
+            profile=profile,
+        )
+        result = open_ended_provider.get_answer(request)
+        if result.answer_text:
+            return result.answer_text, result.needs_review
+        return None, True
 
     return None, True
 

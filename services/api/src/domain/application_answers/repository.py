@@ -19,12 +19,14 @@ class ApplicationAnswerRepository:
         self,
         *,
         user_id,
+        question_key: str,
         question_text: str,
         answer_text: str,
         category: str | None = None,
     ) -> ApplicationAnswer:
         record = ApplicationAnswer(
             user_id=user_id,
+            question_key=question_key,
             question_text=question_text,
             answer_text=answer_text,
             category=category,
