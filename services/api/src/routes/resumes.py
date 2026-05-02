@@ -67,7 +67,7 @@ def upload_resume(
 
     message = _FORMAT_HINT if missing_fields else "Profile updated from resume."
     return ResumeUploadResponse(
-        resume=resume,
+        **ResumeRead.model_validate(resume).model_dump(),
         missing_profile_fields=missing_fields,
         message=message,
     )

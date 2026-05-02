@@ -27,9 +27,6 @@ class ResumeRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-class ResumeUploadResponse(BaseModel):
-    resume: ResumeRead
+class ResumeUploadResponse(ResumeRead):
     missing_profile_fields: list[str] = []
     message: str = ""
-
-    model_config = ConfigDict(from_attributes=True)

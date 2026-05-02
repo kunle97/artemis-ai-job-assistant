@@ -12,7 +12,8 @@ def test_register_user(client, sample_user_payload):
     data = response.json()
 
     assert data["email"] == sample_user_payload["email"]
-    assert data["full_name"] == sample_user_payload["full_name"]
+    assert data["first_name"] == sample_user_payload["first_name"]
+    assert data["last_name"] == sample_user_payload["last_name"]
     assert "id" in data
 
 

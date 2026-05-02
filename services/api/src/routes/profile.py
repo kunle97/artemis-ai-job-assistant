@@ -24,6 +24,17 @@ def get_profile(current_user=Depends(get_current_user), db=Depends(get_db)):
     return profile
 
 
+@router.post("", response_model=CandidateProfileResponse)
+def create_or_update_profile(
+    payload: CandidateProfileUpsertRequest,
+    current_user=Depends(get_current_user),
+    db=Depends(get_db),
+):
+    repo = CandidateProfileRepository(db)
+    profile = repo.upsert_by_user_id(current_user.id, payload)
+    return profile
+
+
 @router.put("", response_model=CandidateProfileResponse)
 def update_profile(
     payload: CandidateProfileUpsertRequest,

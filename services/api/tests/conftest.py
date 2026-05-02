@@ -25,6 +25,26 @@ from src.main import app as fastapi_app
 import src.infrastructure.db as db_models
 from tests.test_config import TEST_DATABASE_URL, TEST_DB_PATH
 
+# ---------------------------------------------------------------------------
+# SQLite dialect compatibility patches
+# The production models use PostgreSQL-specific types (JSONB, UUID) that
+# SQLite's DDL compiler doesn't know how to render.  Patch the SQLite type
+# compiler so these types degrade gracefully for test database creation.
+# ---------------------------------------------------------------------------
+from sqlalchemy.dialects.sqlite.base import SQLiteTypeCompiler  # noqa: E402
+
+
+def _visit_JSONB(self, type_, **kw):  # noqa: N802
+    return "JSON"
+
+
+def _visit_UUID(self, type_, **kw):  # noqa: N802
+    return "CHAR(32)"
+
+
+SQLiteTypeCompiler.visit_JSONB = _visit_JSONB  # type: ignore[attr-defined]
+SQLiteTypeCompiler.visit_UUID = _visit_UUID  # type: ignore[attr-defined]
+# ---------------------------------------------------------------------------
 
 engine = create_engine(
     TEST_DATABASE_URL,
@@ -105,5 +125,6 @@ def sample_user_payload():
     return {
         "email": f"test-{unique_value}@example.com",
         "password": "password123",
-        "full_name": "Test User",
+        "first_name": "Test",
+        "last_name": "User",
     }

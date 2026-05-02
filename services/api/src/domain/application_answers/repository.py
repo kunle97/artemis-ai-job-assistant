@@ -36,6 +36,40 @@ class ApplicationAnswerRepository:
         self.db.refresh(record)
         return record
 
+    def upsert(
+        self,
+        *,
+        user_id,
+        question_key: str,
+        question_text: str,
+        answer_text: str,
+        category: str | None = None,
+    ) -> ApplicationAnswer:
+        record = (
+            self.db.query(ApplicationAnswer)
+            .filter(
+                ApplicationAnswer.user_id == user_id,
+                ApplicationAnswer.question_key == question_key,
+            )
+            .first()
+        )
+        if record:
+            record.question_text = question_text
+            record.answer_text = answer_text
+            record.category = category
+        else:
+            record = ApplicationAnswer(
+                user_id=user_id,
+                question_key=question_key,
+                question_text=question_text,
+                answer_text=answer_text,
+                category=category,
+            )
+            self.db.add(record)
+        self.db.commit()
+        self.db.refresh(record)
+        return record
+
     def list_by_user_id(self, user_id) -> list[ApplicationAnswer]:
         return (
             self.db.query(ApplicationAnswer)
