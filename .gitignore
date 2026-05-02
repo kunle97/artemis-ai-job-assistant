@@ -10,9 +10,12 @@ services/api/.env
 services/api/.env.local
 services/api/.env.staging
 services/api/.env.production
+services/api/.env.development
 
 # Web service
 services/web/.env
 services/web/.env.local
 services/web/.env.staging
 services/web/.env.production
+services/web/.env.development
+
