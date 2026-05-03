@@ -57,6 +57,16 @@ class JobPreferencesSchema(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class JobPreferencesUpsertRequest(BaseModel):
+    target_titles: list[str] = Field(default_factory=list)
+    positive_keywords: list[str] = Field(default_factory=list)
+    negative_keywords: list[str] = Field(default_factory=list)
+    locations: list[str] = Field(default_factory=list)
+    remote_only: bool = False
+    salary_min: int | None = None
+    enabled_sources: list[str] = Field(default_factory=list)
+
+
 class JobSearchRequest(BaseModel):
     source: str
     board_token: str | None = None

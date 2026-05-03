@@ -54,11 +54,19 @@ class JobPreferencesRepository:
             .first()
         )
 
-    def upsert(self, user_id, payload):
+    def get_or_create_by_user_id(self, user_id):
         preferences = self.get_by_user_id(user_id)
+        if preferences is not None:
+            return preferences
 
-        if preferences is None:
-            preferences = JobPreferences(user_id=user_id)
+        preferences = JobPreferences(user_id=user_id)
+        self.db.add(preferences)
+        self.db.commit()
+        self.db.refresh(preferences)
+        return preferences
+
+    def upsert(self, user_id, payload):
+        preferences = self.get_or_create_by_user_id(user_id)
 
         preferences.target_titles = payload.target_titles
         preferences.positive_keywords = payload.positive_keywords
