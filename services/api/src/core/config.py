@@ -32,6 +32,9 @@ class Settings(BaseSettings):
     sendgrid_api_key: str | None = None
     from_email: str = "noreply@artemis.dev"
 
+    allowed_origins: list[str] = ["http://localhost:3000", "http://localhost:5173"]
+    revoked_token_cleanup_retention_days: int = 0
+
     sentry_dsn: str | None = None
     sentry_environment: str = "development"
 

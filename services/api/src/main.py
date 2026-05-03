@@ -7,6 +7,7 @@ Registers Artemis API routes and creates the application instance.
 import logging
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
@@ -49,6 +50,14 @@ logging.basicConfig(
 # Promote fill handler to DEBUG so combobox fill steps are visible in logs.
 logging.getLogger("src.domain.automation.fill.handlers.select_like").setLevel(logging.DEBUG)
 app = FastAPI(title="Artemis API")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.allowed_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)

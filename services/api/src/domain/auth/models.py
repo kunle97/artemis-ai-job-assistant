@@ -36,3 +36,4 @@ class RevokedToken(Base):
 
     jti = Column(String, primary_key=True)
     revoked_at = Column(DateTime, nullable=False, default=lambda: datetime.now(UTC))
+    expires_at = Column(DateTime, nullable=True)

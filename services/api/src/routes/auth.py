@@ -11,7 +11,7 @@ from src.deps.auth import get_current_user
 from src.deps.auth import oauth2_scheme
 from src.domain.auth.models import User
 from src.domain.auth.repository import UserRepository
-from src.domain.auth.schemas import RefreshTokenRequest, UserCreate, UserRead
+from src.domain.auth.schemas import LogoutRequest, RefreshTokenRequest, UserCreate, UserRead
 from src.domain.auth.service import AuthService
 from src.infrastructure.db.session import get_db
 
@@ -54,11 +54,13 @@ def refresh_access_token(payload: RefreshTokenRequest, db: Session = Depends(get
 
 @router.post("/logout")
 def logout_user(
+    payload: LogoutRequest = None,
     token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db),
 ):
     service = _build_service(db)
-    service.revoke_access_token(access_token=token)
+    refresh_token = payload.refresh_token if payload else None
+    service.revoke_tokens(access_token=token, refresh_token=refresh_token)
     return {"message": "Logged out successfully."}
 
 

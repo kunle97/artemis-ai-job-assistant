@@ -24,8 +24,8 @@ class UserRepository:
         self.db.refresh(user)
         return user
 
-    def revoke_token(self, jti: str) -> RevokedToken:
-        revoked = RevokedToken(jti=jti)
+    def revoke_token(self, jti: str, expires_at=None) -> RevokedToken:
+        revoked = RevokedToken(jti=jti, expires_at=expires_at)
         self.db.add(revoked)
         self.db.commit()
         self.db.refresh(revoked)
@@ -33,3 +33,14 @@ class UserRepository:
 
     def is_token_revoked(self, jti: str) -> bool:
         return self.db.query(RevokedToken).filter(RevokedToken.jti == jti).first() is not None
+
+    def delete_expired_tokens(self) -> int:
+        from datetime import UTC, datetime
+        now = datetime.now(UTC)
+        deleted = (
+            self.db.query(RevokedToken)
+            .filter(RevokedToken.expires_at != None, RevokedToken.expires_at < now)  # noqa: E711
+            .delete(synchronize_session=False)
+        )
+        self.db.commit()
+        return deleted

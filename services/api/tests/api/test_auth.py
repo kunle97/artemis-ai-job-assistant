@@ -183,6 +183,96 @@ def test_refresh_returns_new_access_token(client, sample_user_payload):
     assert data["token_type"] == "bearer"
 
 
+def test_refresh_rotates_refresh_token(client, sample_user_payload):
+    """Refresh returns a new refresh token and the old one is revoked."""
+    client.post("/auth/register", json=sample_user_payload)
+    login_response = client.post(
+        "/auth/login",
+        data={
+            "username": sample_user_payload["email"],
+            "password": sample_user_payload["password"],
+        },
+    )
+    original_refresh_token = login_response.json()["refresh_token"]
+
+    refresh_response = client.post(
+        "/auth/refresh",
+        json={"refresh_token": original_refresh_token},
+    )
+    assert refresh_response.status_code == 200
+    data = refresh_response.json()
+    assert "refresh_token" in data
+    assert data["refresh_token"] != original_refresh_token
+
+    # The old refresh token must now be rejected.
+    second_refresh = client.post(
+        "/auth/refresh",
+        json={"refresh_token": original_refresh_token},
+    )
+    assert second_refresh.status_code == 401
+
+
+def test_logout_revokes_both_tokens(client, sample_user_payload):
+    """Logout revokes the access token and, when supplied, the refresh token."""
+    client.post("/auth/register", json=sample_user_payload)
+    login_response = client.post(
+        "/auth/login",
+        data={
+            "username": sample_user_payload["email"],
+            "password": sample_user_payload["password"],
+        },
+    )
+    tokens = login_response.json()
+    access_token = tokens["access_token"]
+    refresh_token = tokens["refresh_token"]
+
+    logout_response = client.post(
+        "/auth/logout",
+        headers={"Authorization": f"Bearer {access_token}"},
+        json={"refresh_token": refresh_token},
+    )
+    assert logout_response.status_code == 200
+
+    # Access token should be rejected.
+    session_response = client.get(
+        "/auth/session",
+        headers={"Authorization": f"Bearer {access_token}"},
+    )
+    assert session_response.status_code == 401
+
+    # Refresh token should also be rejected.
+    refresh_response = client.post(
+        "/auth/refresh",
+        json={"refresh_token": refresh_token},
+    )
+    assert refresh_response.status_code == 401
+
+
+def test_logout_without_refresh_token_still_revokes_access_token(client, sample_user_payload):
+    """Logout works when no refresh_token is provided in the body."""
+    client.post("/auth/register", json=sample_user_payload)
+    login_response = client.post(
+        "/auth/login",
+        data={
+            "username": sample_user_payload["email"],
+            "password": sample_user_payload["password"],
+        },
+    )
+    access_token = login_response.json()["access_token"]
+
+    logout_response = client.post(
+        "/auth/logout",
+        headers={"Authorization": f"Bearer {access_token}"},
+    )
+    assert logout_response.status_code == 200
+
+    session_response = client.get(
+        "/auth/session",
+        headers={"Authorization": f"Bearer {access_token}"},
+    )
+    assert session_response.status_code == 401
+
+
 def test_login_rate_limit_returns_429(client, sample_user_payload):
     register_response = client.post("/auth/register", json=sample_user_payload)
     assert register_response.status_code == 200
