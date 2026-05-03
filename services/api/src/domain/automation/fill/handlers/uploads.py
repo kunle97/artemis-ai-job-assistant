@@ -5,6 +5,7 @@ Handlers for file uploads (Ashby, Lever, Greenhouse).
 from __future__ import annotations
 
 import os
+import shutil
 from pathlib import Path
 from playwright.sync_api import Page
 
@@ -42,7 +43,7 @@ def upload_resume(page: Page, field: dict, resume_path: str | None, platform: st
     finally:
         if is_temp:
             try:
-                os.unlink(local_path_str)
+                shutil.rmtree(os.path.dirname(local_path_str), ignore_errors=True)
             except OSError:
                 pass
 

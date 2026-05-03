@@ -5,6 +5,7 @@ Pure utility functions for reading files back regardless of where they are store
 """
 
 import os
+import shutil
 import tempfile
 
 import boto3
@@ -36,21 +37,21 @@ def open_stored_file(read_path: str) -> tuple[str, bool]:
             aws_secret_access_key=settings.aws_secret_access_key,
         )
 
-        suffix = os.path.splitext(key)[1]
-        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
-        tmp.close()
-        s3.download_file(bucket, key, tmp.name)
-        return tmp.name, True
+        original_filename = os.path.basename(key)
+        tmp_dir = tempfile.mkdtemp()
+        local_path = os.path.join(tmp_dir, original_filename)
+        s3.download_file(bucket, key, local_path)
+        return local_path, True
 
     if read_path.startswith("http"):
         resp = requests.get(read_path, timeout=30)
         resp.raise_for_status()
 
-        suffix = os.path.splitext(read_path.split("?")[0])[1]
-        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
-        tmp.write(resp.content)
-        tmp.flush()
-        tmp.close()
-        return tmp.name, True
+        original_filename = os.path.basename(read_path.split("?")[0])
+        tmp_dir = tempfile.mkdtemp()
+        local_path = os.path.join(tmp_dir, original_filename or "resume.pdf")
+        with open(local_path, "wb") as f:
+            f.write(resp.content)
+        return local_path, True
 
     return read_path, False
