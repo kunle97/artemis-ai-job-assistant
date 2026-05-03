@@ -21,6 +21,13 @@ APPLICATION_STATUS_AWAITING_SUBMISSION = "awaiting_submission"
 APPLICATION_STATUS_SUBMITTED = "submitted"
 APPLICATION_STATUS_FAILED = "failed"
 
+# Post-application lifecycle statuses (used when importing from Career-Ops tracker)
+APPLICATION_STATUS_APPLIED = "applied"
+APPLICATION_STATUS_INTERVIEWING = "interviewing"
+APPLICATION_STATUS_OFFER_RECEIVED = "offer_received"
+APPLICATION_STATUS_REJECTED = "rejected"
+APPLICATION_STATUS_ARCHIVED = "archived"
+
 APPLICATION_STATUSES = {
     APPLICATION_STATUS_SAVED,
     APPLICATION_STATUS_READY,
@@ -35,4 +42,37 @@ APPLICATION_STATUSES = {
     APPLICATION_STATUS_AWAITING_SUBMISSION,
     APPLICATION_STATUS_SUBMITTED,
     APPLICATION_STATUS_FAILED,
+    APPLICATION_STATUS_APPLIED,
+    APPLICATION_STATUS_INTERVIEWING,
+    APPLICATION_STATUS_OFFER_RECEIVED,
+    APPLICATION_STATUS_ARCHIVED,
 }
+
+
+# ---------------------------------------------------------------------------
+# External status resolver
+# ---------------------------------------------------------------------------
+
+_EXTERNAL_STATUS_MAP: dict[str, str] = {
+    # Generic import labels → Artemis statuses
+    "evaluated": APPLICATION_STATUS_SAVED,
+    "applied": APPLICATION_STATUS_APPLIED,
+    "responded": APPLICATION_STATUS_APPLIED,
+    "interview": APPLICATION_STATUS_INTERVIEWING,
+    "offer": APPLICATION_STATUS_OFFER_RECEIVED,
+    "rejected": APPLICATION_STATUS_REJECTED,
+    "discarded": APPLICATION_STATUS_ARCHIVED,
+    "skip": APPLICATION_STATUS_ARCHIVED,
+    "submitted": APPLICATION_STATUS_SUBMITTED,
+}
+
+
+def resolve_external_status(raw_status: str) -> str:
+    """
+    Normalise a raw status string from an external source into an Artemis
+    application status.  Comparison is case-insensitive.
+
+    Returns ``saved`` for any unrecognised value so imported records are
+    never silently dropped.
+    """
+    return _EXTERNAL_STATUS_MAP.get(raw_status.lower().strip(), APPLICATION_STATUS_SAVED)

@@ -10,6 +10,23 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict
 
 
+
+class ApplicationSeed(BaseModel):
+    """
+    Seed data for creating an Application record from an external source.
+
+    ``apply_url`` is required; the caller is responsible for resolving or
+    creating the corresponding Job record and linking it before persisting.
+    ``status`` should be an Artemis-canonical application status string.
+    """
+
+    apply_url: str
+    company_name: str | None = None
+    role_title: str | None = None
+    status: str = "saved"
+    notes: str | None = None
+
+
 class ApplicationCreate(BaseModel):
     job_id: UUID
     resume_id: UUID | None = None

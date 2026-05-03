@@ -10,6 +10,35 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 
 
+
+class JobInboxEntry(BaseModel):
+    """
+    A job URL pending evaluation or automation in the Artemis pipeline.
+
+    Represents a job posting the user has flagged for processing but which
+    has not yet been turned into a full Job + Application record.
+    """
+
+    url: str
+    notes: str | None = None
+
+
+class JobBoardConfig(BaseModel):
+    """
+    Configuration for a single job board or company portal.
+
+    Used when scanning external sources for new job postings.
+    ``source`` identifies the adapter to use (greenhouse | lever | ashby | manual).
+    ``board_token`` is the board-specific identifier required by some adapters.
+    ``apply_url`` is a direct application URL for sources that don't use board tokens.
+    """
+
+    name: str
+    source: str
+    board_token: str | None = None
+    apply_url: str | None = None
+
+
 class JobSearchRequest(BaseModel):
     source: str
     board_token: str | None = None
