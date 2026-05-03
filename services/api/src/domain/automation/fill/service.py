@@ -79,10 +79,57 @@ class AutomationFillService:
             ),
         )
 
+        profile = self.planning_service.profile_repo.get_by_user_id(user_id)
+        return self._execute_fill(
+            application_url=application_url,
+            plan=plan,
+            resume_file_path=resume_file_path,
+            profile=profile,
+        )
+
+    def fill_from_plan(
+        self,
+        user_id,
+        application_url: str,
+        plan,
+        application_id=None,
+        resume_file_path: str | None = None,
+    ) -> AutomationFillResult:
+        """Execute the fill phase using a pre-built plan.
+
+        Used by the pipeline orchestrator to avoid double-planning.
+        """
+        application_url = normalize_application_url(application_url)
+
+        if resume_file_path is None and application_id is not None:
+            dummy_payload = AutomationFillRequest(
+                application_url=application_url,
+                application_id=application_id,
+            )
+            resume_file_path = self._resolve_resume_file_path(
+                user_id=user_id,
+                payload=dummy_payload,
+            )
+
+        profile = self.planning_service.profile_repo.get_by_user_id(user_id)
+        return self._execute_fill(
+            application_url=application_url,
+            plan=plan,
+            resume_file_path=resume_file_path,
+            profile=profile,
+        )
+
+    def _execute_fill(
+        self,
+        application_url: str,
+        plan,
+        resume_file_path: str | None,
+        profile,
+    ) -> AutomationFillResult:
+        """Run Playwright to fill the form using a pre-built plan."""
         fill_results: list[AutomationFillFieldResult] = []
         screenshot_path: str | None = None
         platform = _detect_platform(application_url)
-        profile = self.planning_service.profile_repo.get_by_user_id(user_id)
         has_explicit_race_field = any(_is_race_label(getattr(field, "label", None)) for field in plan.fields)
         race_followup_attempted = False
 

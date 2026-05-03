@@ -77,8 +77,19 @@ class _FakeApplication:
         self.is_authorized_to_submit = is_authorized_to_submit
 
 
+def _make_gate_service():
+    """Build a minimal ApplicationPipelineService for gate-only tests."""
+    return ApplicationPipelineService(
+        application_repo=None,
+        job_repo=None,
+        automation_service=None,
+        planning_service=None,
+        fill_service=None,
+    )
+
+
 def test_pipeline_halts_when_manual_review_required_and_not_authorized():
-    svc = ApplicationPipelineService()
+    svc = _make_gate_service()
     app = _FakeApplication(
         status="filled",
         manual_review_required=True,
@@ -88,7 +99,7 @@ def test_pipeline_halts_when_manual_review_required_and_not_authorized():
 
 
 def test_pipeline_advances_when_manually_authorized():
-    svc = ApplicationPipelineService()
+    svc = _make_gate_service()
     app = _FakeApplication(
         status="filled",
         manual_review_required=True,
@@ -98,7 +109,7 @@ def test_pipeline_advances_when_manually_authorized():
 
 
 def test_pipeline_advances_when_auto_submit_enabled():
-    svc = ApplicationPipelineService()
+    svc = _make_gate_service()
     app = _FakeApplication(
         status="filled",
         manual_review_required=False,
@@ -108,7 +119,7 @@ def test_pipeline_advances_when_auto_submit_enabled():
 
 
 def test_pipeline_returns_false_when_not_in_filled_state():
-    svc = ApplicationPipelineService()
+    svc = _make_gate_service()
     app = _FakeApplication(
         status="saved",
         manual_review_required=False,
