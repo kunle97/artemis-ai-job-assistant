@@ -38,6 +38,7 @@ class AutomationManualFillService:
             payload=AutomationFillRequest(
                 application_url=payload.application_url,
                 inspected_fields=updated_fields,
+                application_id=payload.application_id,
                 resume_file_path=payload.resume_file_path,
             ),
         )

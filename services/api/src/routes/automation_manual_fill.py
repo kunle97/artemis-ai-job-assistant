@@ -5,11 +5,13 @@ from src.deps.auth import get_current_user
 from src.domain.application_answers.intents.repository import ApplicationAnswerIntentRepository
 from src.domain.application_answers.repository import ApplicationAnswerRepository
 from src.domain.auth.repository import UserRepository
+from src.domain.applications.repository import ApplicationRepository
 from src.domain.automation.fill.service import AutomationFillService
 from src.domain.automation.manual_fill.models import AutomationManualFillRequest
 from src.domain.automation.manual_fill.service import AutomationManualFillService
 from src.domain.automation.planning.service import AutomationPlanningService
 from src.domain.profile.repository import CandidateProfileRepository
+from src.domain.resume.repository import ResumeRepository
 from src.domain.automation.service import AutomationService
 from src.infrastructure.db.session import get_db
 from src.integrations.automation.page_inspector import ApplicationPageInspector
@@ -38,6 +40,8 @@ def manual_fill_application(
 
     fill_service = AutomationFillService(
         planning_service=planning_service,
+        application_repository=ApplicationRepository(db),
+        resume_repository=ResumeRepository(db),
     )
 
     manual_fill_service = AutomationManualFillService(

@@ -27,3 +27,10 @@ class ResumeRepository:
             .order_by(Resume.created_at.desc())
             .all()
         )
+
+    def get_by_id_and_user_id(self, resume_id, user_id):
+        return (
+            self.db.query(Resume)
+            .filter(Resume.id == resume_id, Resume.user_id == user_id)
+            .first()
+        )

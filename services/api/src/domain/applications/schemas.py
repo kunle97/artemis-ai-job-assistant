@@ -12,6 +12,7 @@ from pydantic import BaseModel, ConfigDict
 
 class ApplicationCreate(BaseModel):
     job_id: UUID
+    resume_id: UUID | None = None
     notes: str | None = None
 
 
@@ -19,6 +20,7 @@ class ApplicationRead(BaseModel):
     id: UUID
     user_id: UUID
     job_id: UUID
+    resume_id: UUID | None = None
     status: str
     is_ready_for_automation: bool
     notes: str | None = None

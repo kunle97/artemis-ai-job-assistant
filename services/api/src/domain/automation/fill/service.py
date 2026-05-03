@@ -54,12 +54,20 @@ logger = logging.getLogger(__name__)
 
 
 class AutomationFillService:
-    def __init__(self, planning_service: AutomationPlanningService):
+    def __init__(
+        self,
+        planning_service: AutomationPlanningService,
+        application_repository=None,
+        resume_repository=None,
+    ):
         self.planning_service = planning_service
+        self.application_repository = application_repository
+        self.resume_repository = resume_repository
 
     def fill_safe_fields(self, user_id, payload: AutomationFillRequest) -> AutomationFillResult:
         application_url = normalize_application_url(payload.application_url)
         logger.info(f"[AutomationFill] Starting safe fill for: {application_url}")
+        resume_file_path = self._resolve_resume_file_path(user_id=user_id, payload=payload)
 
         plan = self.planning_service.build_fill_plan(
             user_id=user_id,
@@ -99,7 +107,7 @@ class AutomationFillService:
                     result = self._fill_planned_field(
                         page=page,
                         field=field_dict,
-                        resume_file_path=payload.resume_file_path,
+                        resume_file_path=resume_file_path,
                         platform=platform,
                     )
                     fill_results.append(result)
@@ -143,6 +151,29 @@ class AutomationFillService:
             unresolved_fields=unresolved_fields,
             notes=plan.notes + ["Safe fill pass completed."],
         )
+
+    def _resolve_resume_file_path(self, *, user_id, payload: AutomationFillRequest) -> str | None:
+        if not payload.application_id:
+            return payload.resume_file_path
+
+        if not self.application_repository or not self.resume_repository:
+            raise ValueError("Application resume resolution is not configured.")
+
+        application = self.application_repository.get_by_id(payload.application_id)
+        if not application:
+            raise ValueError("Application not found.")
+
+        if str(application.user_id) != str(user_id):
+            raise ValueError("Application does not belong to the current user.")
+
+        if not application.resume_id:
+            return None
+
+        resume = self.resume_repository.get_by_id_and_user_id(application.resume_id, user_id)
+        if not resume:
+            raise ValueError("Application resume not found.")
+
+        return resume.file_path
 
     def _maybe_fill_greenhouse_race_followup(
         self,

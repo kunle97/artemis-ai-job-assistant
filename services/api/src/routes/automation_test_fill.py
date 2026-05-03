@@ -6,6 +6,8 @@ Runs inspect first, then immediately runs fill using the inspected fields.
 
 from __future__ import annotations
 
+from uuid import UUID
+
 from pydantic import BaseModel
 from fastapi import APIRouter, Depends
 
@@ -20,6 +22,8 @@ from src.domain.automation.fill import AutomationFillRequest, AutomationFillServ
 from src.domain.automation.service import AutomationService
 from src.domain.profile.repository import CandidateProfileRepository
 from src.domain.auth.repository import UserRepository
+from src.domain.applications.repository import ApplicationRepository
+from src.domain.resume.repository import ResumeRepository
 from src.domain.automation.planning.service import AutomationPlanningService
 from src.infrastructure.db.session import get_db
 from src.integrations.automation.page_inspector import ApplicationPageInspector
@@ -30,6 +34,7 @@ router = APIRouter(prefix="/automation", tags=["automation"])
 
 class AutomationTestFillRequest(BaseModel):
     application_url: str
+    application_id: UUID | None = None
     resume_file_path: str | None = None
 
 
@@ -62,7 +67,11 @@ def _build_services(db):
         profile_repo=profile_repo,
         open_ended_provider=open_ended_provider,
     )
-    fill_service = AutomationFillService(planning_service=planning_service)
+    fill_service = AutomationFillService(
+        planning_service=planning_service,
+        application_repository=ApplicationRepository(db),
+        resume_repository=ResumeRepository(db),
+    )
     automation_service = AutomationService(page_inspector=ApplicationPageInspector())
     return automation_service, fill_service
 
@@ -82,6 +91,7 @@ def test_fill_application(
         payload=AutomationFillRequest(
             application_url=payload.application_url,
             inspected_fields=inspect_result["fields"],
+            application_id=payload.application_id,
             resume_file_path=payload.resume_file_path,
             page_title=inspect_result.get("title"),
             job_context=inspect_result.get("job_context"),
