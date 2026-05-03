@@ -8,13 +8,12 @@ import uuid
 
 from fastapi import Depends, HTTPException
 from fastapi.security import OAuth2PasswordBearer
-from jose import JWTError, jwt
+from jose import JWTError
 from sqlalchemy.orm import Session
 
-from src.core.config import settings
 from src.domain.auth.repository import UserRepository
 from src.infrastructure.db.session import get_db
-from src.integrations.auth.jwt import ALGORITHM
+from src.integrations.auth.jwt import decode_token
 
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
@@ -34,15 +33,22 @@ def get_current_user(
     )
 
     try:
-        payload = jwt.decode(token, settings.secret_key, algorithms=[ALGORITHM])
+        payload = decode_token(token)
         user_id_str = payload.get("sub")
-        if not user_id_str:
+        token_jti = payload.get("jti")
+        if not user_id_str or not token_jti:
             raise credentials_exception
+
+        if payload.get("type") != "access":
+            raise credentials_exception
+
         user_id = uuid.UUID(user_id_str)
-    except (JWTError, ValueError):
-        raise credentials_exception
+    except (JWTError, ValueError) as exc:
+        raise credentials_exception from exc
 
     repository = UserRepository(db)
+    if repository.is_token_revoked(token_jti):
+        raise credentials_exception
     user = repository.get_by_id(user_id)
 
     if not user:

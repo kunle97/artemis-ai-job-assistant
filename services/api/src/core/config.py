@@ -16,6 +16,7 @@ class Settings(BaseSettings):
 
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 60
+    refresh_token_expire_days: int = 30
 
     storage_backend: str = "local"
     aws_access_key_id: str | None = None

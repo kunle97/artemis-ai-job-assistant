@@ -93,6 +93,12 @@ def reset_database():
     """
     Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
+
+    limiter = getattr(fastapi_app.state, "limiter", None)
+    storage = getattr(limiter, "_storage", None)
+    if storage and hasattr(storage, "reset"):
+        storage.reset()
+
     yield
 
 

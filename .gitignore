@@ -1,4 +1,6 @@
 /services/api/venv/
+/services/api/.venv
+/services/venv/
 /services/api/uploads/
 extra-application-questions.txt
 test-application-urls.py

@@ -4,9 +4,10 @@ User model.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 import uuid
 
-from sqlalchemy import Column, String
+from sqlalchemy import Column, DateTime, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
@@ -29,9 +30,9 @@ class User(Base):
         cascade="all, delete-orphan",
     )
 
-    candidate_profile = relationship(
-        "CandidateProfile",
-        back_populates="user",
-        uselist=False,
-        cascade="all, delete-orphan",
-    )
+
+class RevokedToken(Base):
+    __tablename__ = "revoked_tokens"
+
+    jti = Column(String, primary_key=True)
+    revoked_at = Column(DateTime, nullable=False, default=lambda: datetime.now(UTC))

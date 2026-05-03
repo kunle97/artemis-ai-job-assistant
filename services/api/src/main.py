@@ -4,10 +4,16 @@ Main FastAPI application entrypoint.
 Registers Artemis API routes and creates the application instance.
 """
 
+import logging
+
 from fastapi import FastAPI
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 
 # Ensure all models are registered with SQLAlchemy Base metadata
 import src.infrastructure.db  # noqa: F401
+from src.core.config import settings
+from src.core.rate_limiter import limiter
 
 from src.routes.health import router as health_router
 from src.routes.profile import router as profile_router
@@ -26,7 +32,14 @@ from src.routes.automation_planning import router as automation_planning_router
 from src.routes.automation_fill import router as automation_fill_router
 from src.routes.automation_manual_fill import router as automation_manual_fill_router
 from src.routes.automation_test_fill import router as automation_test_fill_router
-import logging
+
+
+def _validate_security_settings() -> None:
+    if settings.secret_key == "change_me":
+        raise RuntimeError("SECRET_KEY must be set to a secure value before running")
+
+
+_validate_security_settings()
 
 logging.basicConfig(
     level=logging.INFO,
@@ -36,6 +49,9 @@ logging.basicConfig(
 # Promote fill handler to DEBUG so combobox fill steps are visible in logs.
 logging.getLogger("src.domain.automation.fill.handlers.select_like").setLevel(logging.DEBUG)
 app = FastAPI(title="Artemis API")
+
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 app.include_router(health_router)
 app.include_router(auth_router)

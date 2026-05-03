@@ -8,7 +8,7 @@ Any time a new model is added, it must be imported here so that
 `Base.metadata.create_all()` can detect and create its table.
 """
 
-from src.domain.auth.models import User
+from src.domain.auth.models import RevokedToken, User
 from src.domain.profile.models import CandidateProfile
 from src.domain.resume.models import Resume
 from src.domain.jobs.models import Job
@@ -18,6 +18,7 @@ from src.domain.application_answers.intents.models import ApplicationAnswerInten
 
 __all__ = [
     "User",
+    "RevokedToken",
     "CandidateProfile",
     "Resume",
     "Job",
