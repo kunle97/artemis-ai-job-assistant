@@ -26,6 +26,7 @@ from src.domain.automation.planning.constants import (
 from src.domain.automation.planning.service import AutomationPlanningService
 from src.domain.automation.planning.models import AutomationFillPlanRequest
 from src.domain.automation.fill.handlers.radio_groups import fill_radio_group
+from src.domain.automation.fill.handlers.greenhouse_combobox import fill_greenhouse_combobox
 from src.domain.automation.fill.handlers.select_like import fill_select_like
 from src.domain.automation.fill.handlers.text_fields import (
     fill_autocomplete_location_field,
@@ -170,6 +171,8 @@ class AutomationFillService:
 
         try:
             if field_type in {"select_like", "select"}:
+                if platform == PLATFORM_GREENHOUSE:
+                    return fill_greenhouse_combobox(page, field, value)
                 return fill_select_like(page, field, value)
 
             if field_type == "radio_group":

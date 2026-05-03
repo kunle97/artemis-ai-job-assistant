@@ -98,16 +98,11 @@ def create_stealth_context(playwright: Playwright) -> tuple:
         timezone_id="America/New_York",
         java_script_enabled=True,
         accept_downloads=False,
-        extra_http_headers={
-            "Accept-Language": "en-US,en;q=0.9",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-            "Accept-Encoding": "gzip, deflate, br",
-            "Sec-Fetch-Site": "none",
-            "Sec-Fetch-Mode": "navigate",
-            "Sec-Fetch-User": "?1",
-            "Sec-Fetch-Dest": "document",
-            "Upgrade-Insecure-Requests": "1",
-        },
+        # NOTE: extra_http_headers were removed because Sec-Fetch-* navigation
+        # headers applied to all requests (including XHR/fetch by React Select)
+        # cause those sub-requests to be blocked/misrouted, breaking dynamic
+        # dropdowns on platforms like Greenhouse.  The UA + locale + init script
+        # are sufficient for bot-detection evasion on Lever / Ashby / Greenhouse.
     )
     context.add_init_script(_STEALTH_INIT_SCRIPT)
     page = context.new_page()

@@ -5,6 +5,8 @@ Includes classifier selection, field value resolution, unresolved field filterin
 and platform detection.
 """
 
+import re
+
 from src.domain.automation.planning.classifiers.ashby import AshbyAutomationFieldClassifier
 from src.domain.automation.planning.classifiers.greenhouse import GreenhouseAutomationFieldClassifier
 from src.domain.automation.planning.classifiers.generic import GenericAutomationFieldClassifier
@@ -240,6 +242,127 @@ def _build_open_ended_request(*, user_id, question_text, user, profile):
     )
 
 
+def _normalize_binary_text(text: str | None) -> str:
+    if not text:
+        return ""
+    normalized = text.strip().lower()
+    normalized = normalized.replace("’", "'")
+    normalized = normalized.replace("don't", "do not")
+    normalized = normalized.replace("dont", "do not")
+    normalized = re.sub(r"[^a-z0-9\s]", " ", normalized)
+    normalized = " ".join(normalized.split())
+    return normalized
+
+
+def _iter_option_texts(options: list | None) -> list[str]:
+    if not options:
+        return []
+
+    texts: list[str] = []
+    for option in options:
+        if isinstance(option, dict):
+            label = option.get("label")
+            value = option.get("value")
+            if label:
+                texts.append(str(label))
+            elif value:
+                texts.append(str(value))
+        elif option is not None:
+            texts.append(str(option))
+    return texts
+
+
+def _is_binary_yes_no_field(inspected_field: dict) -> bool:
+    field_type = (inspected_field.get("field_type") or "").strip().lower()
+    if field_type not in {"select", "select_like", "radio_group"}:
+        return False
+
+    option_texts = _iter_option_texts(inspected_field.get("options"))
+    normalized = [_normalize_binary_text(text) for text in option_texts if text]
+    has_yes = any(text in {"yes", "y"} or text.startswith("yes ") for text in normalized)
+    has_no = any(text in {"no", "n"} or text.startswith("no ") for text in normalized)
+    if has_yes and has_no:
+        return True
+
+    # Inspector may not always return option lists for comboboxes.
+    # In that case, allow a conservative label-based yes/no fallback trigger.
+    question_text = _normalize_binary_text(
+        inspected_field.get("label")
+        or inspected_field.get("placeholder")
+        or inspected_field.get("name")
+    )
+    if not question_text:
+        return False
+
+    yes_no_question_starts = (
+        "do you",
+        "are you",
+        "will you",
+        "can you",
+        "have you",
+        "is your",
+        "would you",
+    )
+    return question_text.startswith(yes_no_question_starts)
+
+
+def _coerce_yes_no_answer(answer_text: str | None) -> str | None:
+    text = _normalize_binary_text(answer_text)
+    if not text:
+        return None
+
+    tokens = text.split()
+    if not tokens:
+        return None
+
+    if "yes" in tokens or tokens[0] in {"yes", "y"}:
+        return "Yes"
+    if "no" in tokens or tokens[0] in {"no", "n"}:
+        return "No"
+    return None
+
+
+def _resolve_unknown_yes_no_value(
+    *,
+    inspected_field: dict,
+    user,
+    profile,
+    open_ended_provider,
+) -> tuple[str | None, bool]:
+    if open_ended_provider is None:
+        return None, True
+
+    if not _is_binary_yes_no_field(inspected_field):
+        return None, True
+
+    question_text = (
+        inspected_field.get("label")
+        or inspected_field.get("placeholder")
+        or inspected_field.get("name")
+        or ""
+    ).strip()
+    if not question_text:
+        return None, True
+
+    constrained_prompt = (
+        f"{question_text}\n"
+        "Answer using exactly one word: Yes or No. "
+        "Do not include any extra words or punctuation."
+    )
+    request = _build_open_ended_request(
+        user_id=getattr(user, "id", None),
+        question_text=constrained_prompt,
+        user=user,
+        profile=profile,
+    )
+    result = open_ended_provider.get_answer(request)
+    coerced = _coerce_yes_no_answer(result.answer_text)
+    if coerced:
+        return coerced, bool(result.needs_review)
+
+    return None, True
+
+
 def resolve_field_value(
     *,
     classified_role: str,
@@ -383,6 +506,16 @@ def resolve_field_value(
         if result.answer_text:
             return result.answer_text, result.needs_review
         return None, True
+
+    if classified_role == "unknown":
+        value, needs_review = _resolve_unknown_yes_no_value(
+            inspected_field=inspected_field,
+            user=user,
+            profile=profile,
+            open_ended_provider=open_ended_provider,
+        )
+        if value:
+            return value, needs_review
 
     return None, True
 

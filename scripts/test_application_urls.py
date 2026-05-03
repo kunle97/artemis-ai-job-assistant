@@ -25,24 +25,29 @@ JOBS = [
     #     "application_url": "https://jobs.ashbyhq.com/permitflow/8d780d11-57e8-4570-a599-b8dc3d4377a1/application?utm_source=LinkedInPaid",
     #     "resume_file_path": RESUME_PATH,
     # },
+    # {
+    #     "label": "Perchwell – Ashby",
+    #     "application_url": "https://jobs.ashbyhq.com/Perchwell/5c0adcaf-75e1-41ba-8f7b-9beb6afc8380/application?src=Linkedin",
+    #     "resume_file_path": RESUME_PATH,
+    # },
+    # {
+    #     "label": "Kiddom – Lever",
+    #     "application_url": "https://jobs.lever.co/kiddom/8934d8a1-9b84-4e1d-ad3e-950e98151b16/",
+    #     "resume_file_path": RESUME_PATH,
+    # },
     {
-        "label": "Kiddom – Lever",
-        "application_url": "https://jobs.lever.co/kiddom/8934d8a1-9b84-4e1d-ad3e-950e98151b16/",
+        "label": "Equal Experts - Greenhouse",
+        "application_url": "https://job-boards.greenhouse.io/equalexperts/jobs/8454247002",
         "resume_file_path": RESUME_PATH,
     },
-    # {
-    #     "label": "Equal Experts - Greenhouse",
-    #     "application_url": "https://job-boards.greenhouse.io/equalexperts/jobs/8454247002",
-    #     "resume_file_path": RESUME_PATH,
-    # },
-    # {
-    #     "label": "Cognitiv - Greenhouse",
-    #     "application_url": "https://job-boards.greenhouse.io/cognitiv/jobs/4205032009?gh_src=349wrnj89us&source=LinkedIn",
-    #     "resume_file_path": RESUME_PATH,
-    # },
-    # {
-    #     "label": "Nira Energy - Greenhouse",
-    #     "application_url": "https://job-boards.greenhouse.io/niraenergy/jobs/4964468008",
-    #     "resume_file_path": RESUME_PATH,
-    # },
+    {
+        "label": "Cognitiv - Greenhouse",
+        "application_url": "https://job-boards.greenhouse.io/cognitiv/jobs/4205032009?gh_src=349wrnj89us&source=LinkedIn",
+        "resume_file_path": RESUME_PATH,
+    },
+    {
+        "label": "Nira Energy - Greenhouse",
+        "application_url": "https://job-boards.greenhouse.io/niraenergy/jobs/4964468008",
+        "resume_file_path": RESUME_PATH,
+    },
 ]

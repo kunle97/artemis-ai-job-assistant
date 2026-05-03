@@ -16,7 +16,7 @@ from src.domain.application_answers.open_ended.models import (
     OpenEndedAnswerRequest,
     OpenEndedAnswerResult,
 )
-from src.domain.automation.planning.constants import FIELD_ROLE_OPEN_ENDED
+from src.domain.automation.planning.constants import FIELD_ROLE_OPEN_ENDED, FIELD_ROLE_UNKNOWN
 from src.domain.automation.planning.helpers import resolve_field_value, _build_open_ended_request
 
 
@@ -233,3 +233,107 @@ def test_build_request_skills_none_when_empty():
         profile=profile,
     )
     assert req.skills_summary is None
+
+
+# ---------------------------------------------------------------------------
+# Unknown yes/no fallback via provider
+# ---------------------------------------------------------------------------
+
+
+def test_unknown_yes_no_no_provider_returns_none():
+    value, needs_review = resolve_field_value(
+        classified_role=FIELD_ROLE_UNKNOWN,
+        inspected_field={
+            "field_type": "select_like",
+            "label": "Are you willing to travel?",
+            "options": ["Yes", "No"],
+        },
+        user=_User(),
+        profile=_Profile(),
+        open_ended_provider=None,
+    )
+    assert value is None
+    assert needs_review is True
+
+
+def test_unknown_yes_no_uses_provider_and_coerces_yes():
+    provider = _MockProvider(
+        OpenEndedAnswerResult(answer_text="Yes", source="ai_generated", needs_review=False)
+    )
+    value, needs_review = resolve_field_value(
+        classified_role=FIELD_ROLE_UNKNOWN,
+        inspected_field={
+            "field_type": "select_like",
+            "label": "Are you legally eligible to work in the United States?",
+            "options": ["Yes", "No"],
+        },
+        user=_User(),
+        profile=_Profile(),
+        open_ended_provider=provider,
+    )
+    assert value == "Yes"
+    assert needs_review is False
+    assert len(provider.calls) == 1
+
+
+def test_unknown_yes_no_coerces_sentence_to_no():
+    provider = _MockProvider(
+        OpenEndedAnswerResult(
+            answer_text="No, I would not require sponsorship.",
+            source="ai_generated",
+            needs_review=False,
+        )
+    )
+    value, needs_review = resolve_field_value(
+        classified_role=FIELD_ROLE_UNKNOWN,
+        inspected_field={
+            "field_type": "radio_group",
+            "label": "Do you require sponsorship?",
+            "options": [{"label": "Yes", "value": "yes"}, {"label": "No", "value": "no"}],
+        },
+        user=_User(),
+        profile=_Profile(),
+        open_ended_provider=provider,
+    )
+    assert value == "No"
+    assert needs_review is False
+
+
+def test_unknown_non_binary_options_does_not_call_provider():
+    provider = _MockProvider(
+        OpenEndedAnswerResult(answer_text="Yes", source="ai_generated", needs_review=False)
+    )
+    value, needs_review = resolve_field_value(
+        classified_role=FIELD_ROLE_UNKNOWN,
+        inspected_field={
+            "field_type": "select_like",
+            "label": "What is your preferred work model?",
+            "options": ["Hybrid", "Remote", "On-site"],
+        },
+        user=_User(),
+        profile=_Profile(),
+        open_ended_provider=provider,
+    )
+    assert value is None
+    assert needs_review is True
+    assert len(provider.calls) == 0
+
+
+def test_unknown_yes_no_works_when_options_are_missing():
+    provider = _MockProvider(
+        OpenEndedAnswerResult(answer_text="Yes", source="ai_generated", needs_review=False)
+    )
+    value, needs_review = resolve_field_value(
+        classified_role=FIELD_ROLE_UNKNOWN,
+        inspected_field={
+            "field_type": "select_like",
+            "label": "Do you have strong AWS experience designing and operating cloud-native systems?",
+            "options": [],
+        },
+        user=_User(),
+        profile=_Profile(),
+        open_ended_provider=provider,
+    )
+    assert value == "Yes"
+    assert needs_review is False
+    assert len(provider.calls) == 1
