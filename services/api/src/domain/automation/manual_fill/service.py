@@ -5,6 +5,7 @@ Manual fill / retry service.
 from __future__ import annotations
 
 from src.domain.automation.fill.models import AutomationFillRequest
+from src.domain.automation.manual_fill.helpers import find_matching_override
 from src.domain.automation.manual_fill.models import AutomationManualFillRequest
 
 
@@ -23,7 +24,7 @@ class AutomationManualFillService:
         for field in inspect_result.get("fields", []):
             field_dict = dict(field)
 
-            matched_override = self._find_matching_override(
+            matched_override = find_matching_override(
                 field=field_dict,
                 overrides=payload.field_overrides,
             )
@@ -47,19 +48,3 @@ class AutomationManualFillService:
             "inspect": inspect_result,
             "fill": fill_result,
         }
-
-    def _find_matching_override(self, *, field: dict, overrides: list):
-        field_label = (field.get("label") or "").strip().lower()
-        field_name = (field.get("name") or "").strip().lower()
-
-        for override in overrides:
-            override_label = (override.label or "").strip().lower()
-            override_name = (override.name or "").strip().lower()
-
-            if override_name and field_name and override_name == field_name:
-                return override
-
-            if override_label and field_label and override_label == field_label:
-                return override
-
-        return None

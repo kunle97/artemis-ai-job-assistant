@@ -5,8 +5,7 @@ Coordinates resume upload, local file storage, parsing, persistence,
 and candidate profile synchronization.
 """
 
-from pathlib import Path
-
+from src.domain.resume.helpers import validate_resume_file
 from src.domain.resume.repository import ResumeRepository
 from src.integrations.storage.base import StorageService
 from src.integrations.storage.helpers import open_stored_file
@@ -39,7 +38,7 @@ class ResumeService:
         Save an uploaded resume, extract text, persist metadata,
         and sync parsed data into the candidate profile.
         """
-        self._validate_file(upload_file)
+        validate_resume_file(upload_file, self.ALLOWED_EXTENSIONS)
 
         stored_path = self.storage_service.save_upload(upload_file)
         read_path = self.storage_service.get_read_path(stored_path)
@@ -78,15 +77,3 @@ class ResumeService:
         Return all resumes for a user, newest first.
         """
         return self.repository.get_by_user_id(user_id)
-
-    def _validate_file(self, upload_file) -> None:
-        """
-        Ensure Artemis only accepts supported resume file types.
-        """
-        if not upload_file.filename:
-            raise ValueError("Uploaded file must have a file name.")
-
-        extension = Path(upload_file.filename).suffix.lower()
-        if extension not in self.ALLOWED_EXTENSIONS:
-            allowed = ", ".join(sorted(self.ALLOWED_EXTENSIONS))
-            raise ValueError(f"Unsupported resume file type. Allowed types: {allowed}")

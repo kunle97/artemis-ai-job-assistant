@@ -6,6 +6,7 @@ Contains business logic for candidate profiles and coordinates profile-related o
 
 import logging
 
+from src.domain.profile.helpers import detect_missing_fields
 from src.domain.profile.repository import CandidateProfileRepository
 
 logger = logging.getLogger(__name__)
@@ -38,31 +39,10 @@ class CandidateProfileService:
 
         profile = self.repository.upsert_from_parsed_data(user_id, parsed)
 
-        missing = self._detect_missing_fields(profile, normalized_data)
+        missing = detect_missing_fields(profile)
         logger.info(
             "[ProfileService] Profile upserted for user %s. Missing fields: %s",
             user_id,
             missing or "none",
         )
         return {"missing_fields": missing}
-
-    def _detect_missing_fields(self, profile, normalized_data: dict) -> list[str]:
-        """
-        Return the names of profile fields that are still blank after the upsert.
-        """
-        missing = []
-
-        if not profile.phone:
-            missing.append("phone")
-        if not profile.linkedin_url:
-            missing.append("linkedin_url")
-        if not profile.github_url:
-            missing.append("github_url")
-        if not profile.skills:
-            missing.append("skills")
-        if not profile.city and not profile.state:
-            missing.append("location")
-        if not profile.work_authorization:
-            missing.append("work_authorization")
-
-        return missing
