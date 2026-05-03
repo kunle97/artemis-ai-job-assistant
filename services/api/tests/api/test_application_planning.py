@@ -80,6 +80,64 @@ def test_application_plan_marks_unresolved_questions_for_review(
     assert data["items"][1]["needs_review"] is True
 
 
+def test_application_planning_returns_404_for_unknown_application(
+    client,
+    sample_user_payload,
+):
+    token = _register_and_login(client, sample_user_payload)
+
+    response = client.post(
+        "/application-planning",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "application_id": "00000000-0000-0000-0000-000000000000",
+            "questions": [],
+        },
+    )
+
+    assert response.status_code == 404
+
+
+def test_application_planning_returns_403_for_other_users_application(
+    client,
+    db_session,
+    sample_user_payload,
+):
+    # User A creates an application
+    token_a = _register_and_login(client, sample_user_payload)
+    job_id = _create_fake_job(db_session)
+
+    app_response = client.post(
+        "/applications",
+        headers={"Authorization": f"Bearer {token_a}"},
+        json={"job_id": job_id},
+    )
+    assert app_response.status_code == 200
+    application_id = app_response.json()["id"]
+
+    # User B registers separately
+    import uuid
+    other_payload = {
+        "email": f"other-{uuid.uuid4().hex[:8]}@example.com",
+        "password": "password123",
+        "first_name": "Other",
+        "last_name": "User",
+    }
+    token_b = _register_and_login(client, other_payload)
+
+    # User B tries to plan User A's application
+    response = client.post(
+        "/application-planning",
+        headers={"Authorization": f"Bearer {token_b}"},
+        json={
+            "application_id": application_id,
+            "questions": [],
+        },
+    )
+
+    assert response.status_code == 403
+
+
 def test_application_plan_uses_saved_answer(
     client,
     db_session,

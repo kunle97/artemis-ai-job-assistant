@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from src.deps.auth import get_current_user
+from src.deps.authorization import require_application_owner
 from src.domain.application_answers.intents.repository import ApplicationAnswerIntentRepository
 from src.domain.application_answers.repository import ApplicationAnswerRepository
 from src.domain.application_answers.resolution import ApplicationAnswerResolver
@@ -54,8 +55,10 @@ def build_application_plan(
     current_user=Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    service = _build_service(db)
+    application = ApplicationRepository(db).get_by_id(payload.application_id)
+    require_application_owner(application, current_user)
 
+    service = _build_service(db)
     try:
         return service.build_plan(user_id=current_user.id, payload=payload)
     except ValueError as exc:

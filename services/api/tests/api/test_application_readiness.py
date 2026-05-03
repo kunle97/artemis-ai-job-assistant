@@ -74,3 +74,50 @@ def test_application_readiness_shows_missing_profile_and_resume(
 def test_application_readiness_requires_auth(client):
     response = client.get("/application-readiness")
     assert response.status_code == 401
+
+
+def test_application_readiness_single_returns_404_for_unknown_id(client, sample_user_payload):
+    token = _register_and_login(client, sample_user_payload)
+
+    response = client.get(
+        "/application-readiness/00000000-0000-0000-0000-000000000000",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 404
+
+
+def test_application_readiness_single_returns_403_for_other_users_application(
+    client,
+    db_session,
+    sample_user_payload,
+):
+    # User A creates an application
+    token_a = _register_and_login(client, sample_user_payload)
+    job_id = _create_fake_job(db_session)
+
+    app_response = client.post(
+        "/applications",
+        headers={"Authorization": f"Bearer {token_a}"},
+        json={"job_id": job_id},
+    )
+    assert app_response.status_code == 200
+    application_id = app_response.json()["id"]
+
+    # User B registers separately
+    import uuid
+    other_payload = {
+        "email": f"other-{uuid.uuid4().hex[:8]}@example.com",
+        "password": "password123",
+        "first_name": "Other",
+        "last_name": "User",
+    }
+    token_b = _register_and_login(client, other_payload)
+
+    # User B tries to access User A's application
+    response = client.get(
+        f"/application-readiness/{application_id}",
+        headers={"Authorization": f"Bearer {token_b}"},
+    )
+
+    assert response.status_code == 403
