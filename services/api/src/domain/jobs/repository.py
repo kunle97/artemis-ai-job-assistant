@@ -6,7 +6,7 @@ Handles DB operations for jobs.
 
 from sqlalchemy.orm import Session
 
-from src.domain.jobs.models import Job
+from src.domain.jobs.models import Job, JobPreferences
 
 
 class JobRepository:
@@ -41,3 +41,34 @@ class JobRepository:
 
     def list_all(self):
         return self.db.query(Job).order_by(Job.created_at.desc()).all()
+
+
+class JobPreferencesRepository:
+    def __init__(self, db: Session):
+        self.db = db
+
+    def get_by_user_id(self, user_id):
+        return (
+            self.db.query(JobPreferences)
+            .filter(JobPreferences.user_id == user_id)
+            .first()
+        )
+
+    def upsert(self, user_id, payload):
+        preferences = self.get_by_user_id(user_id)
+
+        if preferences is None:
+            preferences = JobPreferences(user_id=user_id)
+
+        preferences.target_titles = payload.target_titles
+        preferences.positive_keywords = payload.positive_keywords
+        preferences.negative_keywords = payload.negative_keywords
+        preferences.locations = payload.locations
+        preferences.remote_only = payload.remote_only
+        preferences.salary_min = payload.salary_min
+        preferences.enabled_sources = payload.enabled_sources
+
+        self.db.add(preferences)
+        self.db.commit()
+        self.db.refresh(preferences)
+        return preferences

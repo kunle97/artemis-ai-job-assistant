@@ -39,6 +39,24 @@ class JobBoardConfig(BaseModel):
     apply_url: str | None = None
 
 
+class JobPreferencesSchema(BaseModel):
+    id: UUID | None = None
+    user_id: UUID | None = None
+
+    target_titles: list[str] = Field(default_factory=list)
+    positive_keywords: list[str] = Field(default_factory=list)
+    negative_keywords: list[str] = Field(default_factory=list)
+    locations: list[str] = Field(default_factory=list)
+    remote_only: bool = False
+    salary_min: int | None = None
+    enabled_sources: list[str] = Field(default_factory=list)
+
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class JobSearchRequest(BaseModel):
     source: str
     board_token: str | None = None
