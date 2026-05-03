@@ -51,6 +51,8 @@ class CandidateProfile(Base):
     autofill_disability_status = Column(Boolean, nullable=False, default=False)
     autofill_pronouns = Column(Boolean, nullable=False, default=False)
 
+    auto_submit = Column(Boolean, nullable=False, default=False)
+
     skills = Column(JSONB, nullable=True)
     experience_sections = Column(JSONB, nullable=True)
 

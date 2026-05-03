@@ -33,6 +33,8 @@ class CandidateProfileUpsertRequest(BaseModel):
     autofill_disability_status: bool | None = None
     autofill_pronouns: bool | None = None
 
+    auto_submit: bool | None = None
+
     current_company: str | None = None
 
     preferred_relocation_cities: list[str] | None = None
@@ -73,6 +75,8 @@ class CandidateProfileResponse(BaseModel):
     autofill_veteran_status: bool = False
     autofill_disability_status: bool = False
     autofill_pronouns: bool = False
+
+    auto_submit: bool = False
 
     current_company: str | None = None
 

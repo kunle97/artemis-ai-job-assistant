@@ -25,6 +25,9 @@ class Application(Base):
     status = Column(String(50), nullable=False, default="saved")
     is_ready_for_automation = Column(Boolean, default=False)
 
+    is_authorized_to_submit = Column(Boolean, nullable=False, default=False)
+    manual_review_required = Column(Boolean, nullable=False, default=True)
+
     notes = Column(Text, nullable=True)
     failure_reason = Column(Text, nullable=True)
 

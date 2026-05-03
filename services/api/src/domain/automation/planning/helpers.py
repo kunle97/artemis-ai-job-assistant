@@ -738,7 +738,8 @@ def resolve_field_value(
         return value, value is None
 
     if classified_role == FIELD_ROLE_LOCATION:
-        return getattr(profile, "location", None), False
+        value = getattr(profile, "location", None)
+        return value, value is None
 
     if classified_role == FIELD_ROLE_CURRENT_COMPANY:
         value = getattr(profile, "current_company", None)

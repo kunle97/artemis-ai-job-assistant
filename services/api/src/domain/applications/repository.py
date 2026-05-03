@@ -41,3 +41,13 @@ class ApplicationRepository:
             .order_by(Application.created_at.desc())
             .all()
         )
+
+    def update_fields(self, application_id, **fields):
+        application = self.get_by_id(application_id)
+        if not application:
+            return None
+        for key, value in fields.items():
+            setattr(application, key, value)
+        self.db.commit()
+        self.db.refresh(application)
+        return application

@@ -62,12 +62,17 @@ class ApplicationService:
         is_ready = bool(profile and selected_resume)
         status = APPLICATION_STATUS_SAVED if is_ready else APPLICATION_STATUS_NEEDS_REVIEW
 
+        # Inherit the user's auto-submit preference from profile when available.
+        auto_submit = bool(profile and getattr(profile, "auto_submit", False))
+        manual_review_required = not auto_submit
+
         application = self.repository.create(
             user_id=user_id,
             job_id=payload.job_id,
             resume_id=getattr(selected_resume, "id", None),
             status=status,
             is_ready_for_automation=is_ready,
+            manual_review_required=manual_review_required,
             notes=payload.notes,
             failure_reason=None,
         )
@@ -93,3 +98,20 @@ class ApplicationService:
 
     def list_applications(self, user_id):
         return self.repository.list_by_user_id(user_id)
+
+    def authorize_submission(self, user_id, application_id):
+        logger.info(f"[ApplicationService] Authorize submission start application_id={application_id}")
+
+        application = self.repository.get_by_id(application_id)
+        if not application:
+            raise ValueError("Application not found.")
+
+        if str(application.user_id) != str(user_id):
+            raise PermissionError("You are not allowed to authorize this application.")
+
+        application = self.repository.update_fields(application_id, is_authorized_to_submit=True)
+
+        logger.info(
+            f"[ApplicationService] Authorize submission complete application_id={application_id}"
+        )
+        return application

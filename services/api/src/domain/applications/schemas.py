@@ -23,6 +23,8 @@ class ApplicationRead(BaseModel):
     resume_id: UUID | None = None
     status: str
     is_ready_for_automation: bool
+    is_authorized_to_submit: bool = False
+    manual_review_required: bool = True
     notes: str | None = None
     failure_reason: str | None = None
     created_at: datetime

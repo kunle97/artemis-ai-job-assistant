@@ -64,3 +64,19 @@ def get_application(
         return service.get_application(user_id=current_user.id, application_id=application_id)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.post("/{application_id}/authorize", response_model=ApplicationRead)
+def authorize_submission(
+    application_id: UUID,
+    current_user=Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    service = _build_application_service(db)
+
+    try:
+        return service.authorize_submission(user_id=current_user.id, application_id=application_id)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
