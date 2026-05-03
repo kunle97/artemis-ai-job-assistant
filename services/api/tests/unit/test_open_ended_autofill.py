@@ -44,6 +44,8 @@ class _Profile:
         self.city = kwargs.get("city", None)
         self.state = kwargs.get("state", None)
         self.preferred_relocation_cities = kwargs.get("preferred_relocation_cities", None)
+        self.work_authorization = kwargs.get("work_authorization", None)
+        self.visa_sponsorship = kwargs.get("visa_sponsorship", None)
 
 
 class _MockProvider:
@@ -409,6 +411,38 @@ def test_work_arrangement_binary_question_uses_profile_and_location():
         open_ended_provider=None,
     )
     assert value == "Yes"
+    assert needs_review is False
+
+
+def test_work_authorization_binary_question_coerces_us_citizen_to_yes():
+    value, needs_review = resolve_field_value(
+        classified_role="work_authorization",
+        inspected_field={
+            "field_type": "select_like",
+            "label": "Are you legally authorized to work in the United States?*",
+            "options": [],
+        },
+        user=_User(),
+        profile=_Profile(work_authorization="U.S. Citizen"),
+        open_ended_provider=None,
+    )
+    assert value == "Yes"
+    assert needs_review is False
+
+
+def test_work_authorization_binary_question_uses_visa_sponsorship_yes_no():
+    value, needs_review = resolve_field_value(
+        classified_role="work_authorization",
+        inspected_field={
+            "field_type": "select_like",
+            "label": "Will you now or in the future require sponsorship for employment visa status?*",
+            "options": [],
+        },
+        user=_User(),
+        profile=_Profile(visa_sponsorship="No"),
+        open_ended_provider=None,
+    )
+    assert value == "No"
     assert needs_review is False
 
 

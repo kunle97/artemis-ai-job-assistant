@@ -170,12 +170,54 @@ def resolve_relocation_value(*, inspected_field: dict, profile) -> str | None:
 
 def resolve_work_authorization_value(*, inspected_field: dict, profile) -> str | None:
     label = (inspected_field.get("label") or "").strip().lower()
+    work_auth_value = getattr(profile, "work_authorization", None)
+    visa_value = getattr(profile, "visa_sponsorship", None)
+
+    def _coerce_work_auth_to_yes_no(value: str | None) -> str | None:
+        normalized = _normalize_binary_text(value)
+        if not normalized:
+            return None
+
+        if any(
+            token in normalized
+            for token in [
+                "us citizen",
+                "u s citizen",
+                "citizen",
+                "green card",
+                "permanent resident",
+                "authorized",
+                "work authorized",
+            ]
+        ):
+            return "Yes"
+
+        if any(
+            token in normalized
+            for token in [
+                "not authorized",
+                "no authorization",
+                "cannot work",
+                "ineligible",
+            ]
+        ):
+            return "No"
+
+        return _coerce_yes_no_answer(value)
 
     if "authorized to work" in label or "lawfully in the united states" in label:
-        return getattr(profile, "work_authorization", None)
+        if _is_binary_yes_no_field(inspected_field):
+            coerced = _coerce_work_auth_to_yes_no(work_auth_value)
+            if coerced:
+                return coerced
+        return work_auth_value
 
     if "sponsor" in label or "sponsorship" in label or "immigration case" in label:
-        return getattr(profile, "visa_sponsorship", None)
+        if _is_binary_yes_no_field(inspected_field):
+            coerced = _coerce_yes_no_answer(visa_value)
+            if coerced:
+                return coerced
+        return visa_value
 
     return None
 

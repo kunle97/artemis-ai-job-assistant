@@ -74,6 +74,9 @@ class AutomationFillService:
         fill_results: list[AutomationFillFieldResult] = []
         screenshot_path: str | None = None
         platform = _detect_platform(application_url)
+        profile = self.planning_service.profile_repo.get_by_user_id(user_id)
+        has_explicit_race_field = any(_is_race_label(getattr(field, "label", None)) for field in plan.fields)
+        race_followup_attempted = False
 
         with sync_playwright() as playwright:
             browser, context, page = create_stealth_context(playwright)
@@ -101,6 +104,22 @@ class AutomationFillService:
                     )
                     fill_results.append(result)
 
+                    if (
+                        platform == PLATFORM_GREENHOUSE
+                        and not has_explicit_race_field
+                        and not race_followup_attempted
+                    ):
+                        race_followup_result = self._maybe_fill_greenhouse_race_followup(
+                            page=page,
+                            filled_field=field_dict,
+                            field_result=result,
+                            profile=profile,
+                        )
+                        if race_followup_result is not None:
+                            race_followup_attempted = True
+                            if race_followup_result.fill_status == "filled":
+                                fill_results.append(race_followup_result)
+
                 screenshot_path = self._save_screenshot(page, application_url=application_url)
 
             finally:
@@ -124,6 +143,56 @@ class AutomationFillService:
             unresolved_fields=unresolved_fields,
             notes=plan.notes + ["Safe fill pass completed."],
         )
+
+    def _maybe_fill_greenhouse_race_followup(
+        self,
+        *,
+        page: Page,
+        filled_field: dict,
+        field_result: AutomationFillFieldResult,
+        profile,
+    ) -> AutomationFillFieldResult | None:
+        if not profile:
+            return None
+
+        race_value = getattr(profile, "race", None)
+        if not race_value or not getattr(profile, "autofill_race", False):
+            return None
+
+        label = (filled_field.get("label") or "").strip().lower()
+        if "hispanic" not in label and "latino" not in label:
+            return None
+
+        if field_result.fill_status != "filled":
+            return None
+
+        selected = (field_result.resolved_value or "").strip().lower()
+        if not selected.startswith("no"):
+            return None
+
+        page.wait_for_timeout(250)
+
+        for race_label in [
+            "Please identify your race",
+            "What is your race?",
+            "Race",
+            "Race/Ethnicity",
+        ]:
+            synthetic_field = {
+                "label": race_label,
+                "name": None,
+                "classified_role": "demographic_question",
+                "field_type": "select_like",
+            }
+            result = fill_greenhouse_combobox(page, synthetic_field, race_value)
+            if result.fill_status == "filled":
+                logger.info(
+                    "[AutomationFill] Filled emergent Greenhouse race field "
+                    f"after Hispanic/Latino selection with value={race_value!r}"
+                )
+                return result
+
+        return None
 
     def _fill_planned_field(
         self,
@@ -277,3 +346,12 @@ def _detect_platform(url: str) -> str:
     if "ashbyhq.com" in url or "ashby" in url:
         return PLATFORM_ASHBY
     return "generic"
+
+
+def _is_race_label(label: str | None) -> bool:
+    text = (label or "").strip().lower()
+    if not text:
+        return False
+    if "hispanic" in text or "latino" in text:
+        return False
+    return "race" in text or "ethnicity" in text
