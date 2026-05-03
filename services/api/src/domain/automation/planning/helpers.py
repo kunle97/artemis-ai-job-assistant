@@ -82,6 +82,77 @@ def resolve_salary_value(*, profile) -> str | None:
     return value
 
 
+def _parse_money_amount(raw: str | int | float | None) -> int | None:
+    if raw is None:
+        return None
+    text = str(raw).strip().lower()
+    if not text:
+        return None
+
+    multiplier = 1000 if text.endswith("k") else 1
+    text = text.rstrip("k")
+    text = re.sub(r"[^\d.]", "", text)
+    if not text:
+        return None
+    try:
+        return int(float(text) * multiplier)
+    except ValueError:
+        return None
+
+
+def _extract_money_amounts(text: str | None) -> list[int]:
+    if not text:
+        return []
+    matches = re.findall(r"\$?\s*\d[\d,]*(?:\.\d+)?\s*[kK]?", text)
+    values = []
+    for match in matches:
+        amount = _parse_money_amount(match)
+        if amount is not None:
+            values.append(amount)
+    return values
+
+
+def _parse_salary_range(raw: str | None) -> tuple[int, int] | None:
+    if not raw:
+        return None
+    amounts = _extract_money_amounts(raw)
+    if not amounts:
+        return None
+    if len(amounts) == 1:
+        return amounts[0], amounts[0]
+    return min(amounts[0], amounts[1]), max(amounts[0], amounts[1])
+
+
+def resolve_salary_expectation_value(*, inspected_field: dict, profile) -> str | None:
+    label = (inspected_field.get("label") or "").strip().lower()
+    profile_salary = resolve_salary_value(profile=profile)
+
+    binary_salary_question = any(
+        token in label
+        for token in [
+            "align with your compensation expectations",
+            "compensation expectations",
+            "does this align",
+        ]
+    ) or (
+        _is_binary_yes_no_field(inspected_field)
+        and any(token in label for token in ["salary", "compensation"])
+    )
+    if not binary_salary_question:
+        return profile_salary
+
+    offered_range = _parse_salary_range(label)
+    desired_range = _parse_salary_range(profile_salary)
+    min_salary = _parse_money_amount(getattr(profile, "min_salary", None))
+    if not offered_range or not desired_range:
+        return profile_salary
+
+    _, offered_max = offered_range
+    desired_min, _ = desired_range
+    floor = min_salary or desired_min
+    return "Yes" if offered_max >= floor else "No"
+
+
 def resolve_relocation_value(*, inspected_field: dict, profile) -> str | None:
     """Resolve a relocation question from the candidate profile.
 
@@ -194,7 +265,119 @@ def resolve_demographic_value(*, inspected_field: dict, profile) -> str | None:
     return None
 
 
-def _build_open_ended_request(*, user_id, question_text, user, profile):
+def _normalize_work_arrangement_values(raw_value) -> tuple[list[str], str | None]:
+    if raw_value is None:
+        return [], None
+
+    if isinstance(raw_value, (list, tuple, set)):
+        raw_items = [str(item).strip() for item in raw_value if str(item).strip()]
+        display = ", ".join(raw_items) or None
+    else:
+        display = str(raw_value).strip() or None
+        raw_items = re.split(r"[,/|]", display or "")
+        raw_items = [item.strip() for item in raw_items if item.strip()]
+
+    normalized: list[str] = []
+    for item in raw_items:
+        lowered = item.lower()
+        if "hybrid" in lowered:
+            normalized.append("hybrid")
+        elif any(token in lowered for token in ["on-site", "onsite", "in office", "in-office"]):
+            normalized.append("onsite")
+        elif "remote" in lowered:
+            normalized.append("remote")
+        else:
+            normalized.append(lowered)
+
+    return normalized, display
+
+
+def _question_requires_office_presence(label: str) -> bool:
+    lowered = (label or "").lower()
+    return any(
+        token in lowered
+        for token in [
+            "hybrid culture",
+            "commutable distance",
+            "in person collaboration",
+            "in-person collaboration",
+            "work out of our",
+            "office monday",
+            "days per week in manhattan",
+            "days a week in the office",
+            "our ny office",
+            "our new york office",
+        ]
+    )
+
+
+def _question_mentions_nyc_area(label: str) -> bool:
+    lowered = (label or "").lower()
+    return any(
+        token in lowered
+        for token in ["new york", "ny office", "manhattan", "nyc"]
+    )
+
+
+def _profile_matches_nyc_area(profile) -> bool | None:
+    city = (getattr(profile, "city", None) or "").strip().lower()
+    state = (getattr(profile, "state", None) or "").strip().lower()
+    relocation_cities = getattr(profile, "preferred_relocation_cities", None) or []
+    normalized_relocation = " ".join(str(city_name).strip().lower() for city_name in relocation_cities)
+
+    nyc_cities = {
+        "new york",
+        "manhattan",
+        "brooklyn",
+        "queens",
+        "bronx",
+        "staten island",
+        "jersey city",
+        "hoboken",
+        "newark",
+    }
+    if city in nyc_cities:
+        return True
+    if city and state in {"ny", "new york", "nj", "new jersey"} and city in nyc_cities:
+        return True
+    if any(token in normalized_relocation for token in nyc_cities):
+        return True
+    if city or state or normalized_relocation:
+        return False
+    return None
+
+
+def resolve_work_arrangement_value(*, inspected_field: dict, profile) -> str | None:
+    normalized_prefs, display = _normalize_work_arrangement_values(
+        getattr(profile, "work_arrangement", None)
+    )
+    if not normalized_prefs and not display:
+        return None
+
+    label = (inspected_field.get("label") or "").strip()
+    if not _question_requires_office_presence(label) and not _is_binary_yes_no_field(inspected_field):
+        return display
+
+    if not _question_requires_office_presence(label):
+        return display
+
+    if any(pref in {"hybrid", "onsite"} for pref in normalized_prefs):
+        if _question_mentions_nyc_area(label):
+            location_match = _profile_matches_nyc_area(profile)
+            if location_match is True:
+                return "Yes"
+            if location_match is False:
+                return "No"
+            return None
+        return "Yes"
+
+    if "remote" in normalized_prefs:
+        return "No"
+
+    return None
+
+
+def _build_open_ended_request(*, user_id, question_text, user, profile, page_title=None, job_context=None):
     from src.domain.application_answers.open_ended.models import OpenEndedAnswerRequest
 
     first_name = getattr(profile, "first_name", None) or getattr(user, "first_name", None)
@@ -229,6 +412,16 @@ def _build_open_ended_request(*, user_id, question_text, user, profile):
         current_location = city or state
 
     preferred_relocation_cities = getattr(profile, "preferred_relocation_cities", None) or []
+    current_company = getattr(profile, "current_company", None)
+    work_arrangement = getattr(profile, "work_arrangement", None)
+    salary_target = resolve_salary_value(profile=profile)
+
+    work_arrangement_text = None
+    if isinstance(work_arrangement, list):
+        cleaned = [str(item).strip() for item in work_arrangement if str(item).strip()]
+        work_arrangement_text = ", ".join(cleaned) if cleaned else None
+    elif work_arrangement:
+        work_arrangement_text = str(work_arrangement)
 
     return OpenEndedAnswerRequest(
         user_id=user_id,
@@ -239,6 +432,41 @@ def _build_open_ended_request(*, user_id, question_text, user, profile):
         experience_summary=experience_summary,
         current_location=current_location,
         preferred_relocation_cities=preferred_relocation_cities or None,
+        current_company=current_company,
+        work_arrangement=work_arrangement_text,
+        salary_target=salary_target,
+        page_title=page_title,
+        job_context=job_context,
+    )
+
+
+def _looks_like_open_ended_question(inspected_field: dict) -> bool:
+    field_type = (inspected_field.get("field_type") or "").strip().lower()
+    if field_type != "textarea":
+        return False
+
+    question_text = (
+        inspected_field.get("label")
+        or inspected_field.get("placeholder")
+        or inspected_field.get("name")
+        or ""
+    )
+    normalized = _normalize_binary_text(question_text)
+    if not normalized:
+        return False
+
+    return any(
+        token in normalized
+        for token in [
+            "why are you interested",
+            "why do you want",
+            "why this company",
+            "why this role",
+            "why us",
+            "tell us about",
+            "what excites you",
+            "project or accomplishment",
+        ]
     )
 
 
@@ -328,7 +556,25 @@ def _resolve_unknown_yes_no_value(
     user,
     profile,
     open_ended_provider,
+    page_title=None,
+    job_context=None,
 ) -> tuple[str | None, bool]:
+    salary_value = resolve_salary_expectation_value(
+        inspected_field=inspected_field,
+        profile=profile,
+    )
+    salary_yes_no = _coerce_yes_no_answer(salary_value)
+    if salary_yes_no:
+        return salary_yes_no, False
+
+    work_arrangement_value = resolve_work_arrangement_value(
+        inspected_field=inspected_field,
+        profile=profile,
+    )
+    work_arrangement_yes_no = _coerce_yes_no_answer(work_arrangement_value)
+    if work_arrangement_yes_no:
+        return work_arrangement_yes_no, False
+
     if open_ended_provider is None:
         return None, True
 
@@ -354,12 +600,49 @@ def _resolve_unknown_yes_no_value(
         question_text=constrained_prompt,
         user=user,
         profile=profile,
+        page_title=page_title,
+        job_context=job_context,
     )
     result = open_ended_provider.get_answer(request)
     coerced = _coerce_yes_no_answer(result.answer_text)
     if coerced:
         return coerced, bool(result.needs_review)
 
+    return None, True
+
+
+def _resolve_unknown_open_ended_value(
+    *,
+    inspected_field: dict,
+    user,
+    profile,
+    open_ended_provider,
+    page_title=None,
+    job_context=None,
+) -> tuple[str | None, bool]:
+    if open_ended_provider is None or not _looks_like_open_ended_question(inspected_field):
+        return None, True
+
+    question_text = (
+        inspected_field.get("label")
+        or inspected_field.get("placeholder")
+        or inspected_field.get("name")
+        or ""
+    ).strip()
+    if not question_text:
+        return None, True
+
+    request = _build_open_ended_request(
+        user_id=getattr(user, "id", None),
+        question_text=question_text,
+        user=user,
+        profile=profile,
+        page_title=page_title,
+        job_context=job_context,
+    )
+    result = open_ended_provider.get_answer(request)
+    if result.answer_text:
+        return result.answer_text, bool(result.needs_review)
     return None, True
 
 
@@ -370,6 +653,8 @@ def resolve_field_value(
     user,
     profile,
     open_ended_provider=None,
+    page_title=None,
+    job_context=None,
 ) -> tuple[str | None, bool]:
     if classified_role in {FIELD_ROLE_IGNORE, FIELD_ROLE_SUBMIT, FIELD_ROLE_COVER_LETTER_UPLOAD}:
         return None, False
@@ -436,7 +721,10 @@ def resolve_field_value(
         return None, True
 
     if classified_role == FIELD_ROLE_SALARY_EXPECTATION:
-        value = resolve_salary_value(profile=profile)
+        value = resolve_salary_expectation_value(
+            inspected_field=inspected_field,
+            profile=profile,
+        )
         return value, value is None
 
     if classified_role == FIELD_ROLE_REFERRAL_SOURCE:
@@ -483,7 +771,10 @@ def resolve_field_value(
         return value, value is None
 
     if classified_role == FIELD_ROLE_WORK_ARRANGEMENT:
-        value = getattr(profile, "work_arrangement", None)
+        value = resolve_work_arrangement_value(
+            inspected_field=inspected_field,
+            profile=profile,
+        )
         return value, value is None
 
     if classified_role == FIELD_ROLE_OPEN_ENDED:
@@ -501,6 +792,8 @@ def resolve_field_value(
             question_text=question_text,
             user=user,
             profile=profile,
+            page_title=page_title,
+            job_context=job_context,
         )
         result = open_ended_provider.get_answer(request)
         if result.answer_text:
@@ -508,11 +801,24 @@ def resolve_field_value(
         return None, True
 
     if classified_role == "unknown":
+        value, needs_review = _resolve_unknown_open_ended_value(
+            inspected_field=inspected_field,
+            user=user,
+            profile=profile,
+            open_ended_provider=open_ended_provider,
+            page_title=page_title,
+            job_context=job_context,
+        )
+        if value:
+            return value, needs_review
+
         value, needs_review = _resolve_unknown_yes_no_value(
             inspected_field=inspected_field,
             user=user,
             profile=profile,
             open_ended_provider=open_ended_provider,
+            page_title=page_title,
+            job_context=job_context,
         )
         if value:
             return value, needs_review

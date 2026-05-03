@@ -36,6 +36,7 @@ class CandidateProfile(Base):
     zip_code = Column(String, nullable=True)
 
     salary_target = Column(String, nullable=True)
+    min_salary = Column(String, nullable=True)
 
     gender = Column(String, nullable=True)
     race = Column(String, nullable=True)
@@ -59,7 +60,7 @@ class CandidateProfile(Base):
     visa_sponsorship = Column(String, nullable=True)
 
     preferred_relocation_cities = Column(JSONB, nullable=True)
-    work_arrangement = Column(String, nullable=True)
+    work_arrangement = Column(JSONB, nullable=True)
 
     user = relationship("User", back_populates="candidate_profile")
 

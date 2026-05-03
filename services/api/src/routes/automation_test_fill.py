@@ -83,6 +83,8 @@ def test_fill_application(
             application_url=payload.application_url,
             inspected_fields=inspect_result["fields"],
             resume_file_path=payload.resume_file_path,
+            page_title=inspect_result.get("title"),
+            job_context=inspect_result.get("job_context"),
         ),
     )
 

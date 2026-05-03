@@ -46,15 +46,26 @@ def _build_user_prompt(request: OpenEndedAnswerRequest) -> str:
     if request.preferred_relocation_cities:
         cities = ", ".join(request.preferred_relocation_cities)
         parts.append(f"Open to relocating to: {cities}")
+    if request.current_company:
+        parts.append(f"Current company: {request.current_company}")
+    if request.work_arrangement:
+        parts.append(f"Preferred work arrangement: {request.work_arrangement}")
+    if request.salary_target:
+        parts.append(f"Salary target: {request.salary_target}")
     if request.skills_summary:
         parts.append(f"Key skills: {request.skills_summary}")
     if request.experience_summary:
         parts.append(f"Recent experience: {request.experience_summary}")
+    if request.page_title:
+        parts.append(f"Job page title: {request.page_title}")
+    if request.job_context:
+        parts.append(f"Job context: {request.job_context}")
     parts.append(f'Question: "{request.question_text}"')
     parts.append(
         "Write a concise, natural answer in first person. "
         "For simple factual questions (yes/no, location, availability) keep it to 1-2 sentences. "
         "For more open-ended questions use no more than 4-5 sentences. "
+        "When the question is about interest in the company or role, explicitly connect the candidate's background to the job context. "
         "Do not use the candidate's name in the answer."
     )
     return "\n".join(parts)

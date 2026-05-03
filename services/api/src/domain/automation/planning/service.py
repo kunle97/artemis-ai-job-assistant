@@ -67,6 +67,8 @@ class AutomationPlanningService:
                 user=user,
                 profile=profile,
                 open_ended_provider=self.open_ended_provider,
+                page_title=payload.page_title,
+                job_context=payload.job_context,
             )
 
             planned_fields.append(

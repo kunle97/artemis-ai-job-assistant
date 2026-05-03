@@ -52,6 +52,8 @@ class CandidateProfileRepository:
 
         if payload.salary_target is not None:
             profile.salary_target = payload.salary_target
+        if payload.min_salary is not None:
+            profile.min_salary = payload.min_salary
 
         if payload.gender is not None:
             profile.gender = payload.gender

@@ -38,6 +38,12 @@ class _Profile:
         self.last_name = kwargs.get("last_name", None)
         self.skills = kwargs.get("skills", [])
         self.experience_sections = kwargs.get("experience_sections", [])
+        self.current_company = kwargs.get("current_company", None)
+        self.work_arrangement = kwargs.get("work_arrangement", None)
+        self.salary_target = kwargs.get("salary_target", None)
+        self.city = kwargs.get("city", None)
+        self.state = kwargs.get("state", None)
+        self.preferred_relocation_cities = kwargs.get("preferred_relocation_cities", None)
 
 
 class _MockProvider:
@@ -224,6 +230,27 @@ def test_build_request_extracts_experience_summary():
     assert "Acme" in req.experience_summary
 
 
+def test_build_request_includes_job_and_profile_context():
+    profile = _Profile(
+        current_company="Acme",
+        work_arrangement="hybrid",
+        salary_target="220000",
+    )
+    req = _build_open_ended_request(
+        user_id="u-1",
+        question_text="Why are you interested in this role?",
+        user=_User(),
+        profile=profile,
+        page_title="Job Application for Senior Software Engineer at Cognitiv",
+        job_context="AdTech platform, AWS, cloud-native systems, measurement.",
+    )
+    assert req.current_company == "Acme"
+    assert req.work_arrangement == "hybrid"
+    assert req.salary_target == "220000"
+    assert req.page_title == "Job Application for Senior Software Engineer at Cognitiv"
+    assert "cloud-native" in req.job_context
+
+
 def test_build_request_skills_none_when_empty():
     profile = _Profile(skills=[])
     req = _build_open_ended_request(
@@ -337,3 +364,65 @@ def test_unknown_yes_no_works_when_options_are_missing():
     assert value == "Yes"
     assert needs_review is False
     assert len(provider.calls) == 1
+
+
+def test_unknown_textarea_open_ended_uses_provider_with_job_context():
+    provider = _MockProvider(
+        OpenEndedAnswerResult(
+            answer_text="I'm excited by the combination of cloud-native systems and applied AI.",
+            source="ai_generated",
+            needs_review=False,
+        )
+    )
+    value, needs_review = resolve_field_value(
+        classified_role=FIELD_ROLE_UNKNOWN,
+        inspected_field={
+            "field_type": "textarea",
+            "label": "Why Cognitiv? Why are you interested in this role with us?",
+        },
+        user=_User(),
+        profile=_Profile(skills=[{"name": "AWS"}], experience_sections=[{"title": "Senior Engineer", "company": "Acme"}]),
+        open_ended_provider=provider,
+        page_title="Job Application for Senior Software Engineer at Cognitiv",
+        job_context="AdTech platform, cloud-native systems, reporting and measurement.",
+    )
+    assert value is not None
+    assert needs_review is False
+    assert provider.calls[0].page_title == "Job Application for Senior Software Engineer at Cognitiv"
+    assert "AdTech" in provider.calls[0].job_context
+
+
+def test_work_arrangement_binary_question_uses_profile_and_location():
+    value, needs_review = resolve_field_value(
+        classified_role=FIELD_ROLE_UNKNOWN,
+        inspected_field={
+            "field_type": "select_like",
+            "label": "We have a hybrid culture. Are you able to work out of our NY office Monday, Tuesday and Wednesday?*",
+            "options": [],
+        },
+        user=_User(),
+        profile=_Profile(
+            work_arrangement="hybrid",
+            city="Jersey City",
+            state="NJ",
+        ),
+        open_ended_provider=None,
+    )
+    assert value == "Yes"
+    assert needs_review is False
+
+
+def test_salary_expectation_yes_no_question_uses_range_not_raw_target():
+    value, needs_review = resolve_field_value(
+        classified_role="salary_expectation",
+        inspected_field={
+            "field_type": "select_like",
+            "label": "The base salary for this role is $160,000 - $210,000 USD + Equity. Does this align with your compensation expectations?*",
+            "options": [],
+        },
+        user=_User(),
+        profile=_Profile(salary_target="250000"),
+        open_ended_provider=None,
+    )
+    assert value == "No"
+    assert needs_review is False

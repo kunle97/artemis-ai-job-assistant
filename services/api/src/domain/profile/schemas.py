@@ -19,6 +19,7 @@ class CandidateProfileUpsertRequest(BaseModel):
     country: str | None = None
     zip_code: str | None = None
     salary_target: str | None = None
+    min_salary: str | None = None
 
     gender: str | None = None
     race: str | None = None
@@ -35,7 +36,7 @@ class CandidateProfileUpsertRequest(BaseModel):
     current_company: str | None = None
 
     preferred_relocation_cities: list[str] | None = None
-    work_arrangement: str | None = None
+    work_arrangement: list[str] | None = None
     skills: list[str] | None = None
 
 
@@ -59,6 +60,7 @@ class CandidateProfileResponse(BaseModel):
     zip_code: str | None = None
 
     salary_target: str | None = None
+    min_salary: str | None = None
 
     gender: str | None = None
     race: str | None = None
@@ -75,7 +77,7 @@ class CandidateProfileResponse(BaseModel):
     current_company: str | None = None
 
     preferred_relocation_cities: list[str] | None = None
-    work_arrangement: str | None = None
+    work_arrangement: list[str] | None = None
     skills: list[str] | None = None
 
     location: str | None = None

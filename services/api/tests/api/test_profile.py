@@ -25,7 +25,8 @@ def test_create_profile(client, sample_user_payload):
             "city": "New York",
             "state": "NY",
             "skills": ["Python", "FastAPI"],
-            "work_arrangement": "remote",
+            "work_arrangement": ["remote", "hybrid"],
+            "min_salary": "180000",
         },
     )
 
@@ -34,7 +35,8 @@ def test_create_profile(client, sample_user_payload):
 
     assert data["location"] == "New York, NY"
     assert data["skills"] == ["Python", "FastAPI"]
-    assert data["work_arrangement"] == "remote"
+    assert data["work_arrangement"] == ["remote", "hybrid"]
+    assert data["min_salary"] == "180000"
 
 
 def test_get_profile(client, sample_user_payload):
@@ -54,7 +56,7 @@ def test_get_profile(client, sample_user_payload):
         "/profile",
         headers={"Authorization": f"Bearer {token}"},
         json={
-            "work_arrangement": "remote",
+            "work_arrangement": ["remote"],
             "skills": ["React"],
         },
     )
@@ -67,7 +69,7 @@ def test_get_profile(client, sample_user_payload):
 
     assert response.status_code == 200
     data = response.json()
-    assert data["work_arrangement"] == "remote"
+    assert data["work_arrangement"] == ["remote"]
     assert data["skills"] == ["React"]
 
 
@@ -85,7 +87,7 @@ def test_duplicate_profile_returns_400(client, sample_user_payload):
     token = login_response.json()["access_token"]
 
     payload = {
-        "work_arrangement": "remote",
+        "work_arrangement": ["remote"],
         "skills": ["Python"],
     }
 

@@ -24,6 +24,38 @@ from src.integrations.automation.browser import create_stealth_context
 from src.integrations.automation.helpers import prepare_application_page, extract_fields, save_screenshot, normalize_application_url
 
 
+def _extract_job_context(page) -> str | None:
+        """Extract a compact text snapshot of the job description before the form."""
+        try:
+                text = page.evaluate(
+                        """
+                        () => {
+                            const root = document.querySelector('main') || document.body;
+                            if (!root) return '';
+
+                            const stopPhrases = ['apply for this job', 'autofill with mygreenhouse'];
+                            const nodes = Array.from(root.querySelectorAll('h1, h2, h3, p, li'));
+                            const lines = [];
+                            for (const node of nodes) {
+                                const text = (node.innerText || '').replace(/\s+/g, ' ').trim();
+                                if (!text) continue;
+                                const lowered = text.toLowerCase();
+                                if (stopPhrases.some((phrase) => lowered.includes(phrase))) break;
+                                if (lines.length && lines[lines.length - 1] === text) continue;
+                                lines.push(text);
+                                if (lines.join('\n').length >= 2400) break;
+                            }
+                            return lines.join('\n').slice(0, 2400);
+                        }
+                        """
+                )
+        except Exception:
+                return None
+
+        cleaned = (text or "").strip()
+        return cleaned or None
+
+
 class ApplicationPageInspector:
     @staticmethod
     def inspect(application_url: str) -> dict:
@@ -39,6 +71,7 @@ class ApplicationPageInspector:
                 page.wait_for_timeout(1000)
 
                 title = page.title()
+                job_context = _extract_job_context(page)
                 fields = extract_fields(page)
                 screenshot_path = save_screenshot(page, url=application_url)
 
@@ -46,6 +79,7 @@ class ApplicationPageInspector:
                     "application_url": normalized_application_url,
                     "status": "inspected",
                     "title": title,
+                    "job_context": job_context,
                     "fields": fields,
                     "screenshot_path": screenshot_path,
                     "notes": [

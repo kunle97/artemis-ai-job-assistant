@@ -10,6 +10,8 @@ from pydantic import BaseModel, Field
 class AutomationFillPlanRequest(BaseModel):
     application_url: str
     inspected_fields: list[dict] = Field(default_factory=list)
+    page_title: str | None = None
+    job_context: str | None = None
 
 
 class AutomationPlannedField(BaseModel):

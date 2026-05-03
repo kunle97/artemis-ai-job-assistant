@@ -66,6 +66,8 @@ class AutomationFillService:
             payload=AutomationFillPlanRequest(
                 application_url=application_url,
                 inspected_fields=payload.inspected_fields,
+                page_title=payload.page_title,
+                job_context=payload.job_context,
             ),
         )
 

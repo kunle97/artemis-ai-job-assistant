@@ -404,6 +404,15 @@ class GenericAutomationFieldClassifier:
                 "preferred work location",
                 "how do you prefer to work",
                 "what is your preferred work style",
+                "hybrid culture",
+                "commutable distance",
+                "in person collaboration",
+                "in-person collaboration",
+                "work out of our",
+                "our ny office",
+                "our new york office",
+                "days per week in manhattan",
+                "days a week in the office",
             ]
         )
 
@@ -456,6 +465,12 @@ class GenericAutomationFieldClassifier:
         return any(
             token in haystack
             for token in [
+                "why are you interested",
+                "why do you want",
+                "why this company",
+                "why this role",
+                "why us",
+                "why ",
                 "please include",
                 "tell us about",
                 "what excites you",

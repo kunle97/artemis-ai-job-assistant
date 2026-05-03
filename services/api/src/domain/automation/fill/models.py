@@ -11,6 +11,8 @@ class AutomationFillRequest(BaseModel):
     application_url: str
     inspected_fields: list[dict] = Field(default_factory=list)
     resume_file_path: str | None = None
+    page_title: str | None = None
+    job_context: str | None = None
 
 
 class AutomationFillFieldResult(BaseModel):

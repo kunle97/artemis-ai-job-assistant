@@ -13,6 +13,8 @@ from src.domain.automation.planning.classifiers.lever import LeverAutomationFiel
 from src.domain.automation.planning.classifiers.ashby import AshbyAutomationFieldClassifier
 from src.domain.automation.planning.constants import (
     FIELD_ROLE_DEMOGRAPHIC,
+    FIELD_ROLE_OPEN_ENDED,
+    FIELD_ROLE_WORK_ARRANGEMENT,
     FIELD_ROLE_WORK_AUTHORIZATION,
 )
 
@@ -187,3 +189,23 @@ def test_lever_classifies_sponsorship():
 def test_ashby_classifies_work_authorization():
     clf = AshbyAutomationFieldClassifier()
     assert clf.classify(field_type="radio_group", label="Are you authorized to work in the US?", name=None, placeholder=None) == FIELD_ROLE_WORK_AUTHORIZATION
+
+
+def test_generic_classifies_hybrid_commute_requirement_as_work_arrangement():
+    clf = GenericAutomationFieldClassifier()
+    assert clf.classify(
+        field_type="select_like",
+        label="We have a hybrid culture. Are you able to work out of our NY office Monday, Tuesday and Wednesday?*",
+        name=None,
+        placeholder=None,
+    ) == FIELD_ROLE_WORK_ARRANGEMENT
+
+
+def test_generic_classifies_why_are_you_interested_textarea_as_open_ended():
+    clf = GenericAutomationFieldClassifier()
+    assert clf.classify(
+        field_type="textarea",
+        label="Why Cognitiv? Why are you interested in this role with us?",
+        name=None,
+        placeholder=None,
+    ) == FIELD_ROLE_OPEN_ENDED
