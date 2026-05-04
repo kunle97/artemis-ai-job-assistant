@@ -6,6 +6,7 @@ Maps source names to adapter implementations.
 
 from src.integrations.adapters.greenhouse.adapter import GreenhouseAdapter
 from src.integrations.adapters.ashby.adapter import AshbyAdapter
+from src.integrations.adapters.lever.adapter import LeverAdapter
 
 
 def get_adapter(source: str):
@@ -19,5 +20,8 @@ def get_adapter(source: str):
 
     if normalized_source == "ashby":
         return AshbyAdapter()
+
+    if normalized_source == "lever":
+        return LeverAdapter()
 
     raise ValueError(f"Unsupported job source: {source}")
