@@ -4,9 +4,9 @@ Job repository.
 Handles DB operations for jobs.
 """
 
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
-from src.domain.jobs.models import Job, JobPreferences
+from src.domain.jobs.models import Job, JobFeedStatus, JobPreferences, JobUserFeed
 
 
 class JobRepository:
@@ -92,3 +92,49 @@ class JobPreferencesRepository:
         self.db.commit()
         self.db.refresh(preferences)
         return preferences
+
+
+class JobUserFeedRepository:
+    def __init__(self, db: Session):
+        self.db = db
+
+    def get_by_user_and_job_id(self, user_id, job_id):
+        return (
+            self.db.query(JobUserFeed)
+            .filter(JobUserFeed.user_id == user_id, JobUserFeed.job_id == job_id)
+            .first()
+        )
+
+    def get_or_create(self, user_id, job_id, status: JobFeedStatus = JobFeedStatus.NEW):
+        existing = self.get_by_user_and_job_id(user_id=user_id, job_id=job_id)
+        if existing is not None:
+            return existing, False
+
+        link = JobUserFeed(user_id=user_id, job_id=job_id, status=status)
+        self.db.add(link)
+        self.db.commit()
+        self.db.refresh(link)
+        return link, True
+
+    def update_status(self, user_id, job_id, status: JobFeedStatus):
+        link = self.get_by_user_and_job_id(user_id=user_id, job_id=job_id)
+        if link is None:
+            return None
+
+        link.status = status
+        self.db.add(link)
+        self.db.commit()
+        self.db.refresh(link)
+        return link
+
+    def list_for_user(self, user_id, status: JobFeedStatus | None = None):
+        query = (
+            self.db.query(JobUserFeed)
+            .options(joinedload(JobUserFeed.job))
+            .join(Job)
+            .filter(JobUserFeed.user_id == user_id, Job.is_active == True)  # noqa: E712
+            .order_by(JobUserFeed.created_at.desc())
+        )
+        if status is not None:
+            query = query.filter(JobUserFeed.status == status)
+        return query.all()

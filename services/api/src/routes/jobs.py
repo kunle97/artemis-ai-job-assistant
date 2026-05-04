@@ -4,6 +4,8 @@ Jobs API routes.
 Thin HTTP endpoints for searching and listing normalized job records.
 """
 
+from uuid import UUID
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -13,10 +15,13 @@ from fastapi import Query
 from src.deps.auth import get_current_user
 from src.domain.jobs.feed_service import JobFeedService
 from src.domain.jobs.models import Job
+from src.domain.jobs.models import JobFeedStatus
 from src.domain.jobs.repository import JobPreferencesRepository, JobRepository
 from src.domain.jobs.schemas import (
     FeedPage,
     FeedScanResponse,
+    JobFeedStatusUpdateRequest,
+    JobFeedStatusUpdateResponse,
     JobPreferencesSchema,
     JobPreferencesUpsertRequest,
     JobRead,
@@ -221,3 +226,27 @@ def get_job_feed(
         next_url=_next_url(request, next_offset, limit) if has_next else None,
         jobs=[JobRead.model_validate(j) for j in jobs],
     )
+
+
+@router.patch("/feed/{job_id}", response_model=JobFeedStatusUpdateResponse)
+def update_job_feed_status(
+    job_id: UUID,
+    payload: JobFeedStatusUpdateRequest,
+    current_user=Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Update a per-user feed status for a job already linked into the user's feed.
+    """
+    if payload.status not in {JobFeedStatus.SAVED, JobFeedStatus.DISMISSED}:
+        raise HTTPException(
+            status_code=400,
+            detail="Only saved or dismissed statuses can be set via this endpoint.",
+        )
+
+    service = JobFeedService(user_id=current_user.id, db=db)
+    link = service.update_feed_status(job_id=job_id, status=payload.status)
+    if link is None:
+        raise HTTPException(status_code=404, detail="Job feed entry not found.")
+
+    return JobFeedStatusUpdateResponse(job_id=link.job_id, status=link.status)

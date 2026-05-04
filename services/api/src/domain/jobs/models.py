@@ -5,10 +5,22 @@ Stores normalized job records collected from external job sources.
 """
 
 from datetime import UTC, datetime
+from enum import Enum
 import uuid
 
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import (
+    Boolean,
+    Column,
+    DateTime,
+    Enum as SqlEnum,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.orm import relationship
 
 from src.infrastructure.db.base import Base
 
@@ -37,6 +49,42 @@ class Job(Base):
 
     created_at = Column(DateTime, default=lambda: datetime.now(UTC))
     updated_at = Column(DateTime, default=lambda: datetime.now(UTC))
+
+    user_feeds = relationship("JobUserFeed", back_populates="job")
+
+
+class JobFeedStatus(str, Enum):
+    NEW = "new"
+    SEEN = "seen"
+    SAVED = "saved"
+    DISMISSED = "dismissed"
+
+
+class JobUserFeed(Base):
+    __tablename__ = "job_user_feed"
+    __table_args__ = (UniqueConstraint("user_id", "job_id", name="uq_job_user_feed_user_job"),)
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id"),
+        nullable=False,
+        index=True,
+    )
+    job_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("jobs.id"),
+        nullable=False,
+        index=True,
+    )
+    status = Column(
+        SqlEnum(JobFeedStatus, name="job_feed_status", native_enum=False),
+        nullable=False,
+        default=JobFeedStatus.NEW,
+    )
+    created_at = Column(DateTime, default=lambda: datetime.now(UTC), nullable=False)
+
+    job = relationship("Job", back_populates="user_feeds")
 
 
 class JobPreferences(Base):

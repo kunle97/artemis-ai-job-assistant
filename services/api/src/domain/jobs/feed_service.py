@@ -12,8 +12,12 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from sqlalchemy.orm import Session
 
-from src.domain.jobs.models import Job
-from src.domain.jobs.repository import JobPreferencesRepository, JobRepository
+from src.domain.jobs.models import Job, JobFeedStatus
+from src.domain.jobs.repository import (
+    JobPreferencesRepository,
+    JobRepository,
+    JobUserFeedRepository,
+)
 from src.domain.jobs.source_registry import JOB_SOURCE_REGISTRY
 from src.integrations.adapters.registry import get_adapter
 
@@ -34,6 +38,7 @@ class JobFeedService:
         self.db = db
         self._preferences_repo = JobPreferencesRepository(db)
         self._job_repo = JobRepository(db)
+        self._user_feed_repo = JobUserFeedRepository(db)
 
     def scan(self) -> list[Job]:
         """Run a full feed scan for the user.
@@ -99,7 +104,7 @@ class JobFeedService:
                         exc,
                     )
 
-        # Filter → deduplicate → persist
+        # Filter → deduplicate → persist per-user feed links
         new_jobs: list[Job] = []
         seen_keys: set[tuple[str, str]] = set()
 
@@ -116,15 +121,14 @@ class JobFeedService:
                 continue
             seen_keys.add(job_key)
 
-            # DB dedup — skip jobs already ingested in a previous scan
-            if self._job_repo.get_by_source_and_source_job_id(
-                source=job_data["source"],
-                source_job_id=job_data["source_job_id"],
-            ):
-                continue
-
-            job = self._job_repo.create(**job_data)
-            new_jobs.append(job)
+            job = self._job_repo.get_or_create(**job_data)
+            _, created = self._user_feed_repo.get_or_create(
+                user_id=self.user_id,
+                job_id=job.id,
+                status=JobFeedStatus.NEW,
+            )
+            if created:
+                new_jobs.append(job)
 
         logger.info(
             "[JobFeedService] Scan complete for user %s: %d new job(s) stored",
@@ -142,8 +146,8 @@ class JobFeedService:
         logger.info("[JobFeedService] Loading feed for user %s (skip=%d, limit=%d)", self.user_id, skip, limit)
 
         preferences = self._preferences_repo.get_or_create_by_user_id(self.user_id)
-        jobs = self._job_repo.list_active_by_sources(preferences.enabled_sources or [])
-        filtered = self._apply_preference_filters(jobs, preferences)
+        feed_rows = self._user_feed_repo.list_for_user(self.user_id)
+        filtered = self._apply_preference_filters(feed_rows, preferences)
 
         total = len(filtered)
         page = filtered[skip : skip + limit]
@@ -152,13 +156,19 @@ class JobFeedService:
         return page, total
 
     def _apply_preference_filters(self, jobs: list, preferences) -> list:
-        """Apply user preference keyword and attribute filters to a list of jobs."""
+        """Apply user preference keyword and attribute filters to feed-linked jobs."""
         title_keywords = [t.lower() for t in (preferences.target_titles or [])]
         positive_keywords = [k.lower() for k in (preferences.positive_keywords or [])]
         negative_keywords = [k.lower() for k in (preferences.negative_keywords or [])]
+        enabled_sources = set(preferences.enabled_sources or [])
 
         filtered = []
-        for job in jobs:
+        for feed_row in jobs:
+            job = feed_row.job
+            if job is None:
+                continue
+            if enabled_sources and job.source not in enabled_sources:
+                continue
             title_lower = (job.title or "").lower()
             desc_lower = (job.description or "").lower()
             searchable = f"{title_lower} {desc_lower}"
@@ -180,6 +190,20 @@ class JobFeedService:
 
             filtered.append(job)
         return filtered
+
+    def update_feed_status(self, job_id, status: JobFeedStatus):
+        """Update a per-user feed status for an already-linked job."""
+        logger.info(
+            "[JobFeedService] Updating feed status for user %s job %s -> %s",
+            self.user_id,
+            job_id,
+            status,
+        )
+        return self._user_feed_repo.update_status(
+            user_id=self.user_id,
+            job_id=job_id,
+            status=status,
+        )
 
     def _fetch_board(self, source: str, board_token: str) -> list[dict]:
         """Fetch normalized jobs from a single board via the appropriate adapter."""

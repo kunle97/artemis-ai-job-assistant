@@ -65,6 +65,7 @@ def _make_service(user_id=None):
 PATCH_REGISTRY = "src.domain.jobs.feed_service.JOB_SOURCE_REGISTRY"
 PATCH_PREFS_REPO = "src.domain.jobs.feed_service.JobPreferencesRepository"
 PATCH_JOB_REPO = "src.domain.jobs.feed_service.JobRepository"
+PATCH_USER_FEED_REPO = "src.domain.jobs.feed_service.JobUserFeedRepository"
 PATCH_GET_ADAPTER = "src.domain.jobs.feed_service.get_adapter"
 
 
@@ -78,6 +79,7 @@ class TestTitleKeywordFilter:
             patch(PATCH_REGISTRY, MOCK_REGISTRY),
             patch(PATCH_PREFS_REPO) as mock_prefs_cls,
             patch(PATCH_JOB_REPO) as mock_job_cls,
+            patch(PATCH_USER_FEED_REPO) as mock_user_feed_cls,
             patch(PATCH_GET_ADAPTER) as mock_get_adapter,
         ):
             mock_prefs_cls.return_value.get_or_create_by_user_id.return_value = (
@@ -91,10 +93,10 @@ class TestTitleKeywordFilter:
             ]
             mock_get_adapter.return_value = mock_adapter
 
-            mock_job_cls.return_value.get_by_source_and_source_job_id.return_value = None
-            mock_job_cls.return_value.create.side_effect = lambda **kw: MagicMock(
+            mock_job_cls.return_value.get_or_create.side_effect = lambda **kw: MagicMock(
                 source=kw["source"], source_job_id=kw["source_job_id"]
             )
+            mock_user_feed_cls.return_value.get_or_create.return_value = (MagicMock(), True)
 
             service = _make_service()
             result = service.scan()
@@ -108,6 +110,7 @@ class TestTitleKeywordFilter:
             patch(PATCH_REGISTRY, MOCK_REGISTRY),
             patch(PATCH_PREFS_REPO) as mock_prefs_cls,
             patch(PATCH_JOB_REPO) as mock_job_cls,
+            patch(PATCH_USER_FEED_REPO) as mock_user_feed_cls,
             patch(PATCH_GET_ADAPTER) as mock_get_adapter,
         ):
             mock_prefs_cls.return_value.get_or_create_by_user_id.return_value = (
@@ -121,10 +124,10 @@ class TestTitleKeywordFilter:
             ]
             mock_get_adapter.return_value = mock_adapter
 
-            mock_job_cls.return_value.get_by_source_and_source_job_id.return_value = None
-            mock_job_cls.return_value.create.side_effect = lambda **kw: MagicMock(
+            mock_job_cls.return_value.get_or_create.side_effect = lambda **kw: MagicMock(
                 source=kw["source"], source_job_id=kw["source_job_id"]
             )
+            mock_user_feed_cls.return_value.get_or_create.return_value = (MagicMock(), True)
 
             service = _make_service()
             result = service.scan()
@@ -143,6 +146,7 @@ class TestDeduplication:
             patch(PATCH_REGISTRY, MOCK_REGISTRY),
             patch(PATCH_PREFS_REPO) as mock_prefs_cls,
             patch(PATCH_JOB_REPO) as mock_job_cls,
+            patch(PATCH_USER_FEED_REPO) as mock_user_feed_cls,
             patch(PATCH_GET_ADAPTER) as mock_get_adapter,
         ):
             mock_prefs_cls.return_value.get_or_create_by_user_id.return_value = (
@@ -155,7 +159,6 @@ class TestDeduplication:
             mock_adapter.search_jobs.return_value = [duplicate]
             mock_get_adapter.return_value = mock_adapter
 
-            mock_job_cls.return_value.get_by_source_and_source_job_id.return_value = None
             created = []
 
             def _create(**kw):
@@ -163,7 +166,8 @@ class TestDeduplication:
                 created.append(job)
                 return job
 
-            mock_job_cls.return_value.create.side_effect = _create
+            mock_job_cls.return_value.get_or_create.side_effect = _create
+            mock_user_feed_cls.return_value.get_or_create.return_value = (MagicMock(), True)
 
             service = _make_service()
             result = service.scan()
@@ -178,6 +182,7 @@ class TestDeduplication:
             patch(PATCH_REGISTRY, {"greenhouse": {"stripe": {"board_token": "stripe", "display_name": "Stripe"}}}),
             patch(PATCH_PREFS_REPO) as mock_prefs_cls,
             patch(PATCH_JOB_REPO) as mock_job_cls,
+            patch(PATCH_USER_FEED_REPO) as mock_user_feed_cls,
             patch(PATCH_GET_ADAPTER) as mock_get_adapter,
         ):
             mock_prefs_cls.return_value.get_or_create_by_user_id.return_value = (
@@ -190,14 +195,14 @@ class TestDeduplication:
             ]
             mock_get_adapter.return_value = mock_adapter
 
-            # Simulate already-stored job
-            mock_job_cls.return_value.get_by_source_and_source_job_id.return_value = MagicMock()
+            mock_job_cls.return_value.get_or_create.return_value = MagicMock(id=uuid.uuid4())
+            mock_user_feed_cls.return_value.get_or_create.return_value = (MagicMock(), False)
 
             service = _make_service()
             result = service.scan()
 
         assert result == []
-        mock_job_cls.return_value.create.assert_not_called()
+        mock_user_feed_cls.return_value.get_or_create.assert_called_once()
 
 
 # ---------------------------------------------------------------------------
@@ -211,6 +216,7 @@ class TestPartialFailure:
             patch(PATCH_REGISTRY, MOCK_REGISTRY),
             patch(PATCH_PREFS_REPO) as mock_prefs_cls,
             patch(PATCH_JOB_REPO) as mock_job_cls,
+            patch(PATCH_USER_FEED_REPO) as mock_user_feed_cls,
             patch(PATCH_GET_ADAPTER) as mock_get_adapter,
         ):
             mock_prefs_cls.return_value.get_or_create_by_user_id.return_value = (
@@ -226,10 +232,10 @@ class TestPartialFailure:
             mock_adapter.search_jobs.side_effect = _search_jobs
             mock_get_adapter.return_value = mock_adapter
 
-            mock_job_cls.return_value.get_by_source_and_source_job_id.return_value = None
-            mock_job_cls.return_value.create.side_effect = lambda **kw: MagicMock(
+            mock_job_cls.return_value.get_or_create.side_effect = lambda **kw: MagicMock(
                 source=kw["source"], source_job_id=kw["source_job_id"]
             )
+            mock_user_feed_cls.return_value.get_or_create.return_value = (MagicMock(), True)
 
             service = _make_service()
             result = service.scan()
@@ -248,6 +254,7 @@ class TestEdgeCases:
             patch(PATCH_REGISTRY, MOCK_REGISTRY),
             patch(PATCH_PREFS_REPO) as mock_prefs_cls,
             patch(PATCH_JOB_REPO),
+            patch(PATCH_USER_FEED_REPO),
             patch(PATCH_GET_ADAPTER) as mock_get_adapter,
         ):
             mock_prefs_cls.return_value.get_or_create_by_user_id.return_value = (

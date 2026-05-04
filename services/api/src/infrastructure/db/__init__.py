@@ -11,7 +11,7 @@ Any time a new model is added, it must be imported here so that
 from src.domain.auth.models import RevokedToken, User
 from src.domain.profile.models import CandidateProfile
 from src.domain.resume.models import Resume
-from src.domain.jobs.models import Job, JobPreferences
+from src.domain.jobs.models import Job, JobPreferences, JobUserFeed
 from src.domain.applications.models import Application
 from src.domain.application_answers.models import ApplicationAnswer
 from src.domain.application_answers.intents.models import ApplicationAnswerIntent
@@ -23,6 +23,7 @@ __all__ = [
     "Resume",
     "Job",
     "JobPreferences",
+    "JobUserFeed",
     "Application",
     "ApplicationAnswer",
     "ApplicationAnswerIntent",

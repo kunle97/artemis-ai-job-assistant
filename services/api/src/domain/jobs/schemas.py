@@ -9,6 +9,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from src.domain.jobs.models import JobFeedStatus
+
 
 
 class JobInboxEntry(BaseModel):
@@ -98,6 +100,15 @@ class JobRead(BaseModel):
 
 class FeedScanResponse(BaseModel):
     new_jobs_found: int
+
+
+class JobFeedStatusUpdateRequest(BaseModel):
+    status: JobFeedStatus
+
+
+class JobFeedStatusUpdateResponse(BaseModel):
+    job_id: UUID
+    status: JobFeedStatus
 
 
 class FeedPage(BaseModel):

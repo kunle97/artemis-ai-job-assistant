@@ -4,10 +4,11 @@ Job feed API tests.
 Covers: POST /jobs/feed/scan and GET /jobs/feed endpoints.
 """
 
+from uuid import UUID
 from unittest.mock import patch
 
 from src.domain.jobs.feed_service import JobFeedService
-from src.domain.jobs.models import Job
+from src.domain.jobs.models import Job, JobFeedStatus, JobUserFeed
 
 
 def _register_and_login(client, sample_user_payload):
@@ -129,6 +130,12 @@ def test_get_feed_filters_by_user_preferences(client, sample_user_payload, db_se
     db_session.add(non_matching)
     db_session.commit()
 
+    matching_link = JobUserFeed(user_id=current_user_id(token, client), job_id=matching.id)
+    non_matching_link = JobUserFeed(user_id=current_user_id(token, client), job_id=non_matching.id)
+    db_session.add(matching_link)
+    db_session.add(non_matching_link)
+    db_session.commit()
+
     response = client.get("/jobs/feed", headers={"Authorization": f"Bearer {token}"})
 
     assert response.status_code == 200
@@ -138,3 +145,42 @@ def test_get_feed_filters_by_user_preferences(client, sample_user_payload, db_se
     job_titles = {j["title"] for j in data["jobs"]}
     assert "Backend Engineer" in job_titles
     assert "Product Manager" not in job_titles
+
+
+def current_user_id(token, client):
+    payload = client.get("/jobs/preferences", headers={"Authorization": f"Bearer {token}"})
+    assert payload.status_code == 200
+    return UUID(payload.json()["user_id"])
+
+
+def test_patch_job_feed_status_updates_status(client, sample_user_payload, db_session):
+    """PATCH /jobs/feed/{job_id} updates the current user's per-job feed status."""
+    token = _register_and_login(client, sample_user_payload)
+    user_id = current_user_id(token, client)
+
+    job = Job(
+        source="greenhouse",
+        source_job_id="job-1",
+        title="Backend Engineer",
+        company_name="Co",
+        apply_url="https://a.com/1",
+        is_active=True,
+    )
+    db_session.add(job)
+    db_session.commit()
+
+    link = JobUserFeed(user_id=user_id, job_id=job.id, status=JobFeedStatus.NEW)
+    db_session.add(link)
+    db_session.commit()
+
+    response = client.patch(
+        f"/jobs/feed/{job.id}",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"status": "saved"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "saved"
+
+    db_session.refresh(link)
+    assert link.status == JobFeedStatus.SAVED
