@@ -18,7 +18,7 @@ from src.domain.jobs.repository import (
     JobRepository,
     JobUserFeedRepository,
 )
-from src.domain.jobs.source_registry import JOB_SOURCE_REGISTRY
+from src.domain.jobs.constants import JOB_SOURCE_REGISTRY
 from src.integrations.adapters.registry import get_adapter
 
 logger = logging.getLogger(__name__)

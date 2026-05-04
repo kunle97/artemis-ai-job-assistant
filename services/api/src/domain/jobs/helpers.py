@@ -5,7 +5,7 @@ Contains reusable token-resolution logic for board-backed job searches.
 """
 
 from src.domain.jobs.schemas import JobSearchRequest
-from src.domain.jobs.source_registry import JOB_SOURCE_REGISTRY
+from src.domain.jobs.constants import JOB_SOURCE_REGISTRY
 
 
 def resolve_board_tokens(payload: JobSearchRequest) -> list[str]:
