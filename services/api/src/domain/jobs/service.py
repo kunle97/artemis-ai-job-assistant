@@ -8,7 +8,7 @@ import logging
 
 from src.domain.jobs.repository import JobPreferencesRepository, JobRepository
 from src.domain.jobs.schemas import JobPreferencesUpsertRequest, JobSearchRequest
-from src.domain.jobs.helpers import resolve_board_tokens
+from src.domain.jobs.helpers import filter_job_by_title, resolve_board_tokens
 from src.integrations.adapters.registry import get_adapter
 
 logger = logging.getLogger(__name__)
@@ -23,9 +23,28 @@ class JobService:
         self.repository = repository
         self.preferences_repository = preferences_repository
 
-    def search_and_store_jobs(self, payload: JobSearchRequest, skip: int = 0, limit: int = 20) -> tuple[list, int]:
+    def search_and_store_jobs(
+        self,
+        payload: JobSearchRequest,
+        user_id=None,
+        skip: int = 0,
+        limit: int = 20,
+    ) -> tuple[list, int]:
         adapter = get_adapter(payload.source)
         board_tokens = resolve_board_tokens(payload)
+
+        positive_keywords: list[str] = []
+        negative_keywords: list[str] = []
+        if user_id is not None and self.preferences_repository is not None:
+            preferences = self.preferences_repository.get_or_create_by_user_id(user_id)
+            positive_keywords = preferences.positive_keywords or []
+            negative_keywords = preferences.negative_keywords or []
+            logger.info(
+                "[JobService] Applying title filters for user %s (%d positive, %d negative)",
+                user_id,
+                len(positive_keywords),
+                len(negative_keywords),
+            )
 
         stored_jobs = []
         seen_job_keys = set()
@@ -40,6 +59,13 @@ class JobService:
             for job_data in jobs:
                 job_key = (job_data["source"], job_data["source_job_id"])
                 if job_key in seen_job_keys:
+                    continue
+
+                if not filter_job_by_title(
+                    title=job_data.get("title") or "",
+                    positive=positive_keywords,
+                    negative=negative_keywords,
+                ):
                     continue
 
                 stored_job = self.repository.get_or_create(**job_data)

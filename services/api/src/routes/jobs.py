@@ -123,7 +123,12 @@ def search_jobs(
     service = _build_job_service(db)
 
     try:
-        jobs, total = service.search_and_store_jobs(payload, skip=skip, limit=limit)
+        jobs, total = service.search_and_store_jobs(
+            payload,
+            user_id=current_user.id,
+            skip=skip,
+            limit=limit,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 

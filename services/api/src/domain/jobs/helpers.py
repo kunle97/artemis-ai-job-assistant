@@ -63,3 +63,21 @@ def lookup_company_board_token(
         return source_map[company_key]["board_token"]
 
     raise ValueError(f"Unknown company '{company_name}' for source '{source}'.")
+
+
+def filter_job_by_title(title: str, positive: list[str], negative: list[str]) -> bool:
+    """Return True when a title passes positive/negative keyword rules.
+
+    Rules are case-insensitive:
+    - If `positive` is empty, the positive check passes.
+    - Otherwise at least one positive keyword must be present in the title.
+    - No negative keyword may be present in the title.
+    """
+    title_lower = (title or "").lower()
+    positive_keywords = [keyword.lower() for keyword in positive]
+    negative_keywords = [keyword.lower() for keyword in negative]
+
+    positive_match = not positive_keywords or any(keyword in title_lower for keyword in positive_keywords)
+    negative_match = any(keyword in title_lower for keyword in negative_keywords)
+
+    return positive_match and not negative_match
