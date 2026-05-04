@@ -6,8 +6,12 @@ Matches raw application questions to canonical saved answer keys.
 
 from __future__ import annotations
 
+import logging
+
 from src.domain.application_answers.matching.constants import QUESTION_ALIASES
 from src.domain.application_answers.matching.normalizer import QuestionTextNormalizer
+
+logger = logging.getLogger(__name__)
 
 
 class ApplicationAnswerMatcher:
@@ -18,6 +22,10 @@ class ApplicationAnswerMatcher:
     def __init__(self):
         self.normalizer = QuestionTextNormalizer()
         self._normalized_alias_map = self._build_alias_map()
+        logger.debug(
+            "[ApplicationAnswerMatcher] alias map built: %d entries",
+            len(self._normalized_alias_map),
+        )
 
     def match_question_to_key(self, question_text: str | None) -> str | None:
         """

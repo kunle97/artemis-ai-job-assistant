@@ -5,7 +5,11 @@ Coordinates resume upload, local file storage, parsing, persistence,
 and candidate profile synchronization.
 """
 
+import logging
+
 from src.domain.resume.helpers import validate_resume_file
+
+logger = logging.getLogger(__name__)
 from src.domain.resume.repository import ResumeRepository
 from src.integrations.storage.base import StorageService
 from src.integrations.storage.helpers import open_stored_file
@@ -38,6 +42,7 @@ class ResumeService:
         Save an uploaded resume, extract text, persist metadata,
         and sync parsed data into the candidate profile.
         """
+        logger.info("[ResumeService] upload_resume start user_id=%s filename=%s", user_id, upload_file.filename)
         validate_resume_file(upload_file, self.ALLOWED_EXTENSIONS)
 
         stored_path = self.storage_service.save_upload(upload_file)
@@ -49,6 +54,9 @@ class ResumeService:
             if is_temp:
                 import os
                 os.unlink(local_path)
+
+        extracted_len = len(parsed_result.get("extracted_text") or "")
+        logger.info("[ResumeService] parse complete extracted_chars=%d", extracted_len)
 
         resume = self.repository.create(
             user_id=user_id,
@@ -69,11 +77,23 @@ class ResumeService:
                 normalized_data=normalized_data,
             )
             missing_fields = result.get("missing_fields", [])
+            logger.info(
+                "[ResumeService] profile sync complete missing_fields=%d",
+                len(missing_fields),
+            )
+        else:
+            logger.warning("[ResumeService] no normalized_data in parsed result — profile not synced")
 
+        logger.info(
+            "[ResumeService] upload_resume complete resume_id=%s user_id=%s",
+            resume.id,
+            user_id,
+        )
         return resume, missing_fields
 
     def list_resumes(self, user_id):
         """
         Return all resumes for a user, newest first.
         """
+        logger.info("[ResumeService] list_resumes user_id=%s", user_id)
         return self.repository.get_by_user_id(user_id)

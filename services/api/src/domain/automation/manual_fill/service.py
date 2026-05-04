@@ -4,9 +4,13 @@ Manual fill / retry service.
 
 from __future__ import annotations
 
+import logging
+
 from src.domain.automation.fill.models import AutomationFillRequest
 from src.domain.automation.manual_fill.helpers import find_matching_override
 from src.domain.automation.manual_fill.models import AutomationManualFillRequest
+
+logger = logging.getLogger(__name__)
 
 
 class AutomationManualFillService:
@@ -15,11 +19,21 @@ class AutomationManualFillService:
         self.fill_service = fill_service
 
     def manual_fill(self, *, user_id, payload: AutomationManualFillRequest):
+        logger.info(
+            "[ManualFillService] manual_fill start user_id=%s url=%s overrides=%d",
+            user_id,
+            payload.application_url,
+            len(payload.field_overrides),
+        )
         inspect_result = self.automation_service.inspect_application_page(
             payload.application_url
         )
 
+        raw_field_count = len(inspect_result.get("fields", []))
+        logger.info("[ManualFillService] inspect complete fields=%d", raw_field_count)
+
         updated_fields: list[dict] = []
+        override_count = 0
 
         for field in inspect_result.get("fields", []):
             field_dict = dict(field)
@@ -31,8 +45,11 @@ class AutomationManualFillService:
 
             if matched_override:
                 field_dict["manual_override_value"] = matched_override.value
+                override_count += 1
 
             updated_fields.append(field_dict)
+
+        logger.info("[ManualFillService] applied overrides=%d", override_count)
 
         fill_result = self.fill_service.fill_safe_fields(
             user_id=user_id,
@@ -44,6 +61,11 @@ class AutomationManualFillService:
             ),
         )
 
+        logger.info(
+            "[ManualFillService] manual_fill complete filled=%d skipped=%d",
+            fill_result.filled_count,
+            fill_result.skipped_count,
+        )
         return {
             "inspect": inspect_result,
             "fill": fill_result,
