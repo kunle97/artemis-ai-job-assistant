@@ -19,6 +19,7 @@ from src.domain.applications.constants import (
     APPLICATION_STATUS_PLANNED,
     APPLICATION_STATUS_PLANNING,
     APPLICATION_STATUS_QUEUED,
+    APPLICATION_STATUS_SUBMITTED,
 )
 from src.domain.automation.planning.models import AutomationFillPlanRequest
 from src.domain.automation.schemas import ApplicationPageIntakeRequest
@@ -214,4 +215,134 @@ class ApplicationPipelineService:
             f"[PipelineService] run_pipeline complete application_id={application_id} "
             f"status={application.status}"
         )
+        return application
+
+    # ------------------------------------------------------------------
+    # Submission layer
+    # ------------------------------------------------------------------
+
+    def _validate_submission_guardrails(self, application) -> None:
+        """Raise ValueError listing every unmet guardrail condition.
+
+        All four conditions must be satisfied before a form is submitted:
+          (a) fill pipeline has completed (status is filled or awaiting_submission)
+          (b) readiness check has passed (profile + resume present)
+          (c) Application reached the 'filled' state
+          (d) explicit user authorization is set
+        """
+        errors: list[str] = []
+
+        # (a) + (c) The fill pipeline must have completed
+        if application.status not in (
+            APPLICATION_STATUS_FILLED,
+            APPLICATION_STATUS_AWAITING_SUBMISSION,
+        ):
+            errors.append(
+                f"fill pipeline has not completed (current status: '{application.status}'); "
+                "run POST /applications/{id}/run first"
+            )
+
+        # (b) Readiness check
+        if not application.is_ready_for_automation:
+            errors.append(
+                "application is not ready for automation — ensure a profile and resume are attached"
+            )
+
+        # (d) Explicit user authorization
+        if application.manual_review_required and not application.is_authorized_to_submit:
+            errors.append(
+                "user authorization is required before submission — "
+                "call POST /applications/{id}/authorize first"
+            )
+
+        if errors:
+            raise ValueError(
+                "Submission blocked by safety guardrails: " + "; ".join(errors)
+            )
+
+    def submit_application(self, user_id, application_id):
+        """Submit the application form after validating all safety guardrails.
+
+        Guardrails (all four must pass):
+          (a) fill pipeline completed (status == filled or awaiting_submission)
+          (b) readiness check passed (is_ready_for_automation == True)
+          (c) application reached 'filled' state
+          (d) explicit authorization flag set (is_authorized_to_submit == True
+              or manual_review_required == False)
+
+        On success the Application.status advances to 'submitted'.
+        On failure it is set to 'failed'.
+        """
+        logger.info(
+            f"[PipelineService] submit_application start application_id={application_id}"
+        )
+
+        application = self.application_repo.get_by_id(application_id)
+        if not application:
+            raise ValueError("Application not found.")
+
+        if str(application.user_id) != str(user_id):
+            raise PermissionError("You are not allowed to submit this application.")
+
+        self._validate_submission_guardrails(application)
+
+        job = self.job_repo.get_by_id(application.job_id)
+        if not job:
+            raise ValueError("Job not found for this application.")
+
+        try:
+            # Re-inspect and re-plan so the browser session is fresh
+            inspection_result = self.automation_service.inspect_application_page(
+                ApplicationPageIntakeRequest(application_url=job.apply_url)
+            )
+
+            if isinstance(inspection_result, dict):
+                raw_fields = inspection_result.get("fields", [])
+                page_title = inspection_result.get("title")
+                job_context = inspection_result.get("job_context")
+            else:
+                raw_fields = inspection_result.fields
+                page_title = inspection_result.title
+                job_context = inspection_result.job_context
+
+            inspected_fields = [
+                f.model_dump() if hasattr(f, "model_dump") else (f if isinstance(f, dict) else dict(f))
+                for f in raw_fields
+            ]
+
+            plan = self.planning_service.build_fill_plan(
+                user_id=user_id,
+                payload=AutomationFillPlanRequest(
+                    application_url=job.apply_url,
+                    inspected_fields=inspected_fields,
+                    page_title=page_title,
+                    job_context=job_context,
+                ),
+            )
+
+            self.fill_service.fill_and_submit_from_plan(
+                user_id=user_id,
+                application_url=job.apply_url,
+                plan=plan,
+                application_id=application_id,
+            )
+
+            application = self.application_repo.update_fields(
+                application_id, status=APPLICATION_STATUS_SUBMITTED
+            )
+            logger.info(
+                f"[PipelineService] submit_application complete application_id={application_id}"
+            )
+
+        except Exception as exc:
+            logger.error(
+                f"[PipelineService] submit_application failed application_id={application_id}: {exc}"
+            )
+            self.application_repo.update_fields(
+                application_id,
+                status=APPLICATION_STATUS_FAILED,
+                failure_reason=str(exc),
+            )
+            raise
+
         return application

@@ -7,6 +7,8 @@ Flags:
     --clear-screenshots   Delete all files in uploads/automation/ before running.
     --storage local       Use the local resume file path from RESUME_PATH (default).
     --storage s3          Fetch the latest S3 resume path from GET /resumes.
+    --enable-submit       After a successful fill, auto-authorize when needed,
+                          then call POST /applications/{id}/submit. Disabled by default.
 
 Flow:
     1. For each job URL, create or fetch a job record
@@ -116,6 +118,36 @@ def section(title: str) -> None:
 
 def log(msg: str) -> None:
     print(f"[{ts()}] {msg}")
+
+
+def _loading_indicator(stop_event: threading.Event, label: str) -> None:
+    """Render a simple terminal spinner until the stop event is set."""
+    frames = ["|", "/", "-", "\\"]
+    index = 0
+    while not stop_event.is_set():
+        print(f"\r[{ts()}] {label} {frames[index % len(frames)]}", end="", flush=True)
+        index += 1
+        stop_event.wait(0.2)
+
+    print("\r" + " " * 120 + "\r", end="", flush=True)
+
+
+def _start_loading_indicator(label: str) -> tuple[threading.Event, threading.Thread]:
+    """Start the loading indicator thread for a long-running request."""
+    stop_event = threading.Event()
+    worker = threading.Thread(
+        target=_loading_indicator,
+        args=(stop_event, label),
+        daemon=True,
+    )
+    worker.start()
+    return stop_event, worker
+
+
+def _stop_loading_indicator(stop_event: threading.Event, worker: threading.Thread) -> None:
+    """Stop and clean up the loading indicator thread."""
+    stop_event.set()
+    worker.join(timeout=1)
 
 
 # ─── SCREENSHOT CLEANER ─────────────────────────────────────────────────────
@@ -290,9 +322,27 @@ def get_application(token: str, app_id: str) -> dict:
     return resp.json()
 
 
+def authorize_application(token: str, app_id: str) -> dict:
+    """Explicitly authorize an application for submission."""
+    log(f"Authorizing application {app_id} for submission...")
+
+    resp = requests.post(
+        f"{BASE_URL}/applications/{app_id}/authorize",
+        headers={"Authorization": f"Bearer {token}"},
+        timeout=15,
+    )
+
+    if resp.status_code != 200:
+        log(f"  ❌ Authorization failed — HTTP {resp.status_code}: {resp.text}")
+        raise ValueError(f"Could not authorize application {app_id}: {resp.text}")
+
+    log(f"  ✓ Authorized application: {app_id}")
+    return resp.json()
+
+
 # ─── PIPELINE RUNNER ─────────────────────────────────────────────────────────
 
-def run_pipeline(token: str, job: dict, run_dir: str, resume_path: str | None = None) -> None:
+def run_pipeline(token: str, job: dict, run_dir: str, resume_path: str | None = None, enable_submit: bool = False) -> None:
     """Run the pipeline orchestrator for a job and track status progression."""
     label = job["label"]
     section(f"[{label}]  {job['application_url']}")
@@ -313,11 +363,15 @@ def run_pipeline(token: str, job: dict, run_dir: str, resume_path: str | None = 
         log(f"POST {BASE_URL}/applications/{application_id}/run")
 
         start = time.time()
-        resp = requests.post(
-            f"{BASE_URL}/applications/{application_id}/run",
-            headers={"Authorization": f"Bearer {token}"},
-            timeout=300,  # pipeline can take longer
-        )
+        pipeline_indicator = _start_loading_indicator("Pipeline running")
+        try:
+            resp = requests.post(
+                f"{BASE_URL}/applications/{application_id}/run",
+                headers={"Authorization": f"Bearer {token}"},
+                timeout=300,  # pipeline can take longer
+            )
+        finally:
+            _stop_loading_indicator(*pipeline_indicator)
         elapsed = round(time.time() - start, 1)
 
         if resp.status_code != 200:
@@ -329,6 +383,35 @@ def run_pipeline(token: str, job: dict, run_dir: str, resume_path: str | None = 
             final_status = app_data.get("status")
             log(f"✅ Pipeline complete — status: {final_status}")
             status_progression.append(final_status)
+
+            # Optionally run the submit step
+            if enable_submit and final_status in ("filled", "awaiting_submission"):
+                if app_data.get("manual_review_required") and not app_data.get(
+                    "is_authorized_to_submit"
+                ):
+                    log("--enable-submit set — manual review gate is active, authorizing first...")
+                    app_data = authorize_application(token, application_id)
+
+                log(f"--enable-submit set — calling POST /applications/{application_id}/submit ...")
+                submit_indicator = _start_loading_indicator("Submitting application")
+                try:
+                    submit_resp = requests.post(
+                        f"{BASE_URL}/applications/{application_id}/submit",
+                        headers={"Authorization": f"Bearer {token}"},
+                        timeout=300,
+                    )
+                finally:
+                    _stop_loading_indicator(*submit_indicator)
+                if submit_resp.status_code != 200:
+                    log(f"❌ Submit failed — HTTP {submit_resp.status_code}: {submit_resp.text}")
+                    error_msg = f"Submit HTTP {submit_resp.status_code}: {submit_resp.text}"
+                else:
+                    app_data = submit_resp.json()
+                    final_status = app_data.get("status")
+                    log(f"✅ Submit complete — status: {final_status}")
+                    status_progression.append(final_status)
+            elif enable_submit:
+                log(f"⚠️  --enable-submit set but status '{final_status}' is not eligible for submission; skipping.")
 
             # Fetch final application state to show results
             log(f"\n── FINAL APPLICATION STATE ──────────────────────")
@@ -389,12 +472,22 @@ def main() -> None:
         default="local",
         help="Resume storage: 'local' uses RESUME_PATH constant; 's3' fetches the path from GET /resumes.",
     )
+    parser.add_argument(
+        "--enable-submit",
+        action="store_true",
+        default=False,
+        help=(
+            "After a successful fill, auto-authorize when required and then call "
+            "POST /applications/{id}/submit. Disabled by default."
+        ),
+    )
     args = parser.parse_args()
 
     section("Artemis pipeline orchestrator runner")
     log(f"Base URL : {BASE_URL}")
     log(f"Jobs     : {len(JOBS)}")
     log(f"Storage  : {args.storage}")
+    log(f"Submit   : {'enabled' if args.enable_submit else 'disabled (use --enable-submit to turn on)'}")
 
     if args.clear_screenshots:
         log("--clear-screenshots flag set — clearing screenshots...")
@@ -416,7 +509,7 @@ def main() -> None:
 
     for i, job in enumerate(JOBS, start=1):
         log(f"\n▶ Job {i}/{len(JOBS)}: {job['label']}")
-        run_pipeline(token, job, run_dir, resume_path=resume_override)
+        run_pipeline(token, job, run_dir, resume_path=resume_override, enable_submit=args.enable_submit)
         if i < len(JOBS):
             log("Waiting 3 s before next job...")
             time.sleep(3)

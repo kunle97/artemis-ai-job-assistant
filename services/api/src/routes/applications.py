@@ -150,3 +150,19 @@ def run_application_pipeline(
         raise HTTPException(status_code=403, detail=str(exc))
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
+
+
+@router.post("/{application_id}/submit", response_model=ApplicationRead)
+def submit_application(
+    application_id: UUID,
+    current_user=Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    service = _build_pipeline_service(db)
+
+    try:
+        return service.submit_application(user_id=current_user.id, application_id=application_id)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))

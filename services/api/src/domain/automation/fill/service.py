@@ -119,12 +119,46 @@ class AutomationFillService:
             profile=profile,
         )
 
+    def fill_and_submit_from_plan(
+        self,
+        user_id,
+        application_url: str,
+        plan,
+        application_id=None,
+        resume_file_path: str | None = None,
+    ) -> AutomationFillResult:
+        """Fill the form from a pre-built plan and click the submit button.
+
+        Used by the submission layer after all safety guardrails have passed.
+        """
+        application_url = normalize_application_url(application_url)
+
+        if resume_file_path is None and application_id is not None:
+            dummy_payload = AutomationFillRequest(
+                application_url=application_url,
+                application_id=application_id,
+            )
+            resume_file_path = self._resolve_resume_file_path(
+                user_id=user_id,
+                payload=dummy_payload,
+            )
+
+        profile = self.planning_service.profile_repo.get_by_user_id(user_id)
+        return self._execute_fill(
+            application_url=application_url,
+            plan=plan,
+            resume_file_path=resume_file_path,
+            profile=profile,
+            should_submit=True,
+        )
+
     def _execute_fill(
         self,
         application_url: str,
         plan,
         resume_file_path: str | None,
         profile,
+        should_submit: bool = False,
     ) -> AutomationFillResult:
         """Run Playwright to fill the form using a pre-built plan."""
         fill_results: list[AutomationFillFieldResult] = []
@@ -175,6 +209,13 @@ class AutomationFillService:
                             if race_followup_result.fill_status == "filled":
                                 fill_results.append(race_followup_result)
 
+                if should_submit:
+                    submitted = self._click_submit_button(page, plan)
+                    if submitted:
+                        logger.info("[AutomationFill] Submit button clicked successfully.")
+                    else:
+                        logger.warning("[AutomationFill] Could not locate submit button on page.")
+
                 screenshot_path = self._save_screenshot(page, application_url=application_url)
 
             finally:
@@ -185,8 +226,10 @@ class AutomationFillService:
         skipped = len(fill_results) - filled
         unresolved_fields = self._build_unresolved_fields(fill_results)
 
+        completion_note = "Fill + submit pass completed." if should_submit else "Safe fill pass completed."
         logger.info(
-            f"[AutomationFill] Safe fill complete: filled={filled}, skipped={skipped}, unresolved={len(unresolved_fields)}"
+            f"[AutomationFill] {'Fill+submit' if should_submit else 'Safe fill'} complete: "
+            f"filled={filled}, skipped={skipped}, unresolved={len(unresolved_fields)}"
         )
 
         return AutomationFillResult(
@@ -196,7 +239,7 @@ class AutomationFillService:
             skipped_count=skipped,
             screenshot_path=screenshot_path,
             unresolved_fields=unresolved_fields,
-            notes=plan.notes + ["Safe fill pass completed."],
+            notes=plan.notes + [completion_note],
         )
 
     def _resolve_resume_file_path(self, *, user_id, payload: AutomationFillRequest) -> str | None:
@@ -355,6 +398,54 @@ class AutomationFillService:
             return False
 
         return is_backing_input_label(label)
+
+    def _click_submit_button(self, page: Page, plan) -> bool:
+        """Locate and click the submit button on the application form.
+
+        Attempts in order:
+          1. ``button[type='submit']`` or ``input[type='submit']``
+          2. Button whose text matches the submit field label from the plan
+          3. Buttons matching common submit-button labels
+        Returns True if a button was successfully clicked.
+        """
+        from src.domain.automation.planning.constants import FIELD_ROLE_SUBMIT
+
+        submit_field = next(
+            (f for f in plan.fields if getattr(f, "classified_role", None) == FIELD_ROLE_SUBMIT),
+            None,
+        )
+
+        # Strategy 1: type="submit" element
+        try:
+            locator = page.locator("button[type='submit'], input[type='submit']")
+            if locator.count() > 0:
+                locator.first.click()
+                page.wait_for_timeout(2000)
+                return True
+        except Exception as exc:
+            logger.debug(f"[AutomationFill] type=submit click failed: {exc}")
+
+        # Strategy 2: button matching plan label
+        if submit_field and submit_field.label:
+            try:
+                page.get_by_role("button", name=submit_field.label, exact=False).first.click()
+                page.wait_for_timeout(2000)
+                return True
+            except Exception as exc:
+                logger.debug(f"[AutomationFill] Plan-label submit click failed: {exc}")
+
+        # Strategy 3: common submit labels
+        for label in ("Submit Application", "Submit Your Application", "Submit", "Apply Now", "Apply"):
+            try:
+                btn = page.get_by_role("button", name=label, exact=False)
+                if btn.count() > 0:
+                    btn.first.click()
+                    page.wait_for_timeout(2000)
+                    return True
+            except Exception as exc:
+                logger.debug(f"[AutomationFill] Label '{label}' submit click failed: {exc}")
+
+        return False
 
     def _build_result(
         self,
