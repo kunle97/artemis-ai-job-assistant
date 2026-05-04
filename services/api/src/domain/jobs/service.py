@@ -23,7 +23,7 @@ class JobService:
         self.repository = repository
         self.preferences_repository = preferences_repository
 
-    def search_and_store_jobs(self, payload: JobSearchRequest):
+    def search_and_store_jobs(self, payload: JobSearchRequest, skip: int = 0, limit: int = 20) -> tuple[list, int]:
         adapter = get_adapter(payload.source)
         board_tokens = resolve_board_tokens(payload)
 
@@ -46,10 +46,14 @@ class JobService:
                 stored_jobs.append(stored_job)
                 seen_job_keys.add(job_key)
 
-        return stored_jobs
+        total = len(stored_jobs)
+        return stored_jobs[skip : skip + limit], total
 
     def list_jobs(self):
         return self.repository.list_all()
+
+    def list_jobs_paginated(self, skip: int = 0, limit: int = 20) -> tuple[list, int]:
+        return self.repository.list_paginated(skip=skip, limit=limit)
 
     def get_preferences_for_user(self, user_id):
         if self.preferences_repository is None:

@@ -42,6 +42,18 @@ class JobRepository:
     def list_all(self):
         return self.db.query(Job).order_by(Job.created_at.desc()).all()
 
+    def list_paginated(self, skip: int = 0, limit: int = 20) -> tuple[list, int]:
+        base = self.db.query(Job).order_by(Job.created_at.desc())
+        total = base.count()
+        jobs = base.offset(skip).limit(limit).all()
+        return jobs, total
+
+    def list_active_by_sources(self, enabled_sources: list[str]) -> list["Job"]:
+        query = self.db.query(Job).filter(Job.is_active == True)  # noqa: E712
+        if enabled_sources:
+            query = query.filter(Job.source.in_(enabled_sources))
+        return query.order_by(Job.created_at.desc()).all()
+
 
 class JobPreferencesRepository:
     def __init__(self, db: Session):

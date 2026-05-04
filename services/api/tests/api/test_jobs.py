@@ -23,5 +23,8 @@ def test_search_jobs_with_multiple_companies(client, sample_user_payload):
     )
 
     assert search_response.status_code == 200
-    jobs = search_response.json()
-    assert isinstance(jobs, list)
+    data = search_response.json()
+    assert "total" in data
+    assert "skip" in data
+    assert "limit" in data
+    assert isinstance(data["jobs"], list)

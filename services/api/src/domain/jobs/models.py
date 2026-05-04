@@ -21,9 +21,9 @@ class Job(Base):
     source = Column(String(100), nullable=False)
     source_job_id = Column(String(255), nullable=False)
 
-    title = Column(String(255), nullable=False)
+    title = Column(Text, nullable=False)
     company_name = Column(String(255), nullable=False)
-    location = Column(String(255), nullable=True)
+    location = Column(Text, nullable=True)
     workplace_type = Column(String(50), nullable=True)
 
     description = Column(Text, nullable=True)

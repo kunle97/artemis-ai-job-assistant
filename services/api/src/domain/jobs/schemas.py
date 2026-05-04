@@ -94,3 +94,16 @@ class JobRead(BaseModel):
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class FeedScanResponse(BaseModel):
+    new_jobs_found: int
+
+
+class FeedPage(BaseModel):
+    total: int
+    skip: int
+    limit: int
+    has_next: bool
+    next_url: str | None
+    jobs: list[JobRead]

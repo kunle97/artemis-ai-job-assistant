@@ -133,6 +133,54 @@ class JobFeedService:
         )
         return new_jobs
 
+    def get_feed(self, skip: int = 0, limit: int = 20) -> tuple[list, int]:
+        """Return a paginated, preference-filtered view of the job pool.
+
+        Filters are applied at read time against the user's current preferences.
+        Returns (page_jobs, total_matching_count).
+        """
+        logger.info("[JobFeedService] Loading feed for user %s (skip=%d, limit=%d)", self.user_id, skip, limit)
+
+        preferences = self._preferences_repo.get_or_create_by_user_id(self.user_id)
+        jobs = self._job_repo.list_active_by_sources(preferences.enabled_sources or [])
+        filtered = self._apply_preference_filters(jobs, preferences)
+
+        total = len(filtered)
+        page = filtered[skip : skip + limit]
+
+        logger.info("[JobFeedService] Feed for user %s: %d total match, returning %d", self.user_id, total, len(page))
+        return page, total
+
+    def _apply_preference_filters(self, jobs: list, preferences) -> list:
+        """Apply user preference keyword and attribute filters to a list of jobs."""
+        title_keywords = [t.lower() for t in (preferences.target_titles or [])]
+        positive_keywords = [k.lower() for k in (preferences.positive_keywords or [])]
+        negative_keywords = [k.lower() for k in (preferences.negative_keywords or [])]
+
+        filtered = []
+        for job in jobs:
+            title_lower = (job.title or "").lower()
+            desc_lower = (job.description or "").lower()
+            searchable = f"{title_lower} {desc_lower}"
+
+            if title_keywords and not any(kw in title_lower for kw in title_keywords):
+                continue
+            # Check positive_keywords against title and description. Title is always present
+            # so this filter always runs. If there is no description, the title alone is checked.
+            if positive_keywords and not any(kw in searchable for kw in positive_keywords):
+                continue
+            if negative_keywords and any(kw in searchable for kw in negative_keywords):
+                continue
+            if preferences.remote_only and (job.workplace_type or "").lower() != "remote":
+                continue
+            # Only exclude when the job explicitly advertises a salary below the minimum.
+            # Jobs with no salary data are kept — absence of data is not disqualifying.
+            if preferences.salary_min and job.salary_min is not None and job.salary_min < preferences.salary_min:
+                continue
+
+            filtered.append(job)
+        return filtered
+
     def _fetch_board(self, source: str, board_token: str) -> list[dict]:
         """Fetch normalized jobs from a single board via the appropriate adapter."""
         adapter = get_adapter(source)

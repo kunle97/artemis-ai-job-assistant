@@ -33,7 +33,7 @@ class Settings(BaseSettings):
     from_email: str = "noreply@artemis.dev"
 
     allowed_origins: list[str] = ["http://localhost:3000", "http://localhost:5173"]
-    revoked_token_cleanup_retention_days: int = 0
+    api_base_url: str | None = None  # e.g. https://api.artemis.dev — used to build absolute URLs behind a proxy
 
     sentry_dsn: str | None = None
     sentry_environment: str = "development"
