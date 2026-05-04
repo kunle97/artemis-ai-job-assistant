@@ -29,4 +29,10 @@ JOB_SOURCE_REGISTRY = {
             "display_name": "Netflix",
         },
     },
+    "ashby": {
+        "kaizen labs": {
+            "board_token": "kaizenlabs",
+            "display_name": "Kaizen Labs",
+        },
+    },
 }
