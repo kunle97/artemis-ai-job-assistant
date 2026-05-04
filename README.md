@@ -69,6 +69,64 @@ python -m pytest tests/ -v
 python -m pytest tests/ --cov=src --cov-report=term-missing
 ```
 
+## Dev Scripts
+
+All scripts live in `services/api/scripts/` and must be run from `services/api/` with the virtualenv active.
+
+### Feed Scanner
+
+Scan ATS job boards and log all matching jobs in detail.
+
+```bash
+cd services/api
+source venv/bin/activate
+
+# Scan all 72 configured boards
+python scripts/run_feed_scan.py
+
+# Scope to a single ATS
+python scripts/run_feed_scan.py --source ashby
+
+# Filter to specific companies
+python scripts/run_feed_scan.py --companies stripe,linear,ramp
+
+# Filter by job title keywords (OR logic)
+python scripts/run_feed_scan.py --keywords "engineer,backend,python"
+
+# Summary table only — skip per-job detail
+python scripts/run_feed_scan.py --summary-only
+
+# Persist new jobs to DB for a user
+python scripts/run_feed_scan.py --persist --user-id <uuid>
+```
+
+### Pipeline Fill Runner
+
+Authenticate against a running API instance, create applications, and run the automation pipeline end-to-end.
+Configure the target URLs in `scripts/constants.py` before running.
+
+```bash
+cd services/api
+source venv/bin/activate
+
+# Run with local resume
+python scripts/test_fill_runner.py
+
+# Run with the latest S3-backed resume
+python scripts/test_fill_runner.py --storage s3
+
+# Clear screenshots before running
+python scripts/test_fill_runner.py --clear-screenshots
+
+# Enable auto-submit after a successful fill
+python scripts/test_fill_runner.py --enable-submit
+
+# Combine flags
+python scripts/test_fill_runner.py --clear-screenshots --storage s3 --enable-submit
+```
+
+Results are saved per-run under `scripts/test_results/<TIMESTAMP>/`.
+
 ## Status
 
 Early setup / MVP in progress.

@@ -34,7 +34,7 @@ import time
 from datetime import datetime
 
 import requests
-from test_application_urls import JOBS, RESUME_PATH
+from constants import JOBS, RESUME_PATH
 # ─── CONFIG ──────────────────────────────────────────────────────────────────
 
 BASE_URL = "http://localhost:8000"
@@ -43,7 +43,7 @@ PASSWORD = "password"
 
 SCREENSHOTS_DIR = os.path.join(
     os.path.dirname(__file__),
-    "../services/api/uploads/automation",
+    "../uploads/automation",
 )
 
 RESULTS_DIR = os.path.join(os.path.dirname(__file__), "test_results")
