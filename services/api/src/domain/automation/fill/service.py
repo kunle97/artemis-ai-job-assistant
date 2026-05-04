@@ -38,7 +38,7 @@ from src.domain.automation.fill.handlers.uploads import (
 )
 from src.domain.automation.fill.helpers import is_backing_input_label
 from src.integrations.automation.helpers import normalize_application_url, prepare_application_page
-from src.integrations.automation.browser import create_stealth_context
+from src.integrations.automation.browser import create_stealth_context, human_delay, simulate_mouse_movement
 from src.domain.automation.fill.models import (
     AutomationFillFieldResult,
     AutomationFillRequest,
@@ -183,6 +183,9 @@ class AutomationFillService:
                 prepare_application_page(page, application_url)
                 page.wait_for_timeout(800)
 
+                # Simulate human presence before touching any fields
+                simulate_mouse_movement(page)
+
                 for planned_field in plan.fields:
                     field_dict = planned_field.model_dump()
 
@@ -193,6 +196,9 @@ class AutomationFillService:
                         platform=platform,
                     )
                     fill_results.append(result)
+
+                    if result.fill_status == "filled":
+                        human_delay(150, 450)
 
                     if (
                         platform == PLATFORM_GREENHOUSE
@@ -422,6 +428,7 @@ class AutomationFillService:
         try:
             locator = page.locator("button[type='submit'], input[type='submit']")
             if locator.count() > 0:
+                human_delay(400, 900)  # pause before clicking submit — bot detectors watch for instant submits
                 locator.first.click()
                 page.wait_for_timeout(2000)
                 return True

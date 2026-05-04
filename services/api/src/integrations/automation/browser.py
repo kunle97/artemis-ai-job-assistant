@@ -7,7 +7,11 @@ bot-detection fingerprinting on ATS platforms like Lever.
 
 from __future__ import annotations
 
-from playwright.sync_api import BrowserContext, Playwright
+import os
+import random
+import time
+
+from playwright.sync_api import BrowserContext, Page, Playwright
 
 _STEALTH_UA = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
@@ -32,8 +36,9 @@ _STEALTH_LAUNCH_ARGS = [
 # Patches the most commonly fingerprinted navigator/window properties
 # that betray a headless Chromium session.
 _STEALTH_INIT_SCRIPT = """
-// Remove webdriver flag
-Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+// Patch 1: Remove webdriver flag — delete from prototype so the property is truly absent
+// (defineProperty still leaves it present; delete makes it undetectable)
+delete Object.getPrototypeOf(navigator).webdriver;
 
 // Spoof plugins — headless has 0, real Chrome has several
 Object.defineProperty(navigator, 'plugins', {
@@ -65,9 +70,17 @@ WebGLRenderingContext.prototype.getParameter = function(parameter) {
   return getParameter.call(this, parameter);
 };
 
-// Ensure chrome runtime object exists (absent in plain headless)
-if (!window.chrome) {
-  window.chrome = { runtime: {} };
+// Patch 2: chrome.runtime — full enum object expected by Cloudflare and sannysoft
+if (!window.chrome) window.chrome = {};
+if (!window.chrome.runtime) {
+  window.chrome.runtime = {
+    PlatformOs: { MAC: 'mac', WIN: 'win', ANDROID: 'android', CROS: 'cros', LINUX: 'linux', OPENBSD: 'openbsd' },
+    PlatformArch: { ARM: 'arm', X86_32: 'x86-32', X86_64: 'x86-64' },
+    PlatformNaclArch: { ARM: 'arm', X86_32: 'x86-32', X86_64: 'x86-64' },
+    RequestUpdateCheckStatus: { THROTTLED: 'throttled', NO_UPDATE: 'no_update', UPDATE_AVAILABLE: 'update_available' },
+    OnInstalledReason: { INSTALL: 'install', UPDATE: 'update', CHROME_UPDATE: 'chrome_update', SHARED_MODULE_UPDATE: 'shared_module_update' },
+    OnRestartRequiredReason: { APP_UPDATE: 'app_update', OS_UPDATE: 'os_update', PERIODIC: 'periodic' }
+  };
 }
 
 // Spoof permissions query so Notification.permission doesn't betray automation
@@ -78,6 +91,30 @@ if (originalQuery) {
       ? Promise.resolve({ state: Notification.permission })
       : originalQuery(parameters);
 }
+
+// Patch 7: outerWidth / outerHeight — always override; headless can report 0 or equal-to-inner
+Object.defineProperty(window, 'outerWidth',  { get: () => window.innerWidth  + 16 });
+Object.defineProperty(window, 'outerHeight', { get: () => window.innerHeight + 88 });
+
+// Patch 8: Canvas fingerprint noise — intercept at getContext level so ALL canvas reads are
+// affected, not just export. XOR-flips one bit every 400 bytes (reference approach).
+(function () {
+  const _getContext = HTMLCanvasElement.prototype.getContext;
+  HTMLCanvasElement.prototype.getContext = function (type, ...args) {
+    const ctx = _getContext.call(this, type, ...args);
+    if (type === '2d' && ctx) {
+      const _getImageData = ctx.getImageData.bind(ctx);
+      ctx.getImageData = function (x, y, w, h) {
+        const data = _getImageData(x, y, w, h);
+        for (let i = 0; i < data.data.length; i += 400) {
+          data.data[i] ^= 1;
+        }
+        return data;
+      };
+    }
+    return ctx;
+  };
+})();
 """
 
 
@@ -86,10 +123,18 @@ def create_stealth_context(playwright: Playwright) -> tuple:
 
     Applies a multi-layer stealth configuration to pass common bot-detection
     checks used by ATS platforms (Lever nCaptcha, DataDome, etc.).
+
+    Set the ``PLAYWRIGHT_BROWSER_CHANNEL`` environment variable to ``chrome``
+    to use the locally installed Google Chrome binary instead of bundled
+    Chromium (recommended for production, requires Chrome to be installed).
     """
+    channel = os.environ.get("PLAYWRIGHT_BROWSER_CHANNEL") or None
+    # headless=True by default; set PLAYWRIGHT_HEADLESS=false (with Xvfb) for full stealth in production
+    headless = os.environ.get("PLAYWRIGHT_HEADLESS", "true").lower() == "true"
     browser = playwright.chromium.launch(
-        headless=True,
+        headless=headless,
         args=_STEALTH_LAUNCH_ARGS,
+        channel=channel,
     )
     context: BrowserContext = browser.new_context(
         user_agent=_STEALTH_UA,
@@ -122,3 +167,45 @@ class PlaywrightBrowser:
             finally:
                 context.close()
                 browser.close()
+
+
+# ---------------------------------------------------------------------------
+# Human-behaviour helpers
+# ---------------------------------------------------------------------------
+
+def human_delay(min_ms: int = 200, max_ms: int = 600) -> None:
+    """Sleep for a random duration between *min_ms* and *max_ms* milliseconds.
+
+    Simulates natural pauses between user actions to reduce timing-based bot
+    detection signals.
+    """
+    time.sleep(random.randint(min_ms, max_ms) / 1000.0)
+
+
+def human_type(page: Page, selector: str, text: str, delay_ms: int = 60) -> None:
+    """Type *text* into *selector* one character at a time with random delays.
+
+    Each keystroke is separated by a random interval in the range
+    [delay_ms // 2, delay_ms * 2] milliseconds, mimicking natural typing.
+    The field is clicked first to ensure focus.
+    """
+    page.click(selector)
+    for char in text:
+        page.keyboard.type(char)
+        time.sleep(random.randint(delay_ms // 2, delay_ms * 2) / 1000.0)
+
+
+def simulate_mouse_movement(page: Page, steps: int = 5) -> None:
+    """Move the mouse in small random increments across the visible viewport.
+
+    Each move uses ``steps=10`` intermediate positions (Playwright interpolation)
+    to produce a smooth Bezier-like path that defeats both "no movement" and
+    "teleporting cursor" bot-detection heuristics.
+    """
+    viewport = page.viewport_size or {"width": 1280, "height": 800}
+    w, h = viewport["width"], viewport["height"]
+    for _ in range(steps):
+        x = random.randint(50, w - 50)
+        y = random.randint(50, h - 50)
+        page.mouse.move(x, y, steps=10)
+        human_delay(30, 120)
