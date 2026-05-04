@@ -163,6 +163,7 @@ class AutomationFillService:
         """Run Playwright to fill the form using a pre-built plan."""
         fill_results: list[AutomationFillFieldResult] = []
         screenshot_path: str | None = None
+        submission_confirmed: bool = False
         platform = _detect_platform(application_url)
         has_explicit_race_field = any(_is_race_label(getattr(field, "label", None)) for field in plan.fields)
         race_followup_attempted = False
@@ -213,6 +214,7 @@ class AutomationFillService:
                     submitted = self._click_submit_button(page, plan)
                     if submitted:
                         logger.info("[AutomationFill] Submit button clicked successfully.")
+                        submission_confirmed = self._verify_submission_confirmation(page)
                     else:
                         logger.warning("[AutomationFill] Could not locate submit button on page.")
 
@@ -240,6 +242,7 @@ class AutomationFillService:
             screenshot_path=screenshot_path,
             unresolved_fields=unresolved_fields,
             notes=plan.notes + [completion_note],
+            submission_confirmed=submission_confirmed,
         )
 
     def _resolve_resume_file_path(self, *, user_id, payload: AutomationFillRequest) -> str | None:
@@ -445,6 +448,50 @@ class AutomationFillService:
             except Exception as exc:
                 logger.debug(f"[AutomationFill] Label '{label}' submit click failed: {exc}")
 
+        return False
+
+    _SUBMISSION_CONFIRMATION_PHRASES = (
+        "thank you for applying",
+        "thank you for your application",
+        "your application has been submitted",
+        "application submitted",
+        "application received",
+        "application complete",
+        "successfully submitted",
+        "successfully applied",
+        "we've received your application",
+        "we received your application",
+        "you have applied",
+        "you've applied",
+        "application was submitted",
+    )
+
+    def _verify_submission_confirmation(self, page: Page) -> bool:
+        """Wait briefly for post-submit navigation then scan page text for confirmation.
+
+        Returns True if a confirmation phrase is found, False otherwise.
+        """
+        try:
+            page.wait_for_load_state("networkidle", timeout=8000)
+        except Exception:
+            # Timeout is acceptable — the page may not fully idle; still check content
+            pass
+
+        try:
+            content = page.inner_text("body").lower()
+        except Exception as exc:
+            logger.debug(f"[AutomationFill] Could not read page body for confirmation check: {exc}")
+            return False
+
+        for phrase in self._SUBMISSION_CONFIRMATION_PHRASES:
+            if phrase in content:
+                logger.info(f"[AutomationFill] Submission confirmation detected: '{phrase}'")
+                return True
+
+        logger.warning(
+            "[AutomationFill] No submission confirmation phrase found on page after submit. "
+            "The form may not have been submitted successfully."
+        )
         return False
 
     def _build_result(

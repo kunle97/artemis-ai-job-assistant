@@ -320,12 +320,18 @@ class ApplicationPipelineService:
                 ),
             )
 
-            self.fill_service.fill_and_submit_from_plan(
+            fill_result = self.fill_service.fill_and_submit_from_plan(
                 user_id=user_id,
                 application_url=job.apply_url,
                 plan=plan,
                 application_id=application_id,
             )
+
+            if not fill_result.submission_confirmed:
+                raise ValueError(
+                    "Submit button was clicked but no confirmation message was detected on the page. "
+                    "The application may not have been submitted successfully."
+                )
 
             application = self.application_repo.update_fields(
                 application_id, status=APPLICATION_STATUS_SUBMITTED

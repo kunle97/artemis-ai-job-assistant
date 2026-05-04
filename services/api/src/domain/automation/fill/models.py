@@ -43,3 +43,4 @@ class AutomationFillResult(BaseModel):
     screenshot_path: str | None = None
     unresolved_fields: list[AutomationUnresolvedField] = Field(default_factory=list)
     notes: list[str] = Field(default_factory=list)
+    submission_confirmed: bool = False
