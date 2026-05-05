@@ -1,0 +1,12 @@
+.git
+.gitignore
+.DS_Store
+node_modules
+services/api/venv
+services/api/.pytest_cache
+services/api/.coverage
+services/api/uploads
+services/api/scripts/test_results
+services/api/__pycache__
+services/api/src/__pycache__
+services/api/tests/__pycache__

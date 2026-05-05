@@ -4,6 +4,8 @@ Job repository.
 Handles DB operations for jobs.
 """
 
+from __future__ import annotations
+
 from sqlalchemy.orm import Session, joinedload
 
 from src.domain.jobs.models import Job, JobFeedStatus, JobPreferences, JobUserFeed
@@ -92,6 +94,11 @@ class JobPreferencesRepository:
         self.db.commit()
         self.db.refresh(preferences)
         return preferences
+
+    def list_user_ids_with_enabled_sources(self) -> list:
+        """Return user IDs whose job preferences have at least one enabled source."""
+        preferences = self.db.query(JobPreferences).all()
+        return [preference.user_id for preference in preferences if preference.enabled_sources]
 
 
 class JobUserFeedRepository:

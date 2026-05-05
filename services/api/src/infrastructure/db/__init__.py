@@ -1,30 +1,28 @@
-"""
-Database model registry.
+"""Database model registry helpers."""
 
-This module ensures all SQLAlchemy models are imported so that
-they are registered with the global Base metadata.
 
-Any time a new model is added, it must be imported here so that
-`Base.metadata.create_all()` can detect and create its table.
-"""
+def register_models() -> None:
+    """Import all SQLAlchemy models so they are attached to Base metadata."""
+    from src.domain.application_answers.intents.models import ApplicationAnswerIntent
+    from src.domain.application_answers.models import ApplicationAnswer
+    from src.domain.applications.models import Application
+    from src.domain.auth.models import RevokedToken, User
+    from src.domain.jobs.models import Job, JobPreferences, JobUserFeed
+    from src.domain.profile.models import CandidateProfile
+    from src.domain.resume.models import Resume
 
-from src.domain.auth.models import RevokedToken, User
-from src.domain.profile.models import CandidateProfile
-from src.domain.resume.models import Resume
-from src.domain.jobs.models import Job, JobPreferences, JobUserFeed
-from src.domain.applications.models import Application
-from src.domain.application_answers.models import ApplicationAnswer
-from src.domain.application_answers.intents.models import ApplicationAnswerIntent
+    _ = (
+        User,
+        RevokedToken,
+        CandidateProfile,
+        Resume,
+        Job,
+        JobPreferences,
+        JobUserFeed,
+        Application,
+        ApplicationAnswer,
+        ApplicationAnswerIntent,
+    )
 
-__all__ = [
-    "User",
-    "RevokedToken",
-    "CandidateProfile",
-    "Resume",
-    "Job",
-    "JobPreferences",
-    "JobUserFeed",
-    "Application",
-    "ApplicationAnswer",
-    "ApplicationAnswerIntent",
-]
+
+__all__ = ["register_models"]

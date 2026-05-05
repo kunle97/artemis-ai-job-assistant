@@ -47,6 +47,17 @@ uvicorn src.main:app --reload --host 0.0.0.0 --port 8000
 
 The API will be available at `http://localhost:8000`.
 
+### Worker Services
+
+Run the periodic feed scan worker and Celery beat scheduler with Docker Compose.
+
+```bash
+docker compose up -d --build postgres redis worker beat
+```
+
+The scan cadence is controlled by `JOB_SCAN_INTERVAL_HOURS` and defaults to `24`.
+Set it before starting Compose if you want a different interval.
+
 ### Running Tests
 
 ```bash

@@ -41,6 +41,7 @@ class Settings(BaseSettings):
     enable_resume_parser: bool = True
     enable_automation: bool = True
     save_screenshots: bool = False
+    job_scan_interval_hours: int = 24
 
     class Config:
         env_file = (".env", f".env.{_app_env}")

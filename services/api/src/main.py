@@ -11,8 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
-# Ensure all models are registered with SQLAlchemy Base metadata
-import src.infrastructure.db  # noqa: F401
+from src.infrastructure.db import register_models
 from src.core.config import settings
 from src.core.rate_limiter import limiter
 
@@ -41,6 +40,7 @@ def _validate_security_settings() -> None:
 
 
 _validate_security_settings()
+register_models()
 
 logging.basicConfig(
     level=logging.INFO,

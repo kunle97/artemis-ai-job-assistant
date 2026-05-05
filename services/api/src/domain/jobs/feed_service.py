@@ -20,6 +20,7 @@ from src.domain.jobs.repository import (
 )
 from src.domain.jobs.constants import JOB_SOURCE_REGISTRY
 from src.domain.jobs.helpers import matches_job_location
+from src.infrastructure.db.session import SessionLocal
 from src.integrations.adapters.registry import get_adapter
 
 logger = logging.getLogger(__name__)
@@ -40,6 +41,18 @@ class JobFeedService:
         self._preferences_repo = JobPreferencesRepository(db)
         self._job_repo = JobRepository(db)
         self._user_feed_repo = JobUserFeedRepository(db)
+
+    @classmethod
+    def scan_for_user(cls, user_id) -> int:
+        """Run a feed scan for one user using a managed DB session."""
+        logger.info("[JobFeedService] Running managed feed scan for user %s", user_id)
+        db = SessionLocal()
+        try:
+            service = cls(user_id=user_id, db=db)
+            new_jobs = service.scan()
+            return len(new_jobs)
+        finally:
+            db.close()
 
     def scan(self) -> list[Job]:
         """Run a full feed scan for the user.

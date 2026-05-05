@@ -19,5 +19,45 @@ services:
     ports:
       - "6379:6379"
 
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    image: artemis-worker:dev
+    container_name: artemis_worker
+    restart: always
+    working_dir: /app
+    command: celery -A services.worker.celery_app:celery_app worker --loglevel=info
+    environment:
+      DATABASE_URL: postgresql://artemis:artemis@postgres:5432/artemis
+      REDIS_URL: redis://redis:6379/0
+      PYTHONPATH: /app:/app/services/api
+      JOB_SCAN_INTERVAL_HOURS: ${JOB_SCAN_INTERVAL_HOURS:-24}
+    depends_on:
+      - postgres
+      - redis
+    volumes:
+      - ./:/app
+
+  beat:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    image: artemis-worker:dev
+    container_name: artemis_beat
+    restart: always
+    working_dir: /app
+    command: celery -A services.worker.celery_app:celery_app beat --loglevel=info
+    environment:
+      DATABASE_URL: postgresql://artemis:artemis@postgres:5432/artemis
+      REDIS_URL: redis://redis:6379/0
+      PYTHONPATH: /app:/app/services/api
+      JOB_SCAN_INTERVAL_HOURS: ${JOB_SCAN_INTERVAL_HOURS:-24}
+    depends_on:
+      - postgres
+      - redis
+    volumes:
+      - ./:/app
+
 volumes:
   postgres_data:
