@@ -48,3 +48,11 @@ class ApplicationRead(BaseModel):
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class ApplicationRunDispatchRead(BaseModel):
+    """Response payload for async pipeline dispatch calls."""
+
+    application_id: UUID
+    task_id: str
+    status: str = "queued"

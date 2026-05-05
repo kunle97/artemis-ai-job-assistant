@@ -12,6 +12,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from services.worker.tasks import scan_job_feed_for_all_users
+from services.worker.tasks import run_application_pipeline_async
 
 
 @patch("services.worker.tasks.JobFeedService.scan_for_user")
@@ -53,4 +54,59 @@ def test_scan_job_feed_for_all_users_continues_after_failure(
 
     assert result == {"scanned_users": 2, "failed_users": 1, "new_jobs_found": 3}
     assert mock_scan_for_user.call_count == 3
+    session.close.assert_called_once()
+
+
+@patch("services.worker.tasks.build_pipeline_service")
+@patch("services.worker.tasks.SessionLocal")
+def test_run_application_pipeline_async_returns_final_status(
+    mock_session_local,
+    mock_build_pipeline_service,
+):
+    session = MagicMock()
+    mock_session_local.return_value = session
+
+    fake_application = MagicMock()
+    fake_application.status = "filled"
+
+    pipeline_service = MagicMock()
+    pipeline_service.run_pipeline.return_value = fake_application
+    mock_build_pipeline_service.return_value = pipeline_service
+
+    result = run_application_pipeline_async(
+        user_id="f47ac10b-58cc-4372-a567-0e02b2c3d479",
+        application_id="123e4567-e89b-12d3-a456-426614174000",
+    )
+
+    assert result == {
+        "application_id": "123e4567-e89b-12d3-a456-426614174000",
+        "status": "filled",
+    }
+    pipeline_service.run_pipeline.assert_called_once()
+    session.close.assert_called_once()
+
+
+@patch("services.worker.tasks.build_pipeline_service")
+@patch("services.worker.tasks.SessionLocal")
+def test_run_application_pipeline_async_closes_session_on_failure(
+    mock_session_local,
+    mock_build_pipeline_service,
+):
+    session = MagicMock()
+    mock_session_local.return_value = session
+
+    pipeline_service = MagicMock()
+    pipeline_service.run_pipeline.side_effect = RuntimeError("pipeline boom")
+    mock_build_pipeline_service.return_value = pipeline_service
+
+    try:
+        run_application_pipeline_async(
+            user_id="f47ac10b-58cc-4372-a567-0e02b2c3d479",
+            application_id="123e4567-e89b-12d3-a456-426614174000",
+        )
+    except RuntimeError:
+        pass
+    else:
+        raise AssertionError("Expected RuntimeError")
+
     session.close.assert_called_once()

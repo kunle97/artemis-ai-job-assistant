@@ -47,6 +47,7 @@ SCREENSHOTS_DIR = os.path.join(
 )
 
 RESULTS_DIR = os.path.join(os.path.dirname(__file__), "test_results")
+TERMINAL_APPLICATION_STATUSES = {"filled", "awaiting_submission", "submitted", "failed"}
 
 
 # ─── RESULT EXPORTER ─────────────────────────────────────────────────────────
@@ -394,8 +395,38 @@ def run_pipeline(token: str, job: dict, run_dir: str, resume_path: str | None = 
         else:
             app_data = resp.json()
             final_status = app_data.get("status")
-            log(f"✅ Pipeline complete — status: {final_status}")
-            status_progression.append(final_status)
+            task_id = app_data.get("task_id")
+
+            if task_id:
+                log(f"✅ Pipeline dispatched — task_id: {task_id}")
+                log("Polling application status until terminal state...")
+
+                last_status = None
+                poll_deadline = time.time() + 300
+                while time.time() < poll_deadline:
+                    current_app = get_application(token, application_id)
+                    current_status = current_app.get("status")
+
+                    if current_status != last_status:
+                        log(f"  status -> {current_status}")
+                        status_progression.append(current_status)
+                        last_status = current_status
+
+                    if current_status in TERMINAL_APPLICATION_STATUSES:
+                        app_data = current_app
+                        final_status = current_status
+                        break
+
+                    time.sleep(2)
+
+                if final_status not in TERMINAL_APPLICATION_STATUSES:
+                    error_msg = "Pipeline polling timed out before reaching a terminal status"
+                    log(f"❌ {error_msg}")
+                    app_data = get_application(token, application_id)
+                    final_status = app_data.get("status")
+            else:
+                log(f"✅ Pipeline complete — status: {final_status}")
+                status_progression.append(final_status)
 
             # Optionally run the submit step
             if enable_submit and final_status in ("filled", "awaiting_submission"):
