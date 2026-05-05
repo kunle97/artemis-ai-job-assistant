@@ -1,0 +1,27 @@
+[
+  {
+    "id": "lever-aaa-111",
+    "text": "Senior Backend Engineer",
+    "hostedUrl": "https://jobs.lever.co/acme/lever-aaa-111",
+    "categories": {
+      "location": "San Francisco, CA",
+      "team": "Engineering",
+      "commitment": "Full-time"
+    }
+  },
+  {
+    "id": "lever-bbb-222",
+    "text": "Staff Data Scientist",
+    "hostedUrl": "https://jobs.lever.co/acme/lever-bbb-222",
+    "categories": {
+      "location": "Remote",
+      "team": "Data",
+      "commitment": "Full-time"
+    },
+    "salaryRange": {
+      "min": 140000,
+      "max": 180000,
+      "currency": "USD"
+    }
+  }
+]

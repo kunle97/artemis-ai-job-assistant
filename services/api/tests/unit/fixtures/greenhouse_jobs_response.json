@@ -1,0 +1,23 @@
+{
+  "jobs": [
+    {
+      "id": 11111,
+      "title": "Senior Backend Engineer",
+      "absolute_url": "https://boards.greenhouse.io/acme/jobs/11111",
+      "location": {"name": "San Francisco, CA"},
+      "content": "<p>We are looking for a senior backend engineer.</p>",
+      "metadata": []
+    },
+    {
+      "id": 22222,
+      "title": "Staff Data Scientist",
+      "absolute_url": "https://boards.greenhouse.io/acme/jobs/22222",
+      "location": {"name": "Remote"},
+      "content": "<p>Data science role with competitive pay.</p>",
+      "metadata": [
+        {"id": 1, "name": "Salary Min", "value": 140000, "value_type": "unit_currency"},
+        {"id": 2, "name": "Salary Max", "value": 180000, "value_type": "unit_currency"}
+      ]
+    }
+  ]
+}

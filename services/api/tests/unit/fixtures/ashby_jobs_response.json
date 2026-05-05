@@ -1,0 +1,27 @@
+{
+  "jobs": [
+    {
+      "id": "ashby-ccc-333",
+      "title": "Senior Backend Engineer",
+      "jobUrl": "https://jobs.ashbyhq.com/acme/ashby-ccc-333",
+      "location": "San Francisco, CA"
+    },
+    {
+      "id": "ashby-ddd-444",
+      "title": "Staff Data Scientist",
+      "jobUrl": "https://jobs.ashbyhq.com/acme/ashby-ddd-444",
+      "location": "Remote",
+      "compensation": {
+        "summaryComponents": [
+          {
+            "compensationTierSummary": "$140k – $180k USD",
+            "currency": "USD",
+            "minValue": 140000.0,
+            "maxValue": 180000.0,
+            "interval": "ANNUAL"
+          }
+        ]
+      }
+    }
+  ]
+}
