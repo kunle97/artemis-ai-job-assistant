@@ -201,3 +201,13 @@ Code must remain modular and separable into services.
 - Prefer concise, readable logs that make debugging easier.
 
 ------------------------------------------------------------------------
+
+## Job Feed Integration Strategy
+
+- Artemis derives its Greenhouse/Lever/Ashby adapter patterns from the open-source `career-ops` project.
+- Additional context reference fork: https://github.com/kunle97/career-ops
+- Before adding a new job source adapter in Artemis, check whether `career-ops` already supports that ATS and follow the same ingestion pattern when applicable.
+- Keep `JOB_SOURCE_REGISTRY` in `src/domain/jobs/constants.py` aligned with the company source coverage in `career-ops/templates/portals.example.yml` when onboarding new companies.
+- `career-ops` is not a runtime dependency of Artemis: adapter logic is ported to Python in this repository and must not be invoked via subprocess calls.
+
+------------------------------------------------------------------------
