@@ -22,7 +22,7 @@ class Application(Base):
     job_id = Column(UUID(as_uuid=True), ForeignKey("jobs.id"), nullable=False)
     resume_id = Column(UUID(as_uuid=True), ForeignKey("resumes.id"), nullable=True)
 
-    status = Column(String(50), nullable=False, default="saved")
+    status = Column(String(50), nullable=False, default="queued")
     is_ready_for_automation = Column(Boolean, default=False)
 
     is_authorized_to_submit = Column(Boolean, nullable=False, default=False)

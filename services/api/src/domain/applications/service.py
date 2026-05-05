@@ -7,8 +7,8 @@ Coordinates creation and retrieval of user job application records.
 import logging
 
 from src.domain.applications.constants import (
+    APPLICATION_STATUS_QUEUED,
     APPLICATION_STATUS_NEEDS_REVIEW,
-    APPLICATION_STATUS_SAVED,
 )
 from src.domain.applications.repository import ApplicationRepository
 from src.domain.applications.schemas import ApplicationCreate
@@ -60,7 +60,7 @@ class ApplicationService:
             selected_resume = resumes[0]
 
         is_ready = bool(profile and selected_resume)
-        status = APPLICATION_STATUS_SAVED if is_ready else APPLICATION_STATUS_NEEDS_REVIEW
+        status = APPLICATION_STATUS_QUEUED if is_ready else APPLICATION_STATUS_NEEDS_REVIEW
 
         # Inherit the user's auto-submit preference from profile when available.
         auto_submit = bool(profile and getattr(profile, "auto_submit", False))
