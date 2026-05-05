@@ -157,6 +157,55 @@ def test_authorize_sets_flag(client, db_session, sample_user_payload):
     assert data["id"] == app_id
 
 
+def test_authorize_submit_alias_sets_flag(client, db_session, sample_user_payload):
+    token = _register_and_login(client, sample_user_payload)
+    job_id = _create_fake_job(db_session)
+
+    create_resp = client.post(
+        "/applications",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"job_id": job_id},
+    )
+    assert create_resp.status_code == 200
+    app_id = create_resp.json()["id"]
+
+    auth_resp = client.post(
+        f"/applications/{app_id}/authorize-submit",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert auth_resp.status_code == 200
+    data = auth_resp.json()
+    assert data["is_authorized_to_submit"] is True
+    assert data["id"] == app_id
+
+
+def test_application_status_returns_readiness_details(client, db_session, sample_user_payload):
+    token = _register_and_login(client, sample_user_payload)
+    job_id = _create_fake_job(db_session)
+
+    create_resp = client.post(
+        "/applications",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"job_id": job_id},
+    )
+    assert create_resp.status_code == 200
+    app_id = create_resp.json()["id"]
+
+    status_resp = client.get(
+        f"/applications/{app_id}/status",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert status_resp.status_code == 200
+    data = status_resp.json()
+    assert data["application_id"] == app_id
+    assert data["status"] == create_resp.json()["status"]
+    assert data["is_ready_for_automation"] is False
+    assert data["manual_review_required"] is True
+    assert data["is_authorized_to_submit"] is False
+    assert set(data["missing_items"]) == {"candidate_profile", "resume"}
+    assert data["available_answer_keys"] == []
+
+
 def test_authorize_returns_403_for_different_user(client, db_session, sample_user_payload):
     # Owner creates the application.
     owner_token = _register_and_login(client, sample_user_payload)

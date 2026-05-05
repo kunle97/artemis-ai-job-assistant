@@ -1,9 +1,15 @@
 # Core application settings loaded from environment variables via pydantic-settings.
 import os
+from pathlib import Path
 
 from pydantic_settings import BaseSettings
 
 _app_env = os.getenv("APP_ENV", "development")
+API_SERVICE_DIR = Path(__file__).resolve().parents[2]
+SCRIPTS_DIR = API_SERVICE_DIR / "scripts"
+UPLOADS_DIR = API_SERVICE_DIR / "uploads"
+RESUME_UPLOADS_DIR = UPLOADS_DIR / "resumes"
+AUTOMATION_UPLOADS_DIR = UPLOADS_DIR / "automation"
 
 
 class Settings(BaseSettings):
@@ -21,6 +27,7 @@ class Settings(BaseSettings):
     storage_backend: str = "local"
     aws_access_key_id: str | None = None
     aws_secret_access_key: str | None = None
+    aws_session_token: str | None = None
     aws_region: str = "us-east-1"
     s3_bucket_name: str | None = None
     s3_key_prefix: str = "resumes"

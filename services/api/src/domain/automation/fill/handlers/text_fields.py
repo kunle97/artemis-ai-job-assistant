@@ -8,6 +8,20 @@ from src.domain.automation.fill.locators import locate_field
 from src.domain.automation.fill.models import AutomationFillFieldResult
 
 
+_HUMAN_TYPING_DELAY_MS = 70
+
+
+def _clear_then_type(locator, value: str, *, delay_ms: int = _HUMAN_TYPING_DELAY_MS) -> None:
+    """Prefer human-speed typing for input fields to reduce bot-like instant fills."""
+    locator.click()
+    try:
+        locator.press("Meta+a")
+    except Exception:
+        locator.press("Control+a")
+    locator.press("Backspace")
+    locator.type(value, delay=delay_ms)
+
+
 def fill_text_field(page, field: dict, value: str | None) -> AutomationFillFieldResult:
     label = field.get("label")
     name = field.get("name")
@@ -41,7 +55,7 @@ def fill_text_field(page, field: dict, value: str | None) -> AutomationFillField
         )
 
     try:
-        locator.fill(value)
+        _clear_then_type(locator, value)
         return _result(
             label=label,
             name=name,
@@ -51,9 +65,8 @@ def fill_text_field(page, field: dict, value: str | None) -> AutomationFillField
         )
     except Exception:
         try:
-            locator.click()
             locator.fill("")
-            locator.type(value, delay=15)
+            locator.fill(value)
             return _result(
                 label=label,
                 name=name,
@@ -96,9 +109,7 @@ def fill_autocomplete_location_field(page, field: dict, value: str | None) -> Au
         return _result(label=label, name=name, role=role, value=value, status="skipped_not_found")
 
     try:
-        locator.click()
-        locator.fill("")
-        locator.type(value, delay=80)
+        _clear_then_type(locator, value, delay_ms=90)
         page.wait_for_timeout(2000)
 
         # Step 1: click first Google Places .pac-item suggestion

@@ -28,6 +28,8 @@ from src.domain.automation.fill.models import AutomationFillFieldResult
 
 logger = logging.getLogger(__name__)
 
+_HUMAN_COMBOBOX_TYPING_DELAY_MS = 75
+
 # Selectors used to wait for / collect dropdown options.
 # li[role="option"] is listed first — it's the most specific Greenhouse selector
 # per community guidance (click input → fill to filter → click li[role="option"]).
@@ -359,7 +361,13 @@ def _try_search(page: Page, combobox, value: str) -> None:
     """
     # Primary: type into the combobox input itself to trigger React Select filtering.
     try:
-        combobox.fill(value)
+        combobox.click()
+        try:
+            combobox.press("Meta+a")
+        except Exception:
+            combobox.press("Control+a")
+        combobox.press("Backspace")
+        combobox.type(value, delay=_HUMAN_COMBOBOX_TYPING_DELAY_MS)
         page.wait_for_timeout(300)
         # Check if options are now visible after filtering.
         if _wait_for_options(page, timeout=1000):
@@ -372,7 +380,9 @@ def _try_search(page: Page, combobox, value: str) -> None:
         try:
             search = page.locator(sel).first
             if search.count() > 0 and search.is_visible():
-                search.fill(value)
+                search.click()
+                search.fill("")
+                search.type(value, delay=_HUMAN_COMBOBOX_TYPING_DELAY_MS)
                 page.wait_for_timeout(400)
                 return
         except Exception:
@@ -524,8 +534,12 @@ def _fallback_type_value(page: Page, combobox, value: str) -> bool:
 
     try:
         combobox.click()
-        combobox.fill("")
-        combobox.fill(value)
+        try:
+            combobox.press("Meta+a")
+        except Exception:
+            combobox.press("Control+a")
+        combobox.press("Backspace")
+        combobox.type(value, delay=_HUMAN_COMBOBOX_TYPING_DELAY_MS)
         page.wait_for_timeout(150)
         try:
             page.keyboard.press("Enter")

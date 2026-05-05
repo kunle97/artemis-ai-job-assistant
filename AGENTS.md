@@ -110,6 +110,8 @@ Code must remain modular and separable into services.
 - Prefer keeping files roughly in the **250–350 line range** when practical
 - If a file grows too large, split it by responsibility rather than letting it become bloated
 - Large keyword sets, regex patterns, static mappings, and configuration-like values should usually be extracted into a `constants.py` file within the relevant domain
+- Any constant used in multiple files within the same domain must be defined in that domain's shared `constants.py` (or equivalent domain-level constants module), not duplicated across files
+- Any constant used across multiple domains must be defined in a global shared domain constants module (for example `src/domain/constants.py`) and imported from there
 - Avoid cluttering business-logic files with long constant declarations when those constants can live in a dedicated module
 - Split by cohesion, not arbitrarily: related constants should stay near the domain they belong to
 

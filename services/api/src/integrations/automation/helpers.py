@@ -7,6 +7,8 @@ from __future__ import annotations
 import uuid
 from pathlib import Path
 
+from src.core.config import AUTOMATION_UPLOADS_DIR
+
 
 def open_lever_application_form(page) -> None:
     candidate_selectors = [
@@ -611,7 +613,7 @@ def save_screenshot(page, url: str | None = None) -> str | None:
     if not settings.save_screenshots:
         return None
     platform = _platform_subfolder(url)
-    screenshot_dir = Path("uploads/automation") / platform
+    screenshot_dir = AUTOMATION_UPLOADS_DIR / platform
     screenshot_dir.mkdir(parents=True, exist_ok=True)
 
     filename = f"{uuid.uuid4()}.png"

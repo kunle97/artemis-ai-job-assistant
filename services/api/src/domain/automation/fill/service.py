@@ -13,6 +13,7 @@ from pathlib import Path
 
 from playwright.sync_api import Page, sync_playwright
 
+from src.core.config import AUTOMATION_UPLOADS_DIR
 from src.domain.automation.planning.constants import (
     FIELD_ROLE_COVER_LETTER_UPLOAD,
     FIELD_ROLE_IGNORE,
@@ -35,6 +36,10 @@ from src.domain.automation.fill.handlers.text_fields import (
 from src.domain.automation.fill.handlers.uploads import (
     skip_cover_letter_upload,
     upload_resume,
+)
+from src.domain.automation.fill.constants import (
+    INTER_FIELD_DELAY_MAX_MS,
+    INTER_FIELD_DELAY_MIN_MS,
 )
 from src.domain.automation.fill.helpers import is_backing_input_label
 from src.integrations.automation.helpers import normalize_application_url, prepare_application_page
@@ -197,8 +202,9 @@ class AutomationFillService:
                     )
                     fill_results.append(result)
 
-                    if result.fill_status == "filled":
-                        human_delay(150, 450)
+                    # Keep a short random pause between fields to avoid bot-like
+                    # machine-speed transitions while preserving throughput.
+                    human_delay(INTER_FIELD_DELAY_MIN_MS, INTER_FIELD_DELAY_MAX_MS)
 
                     if (
                         platform == PLATFORM_GREENHOUSE
@@ -547,7 +553,7 @@ class AutomationFillService:
             return None
         try:
             platform = _detect_platform(application_url or "")
-            screenshot_dir = Path("uploads/automation") / platform
+            screenshot_dir = AUTOMATION_UPLOADS_DIR / platform
             screenshot_dir.mkdir(parents=True, exist_ok=True)
 
             filename = f"{uuid.uuid4()}-filled.png"

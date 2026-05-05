@@ -11,12 +11,15 @@ from uuid import UUID
 
 from src.core.config import settings
 from src.deps.auth import get_current_user
+from src.domain.application_answers.repository import ApplicationAnswerRepository
+from src.domain.applications.readiness import ApplicationReadinessService
 from src.domain.applications.factory import build_pipeline_service
 from src.domain.applications.repository import ApplicationRepository
 from src.domain.applications.schemas import (
     ApplicationCreate,
     ApplicationRead,
     ApplicationRunDispatchRead,
+    ApplicationStatusRead,
 )
 from src.domain.applications.service import ApplicationService
 from src.domain.jobs.repository import JobRepository
@@ -43,6 +46,15 @@ def _build_application_service(db: Session) -> ApplicationService:
 
 def _build_pipeline_service(db: Session):
     return build_pipeline_service(db)
+
+
+def _build_readiness_service(db: Session) -> ApplicationReadinessService:
+    return ApplicationReadinessService(
+        application_repository=ApplicationRepository(db),
+        profile_repository=CandidateProfileRepository(db),
+        resume_repository=ResumeRepository(db),
+        application_answer_repository=ApplicationAnswerRepository(db),
+    )
 
 
 @router.post("", response_model=ApplicationRead)
@@ -82,6 +94,41 @@ def get_application(
         raise HTTPException(status_code=400, detail=str(exc))
 
 
+@router.get("/{application_id}/status", response_model=ApplicationStatusRead)
+def get_application_status(
+    application_id: UUID,
+    current_user=Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    service = _build_application_service(db)
+    readiness_service = _build_readiness_service(db)
+
+    try:
+        application = service.get_application(
+            user_id=current_user.id,
+            application_id=application_id,
+        )
+        readiness = readiness_service.evaluate_application(
+            user_id=current_user.id,
+            application_id=application_id,
+        )
+    except ValueError as exc:
+        detail = str(exc)
+        status_code = 404 if detail == "Application not found." else 403
+        raise HTTPException(status_code=status_code, detail=detail)
+
+    return ApplicationStatusRead(
+        application_id=application.id,
+        status=application.status,
+        is_ready_for_automation=application.is_ready_for_automation,
+        manual_review_required=application.manual_review_required,
+        is_authorized_to_submit=application.is_authorized_to_submit,
+        failure_reason=application.failure_reason,
+        missing_items=readiness.missing_items,
+        available_answer_keys=readiness.available_answer_keys,
+    )
+
+
 @router.post("/{application_id}/authorize", response_model=ApplicationRead)
 def authorize_submission(
     application_id: UUID,
@@ -96,6 +143,15 @@ def authorize_submission(
         raise HTTPException(status_code=403, detail=str(exc))
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
+
+
+@router.post("/{application_id}/authorize-submit", response_model=ApplicationRead)
+def authorize_submit_application(
+    application_id: UUID,
+    current_user=Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return authorize_submission(application_id=application_id, current_user=current_user, db=db)
 
 
 @router.post("/{application_id}/run", response_model=ApplicationRunDispatchRead)

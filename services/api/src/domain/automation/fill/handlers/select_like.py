@@ -8,6 +8,7 @@ import logging
 
 from playwright.sync_api import Page
 
+from src.domain.automation.fill.constants import HUMAN_SELECT_TYPING_DELAY_MS
 from src.domain.automation.fill.helpers import (
     combobox_value_changed,
     normalize_choice_text,
@@ -169,7 +170,7 @@ def _apply_combobox_selection(
         page.wait_for_timeout(150)
         # Type directly — do NOT use fill() first. fill() does not fire React's
         # synthetic onChange, which breaks React Select's filter behaviour.
-        textbox.type(target_value, delay=50)
+        textbox.type(target_value, delay=HUMAN_SELECT_TYPING_DELAY_MS)
         # Wait for options to actually render (not a fixed sleep).
         opts_after_type = _wait_for_options(page, timeout=3000)
         logger.debug(f"{tag}: step3 — typed, options_visible={opts_after_type}")
@@ -183,7 +184,7 @@ def _apply_combobox_selection(
             except Exception:
                 textbox.press("Control+a")
             textbox.press("Backspace")
-            textbox.type(target_value, delay=50)
+            textbox.type(target_value, delay=HUMAN_SELECT_TYPING_DELAY_MS)
             _wait_for_options(page, timeout=3000)
             typed = True
         except Exception:

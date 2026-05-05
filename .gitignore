@@ -4,7 +4,6 @@
 /services/api/uploads/
 extra-application-questions.txt
 test-application-urls.py
-/scripts/test_results
 
 # Environment files — never commit real secrets
 # API service

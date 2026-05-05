@@ -8,11 +8,18 @@ Later this can be replaced with S3 or another object store.
 import os
 import shutil
 import uuid
+from pathlib import Path
+
+from src.core.config import API_SERVICE_DIR, RESUME_UPLOADS_DIR
 
 
 class LocalStorageService:
-    def __init__(self, base_upload_dir: str = "uploads/resumes"):
-        self.base_upload_dir = base_upload_dir
+    def __init__(self, base_upload_dir: str | None = None):
+        upload_dir = Path(base_upload_dir) if base_upload_dir else RESUME_UPLOADS_DIR
+        if not upload_dir.is_absolute():
+            upload_dir = API_SERVICE_DIR / upload_dir
+
+        self.base_upload_dir = str(upload_dir)
         os.makedirs(self.base_upload_dir, exist_ok=True)
 
     def save_upload(self, upload_file):

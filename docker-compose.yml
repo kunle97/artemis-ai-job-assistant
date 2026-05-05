@@ -28,6 +28,8 @@ services:
     restart: always
     working_dir: /app
     command: celery -A services.worker.celery_app:celery_app worker --loglevel=info
+    env_file:
+      - services/api/.env.development
     environment:
       DATABASE_URL: postgresql://artemis:artemis@postgres:5432/artemis
       REDIS_URL: redis://redis:6379/0
@@ -54,6 +56,8 @@ services:
     restart: always
     working_dir: /app
     command: celery -A services.worker.celery_app:celery_app beat --loglevel=info
+    env_file:
+      - services/api/.env.development
     environment:
       DATABASE_URL: postgresql://artemis:artemis@postgres:5432/artemis
       REDIS_URL: redis://redis:6379/0

@@ -136,7 +136,7 @@ python scripts/test_fill_runner.py --enable-submit
 python scripts/test_fill_runner.py --clear-screenshots --storage s3 --enable-submit
 ```
 
-Results are saved per-run under `scripts/test_results/<TIMESTAMP>/`.
+Results are saved per-run under `services/api/scripts/test_results/<TIMESTAMP>/`.
 
 ### API Checks Suite
 
