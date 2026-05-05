@@ -39,7 +39,7 @@ from datetime import datetime
 # Ensure the package root is on the path so src.* imports resolve
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from src.domain.jobs.source_registry import JOB_SOURCE_REGISTRY
+from src.domain.jobs.constants import JOB_SOURCE_REGISTRY
 from src.integrations.adapters.registry import get_adapter
 
 # ---------------------------------------------------------------------------

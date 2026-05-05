@@ -138,6 +138,18 @@ python scripts/test_fill_runner.py --clear-screenshots --storage s3 --enable-sub
 
 Results are saved per-run under `scripts/test_results/<TIMESTAMP>/`.
 
+### API Checks Suite
+
+Run the full API validation suite (auth, storage preflight, resume upload, async dispatch,
+submission guardrails, feed checks, and migrations) from one command.
+
+```bash
+cd services/api
+source venv/bin/activate
+
+python3 scripts/run_api_checks.py --continue-on-error --storage-args=--storage-backend\ local --feed-args=--skip-scan
+```
+
 ## Status
 
 Early setup / MVP in progress.

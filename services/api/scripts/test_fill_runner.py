@@ -1,10 +1,11 @@
 """Test pipeline runner - authenticates, creates applications, then runs the pipeline orchestrator.
 
 Usage:
-    python scripts/test_fill_runner.py [--clear-screenshots] [--storage {local,s3}]
+    python scripts/test_fill_runner.py [--clear-screenshots] [--clear-applications] [--storage {local,s3}]
 
 Flags:
     --clear-screenshots   Delete all files in uploads/automation/ before running.
+    --clear-applications  Delete all existing applications for the authenticated user before running.
     --storage local       Use the local resume file path from RESUME_PATH (default).
     --storage s3          Fetch the latest S3 resume path from GET /resumes.
     --enable-submit       After a successful fill, auto-authorize when needed,
@@ -32,6 +33,7 @@ import sys
 import threading
 import time
 from datetime import datetime
+from uuid import UUID
 
 import requests
 from constants import JOBS, RESUME_PATH
@@ -245,6 +247,52 @@ def fetch_resume_path(token: str, storage_mode: str) -> str:
 
     log(f"✅ Using resume: id={resume.get('id')}  path={path}")
     return path
+
+
+def clear_applications_for_current_user(token: str) -> None:
+    """Delete all existing applications for the authenticated user."""
+    api_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    if api_root not in sys.path:
+        sys.path.insert(0, api_root)
+
+    from src.domain.applications.models import Application
+    from src.infrastructure.db.session import SessionLocal
+
+    log("Resolving current authenticated user for application cleanup...")
+    session_resp = requests.get(
+        f"{BASE_URL}/auth/session",
+        headers={"Authorization": f"Bearer {token}"},
+        timeout=15,
+    )
+    if session_resp.status_code != 200:
+        log(
+            "❌ Could not resolve auth session for --clear-applications "
+            f"(HTTP {session_resp.status_code}: {session_resp.text})"
+        )
+        sys.exit(1)
+
+    user_id = session_resp.json().get("id")
+    if not user_id:
+        log("❌ Session payload did not include user id; cannot clear applications.")
+        sys.exit(1)
+
+    log(f"--clear-applications flag set — deleting existing applications for user {user_id}...")
+    db = SessionLocal()
+    try:
+        deleted = (
+            db.query(Application)
+            .filter(Application.user_id == UUID(str(user_id)))
+            .delete(synchronize_session=False)
+        )
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        log(f"❌ Failed to clear applications: {exc}")
+        sys.exit(1)
+    finally:
+        db.close()
+
+    log(f"🗑️  Cleared {deleted} application(s) for current user")
 
 
 # ─── JOB & APPLICATION MANAGEMENT ────────────────────────────────────────────
@@ -517,6 +565,11 @@ def main() -> None:
         help="Resume storage: 'local' uses RESUME_PATH constant; 's3' fetches the path from GET /resumes.",
     )
     parser.add_argument(
+        "--clear-applications",
+        action="store_true",
+        help="Delete all existing applications for the authenticated user before running.",
+    )
+    parser.add_argument(
         "--enable-submit",
         action="store_true",
         default=False,
@@ -543,6 +596,9 @@ def main() -> None:
     log(f"Results  : {run_dir}")
 
     token = authenticate()
+
+    if args.clear_applications:
+        clear_applications_for_current_user(token)
 
     if args.storage == "s3":
         resume_override = fetch_resume_path(token, "s3")
