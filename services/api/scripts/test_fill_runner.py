@@ -260,8 +260,21 @@ def get_or_create_job(token: str, application_url: str) -> str:
     )
     
     if resp.status_code == 200:
-        jobs = resp.json()
+        payload = resp.json()
+
+        # /jobs currently returns a paginated envelope (FeedPage):
+        # {"total": ..., "jobs": [...]}.
+        # Keep backward compatibility in case an older endpoint returns a raw list.
+        if isinstance(payload, dict):
+            jobs = payload.get("jobs") or []
+        elif isinstance(payload, list):
+            jobs = payload
+        else:
+            jobs = []
+
         for job in jobs:
+            if not isinstance(job, dict):
+                continue
             if job.get("apply_url") == application_url:
                 job_id = job.get("id")
                 log(f"  ✓ Found existing job: {job_id}")

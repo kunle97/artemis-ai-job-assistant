@@ -13,6 +13,7 @@ services/api/.env.local
 services/api/.env.staging
 services/api/.env.production
 services/api/.env.development
+services/api/scripts/test_results
 
 # Web service
 services/web/.env

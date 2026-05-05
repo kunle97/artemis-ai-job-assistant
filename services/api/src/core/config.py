@@ -41,6 +41,7 @@ class Settings(BaseSettings):
     enable_resume_parser: bool = True
     enable_automation: bool = True
     save_screenshots: bool = False
+    max_pipeline_retries: int = 3
     job_scan_interval_hours: int = 24
 
     class Config:

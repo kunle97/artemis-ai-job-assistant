@@ -8,7 +8,11 @@ Application.status through each step.
 """
 
 import logging
+import re
+from time import sleep
+from typing import Callable, TypeVar
 
+from src.core.config import settings
 from src.domain.applications.constants import (
     APPLICATION_STATUS_AWAITING_SUBMISSION,
     APPLICATION_STATUS_FAILED,
@@ -26,6 +30,7 @@ from src.domain.automation.schemas import ApplicationPageIntakeRequest
 
 
 logger = logging.getLogger(__name__)
+_T = TypeVar("_T")
 
 
 class ApplicationPipelineService:
@@ -56,6 +61,74 @@ class ApplicationPipelineService:
         self.automation_service = automation_service
         self.planning_service = planning_service
         self.fill_service = fill_service
+
+    def _classify_failure(self, exc: Exception) -> tuple[str, bool]:
+        """Classify failures into retryable transient or terminal permanent buckets."""
+        message = str(exc).lower()
+
+        if "captcha" in message:
+            return "captcha_detected", False
+
+        if "already applied" in message:
+            return "already_applied_signal", False
+
+        if re.search(r"\b404\b", message):
+            return "http_404", False
+
+        if (
+            re.search(r"\b5\d\d\b", message)
+            and ("http" in message or "status" in message or "ats" in message)
+        ):
+            return "http_5xx", True
+
+        if "timeout" in message or "timed out" in message:
+            return "playwright_timeout", True
+
+        if "dom not found" in message or ("selector" in message and "not found" in message):
+            return "dom_not_found", True
+
+        return "unclassified_error", False
+
+    def _format_failure_reason(self, exc: Exception) -> str:
+        """Return a classified failure_reason string suitable for persistence."""
+        category, retryable = self._classify_failure(exc)
+        class_name = "transient" if retryable else "permanent"
+        return f"{category} ({class_name}): {type(exc).__name__}: {exc}"
+
+    def _execute_with_retries(self, operation_name: str, operation: Callable[[], _T]) -> _T:
+        """Execute an operation with exponential backoff for transient failures."""
+        max_retries = max(0, settings.max_pipeline_retries)
+        attempt = 0
+
+        while True:
+            try:
+                return operation()
+            except Exception as exc:
+                category, retryable = self._classify_failure(exc)
+                if retryable and attempt < max_retries:
+                    delay_seconds = 2 ** attempt
+                    logger.warning(
+                        "[PipelineService] %s transient failure (%s) attempt=%d/%d delay=%ss error=%s",
+                        operation_name,
+                        category,
+                        attempt + 1,
+                        max_retries + 1,
+                        delay_seconds,
+                        exc,
+                    )
+                    sleep(delay_seconds)
+                    attempt += 1
+                    continue
+
+                if retryable:
+                    logger.error(
+                        "[PipelineService] %s retries exhausted after %d attempts category=%s error=%s",
+                        operation_name,
+                        max_retries + 1,
+                        category,
+                        exc,
+                    )
+                raise
 
     def can_advance_past_filled(self, application) -> bool:
         """Return True if the application is cleared for submission."""
@@ -118,8 +191,11 @@ class ApplicationPipelineService:
                 application_id, status=APPLICATION_STATUS_INSPECTING
             )
 
-            inspection_result = self.automation_service.inspect_application_page(
-                ApplicationPageIntakeRequest(application_url=job.apply_url)
+            inspection_result = self._execute_with_retries(
+                "inspect_application_page",
+                lambda: self.automation_service.inspect_application_page(
+                    ApplicationPageIntakeRequest(application_url=job.apply_url)
+                ),
             )
 
             # inspection_result is a plain dict from ApplicationPageInspector
@@ -151,13 +227,16 @@ class ApplicationPipelineService:
                 application_id, status=APPLICATION_STATUS_PLANNING
             )
 
-            plan = self.planning_service.build_fill_plan(
-                user_id=user_id,
-                payload=AutomationFillPlanRequest(
-                    application_url=job.apply_url,
-                    inspected_fields=inspected_fields,
-                    page_title=page_title,
-                    job_context=job_context,
+            plan = self._execute_with_retries(
+                "build_fill_plan",
+                lambda: self.planning_service.build_fill_plan(
+                    user_id=user_id,
+                    payload=AutomationFillPlanRequest(
+                        application_url=job.apply_url,
+                        inspected_fields=inspected_fields,
+                        page_title=page_title,
+                        job_context=job_context,
+                    ),
                 ),
             )
 
@@ -175,11 +254,14 @@ class ApplicationPipelineService:
                 application_id, status=APPLICATION_STATUS_FILLING
             )
 
-            fill_result = self.fill_service.fill_from_plan(
-                user_id=user_id,
-                application_url=job.apply_url,
-                plan=plan,
-                application_id=application_id,
+            fill_result = self._execute_with_retries(
+                "fill_from_plan",
+                lambda: self.fill_service.fill_from_plan(
+                    user_id=user_id,
+                    application_url=job.apply_url,
+                    plan=plan,
+                    application_id=application_id,
+                ),
             )
 
             application = self.application_repo.update_fields(
@@ -207,7 +289,7 @@ class ApplicationPipelineService:
             self.application_repo.update_fields(
                 application_id,
                 status=APPLICATION_STATUS_FAILED,
-                failure_reason=str(exc),
+                failure_reason=self._format_failure_reason(exc),
             )
             raise
 
@@ -292,8 +374,11 @@ class ApplicationPipelineService:
 
         try:
             # Re-inspect and re-plan so the browser session is fresh
-            inspection_result = self.automation_service.inspect_application_page(
-                ApplicationPageIntakeRequest(application_url=job.apply_url)
+            inspection_result = self._execute_with_retries(
+                "inspect_application_page",
+                lambda: self.automation_service.inspect_application_page(
+                    ApplicationPageIntakeRequest(application_url=job.apply_url)
+                ),
             )
 
             if isinstance(inspection_result, dict):
@@ -310,21 +395,27 @@ class ApplicationPipelineService:
                 for f in raw_fields
             ]
 
-            plan = self.planning_service.build_fill_plan(
-                user_id=user_id,
-                payload=AutomationFillPlanRequest(
-                    application_url=job.apply_url,
-                    inspected_fields=inspected_fields,
-                    page_title=page_title,
-                    job_context=job_context,
+            plan = self._execute_with_retries(
+                "build_fill_plan",
+                lambda: self.planning_service.build_fill_plan(
+                    user_id=user_id,
+                    payload=AutomationFillPlanRequest(
+                        application_url=job.apply_url,
+                        inspected_fields=inspected_fields,
+                        page_title=page_title,
+                        job_context=job_context,
+                    ),
                 ),
             )
 
-            fill_result = self.fill_service.fill_and_submit_from_plan(
-                user_id=user_id,
-                application_url=job.apply_url,
-                plan=plan,
-                application_id=application_id,
+            fill_result = self._execute_with_retries(
+                "fill_and_submit_from_plan",
+                lambda: self.fill_service.fill_and_submit_from_plan(
+                    user_id=user_id,
+                    application_url=job.apply_url,
+                    plan=plan,
+                    application_id=application_id,
+                ),
             )
 
             if not fill_result.submission_confirmed:
@@ -347,7 +438,7 @@ class ApplicationPipelineService:
             self.application_repo.update_fields(
                 application_id,
                 status=APPLICATION_STATUS_FAILED,
-                failure_reason=str(exc),
+                failure_reason=self._format_failure_reason(exc),
             )
             raise
 

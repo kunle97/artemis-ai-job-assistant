@@ -276,7 +276,65 @@ def test_run_pipeline_sets_failed_status_on_exception():
         if c.kwargs.get("status") == APPLICATION_STATUS_FAILED
     ]
     assert len(failed_calls) == 1
-    assert "Playwright crashed" in failed_calls[0].kwargs.get("failure_reason", "")
+    failure_reason = failed_calls[0].kwargs.get("failure_reason", "")
+    assert "unclassified_error (permanent)" in failure_reason
+    assert "Playwright crashed" in failure_reason
+
+
+def test_run_pipeline_retries_on_transient_timeout_then_succeeds():
+    app = _make_application()
+    job = _make_job()
+    inspection = _make_inspection_result()
+    plan = _make_plan()
+    fill_result = _make_fill_result()
+
+    service, _, automation_svc, _, _ = _build_service(app, job, inspection, plan, fill_result)
+    automation_svc.inspect_application_page.side_effect = [
+        RuntimeError("Playwright timeout while waiting for selector"),
+        inspection,
+    ]
+
+    with patch("src.domain.applications.pipeline_service.sleep") as sleep_mock:
+        service.run_pipeline(app.user_id, app.id)
+
+    assert automation_svc.inspect_application_page.call_count == 2
+    sleep_mock.assert_called_once_with(1)
+
+
+def test_run_pipeline_does_not_retry_permanent_captcha_failure():
+    app = _make_application()
+    job = _make_job()
+
+    app_repo = MagicMock()
+    app_repo.get_by_id.return_value = app
+    app_repo.update_fields.return_value = app
+
+    job_repo = MagicMock()
+    job_repo.get_by_id.return_value = job
+
+    automation_svc = MagicMock()
+    automation_svc.inspect_application_page.side_effect = RuntimeError(
+        "captcha detected on application page"
+    )
+
+    service = ApplicationPipelineService(
+        application_repo=app_repo,
+        job_repo=job_repo,
+        automation_service=automation_svc,
+        planning_service=MagicMock(),
+        fill_service=MagicMock(),
+    )
+
+    with pytest.raises(RuntimeError):
+        service.run_pipeline(app.user_id, app.id)
+
+    assert automation_svc.inspect_application_page.call_count == 1
+    failed_calls = [
+        c for c in app_repo.update_fields.call_args_list
+        if c.kwargs.get("status") == APPLICATION_STATUS_FAILED
+    ]
+    assert len(failed_calls) == 1
+    assert "captcha_detected (permanent)" in failed_calls[0].kwargs.get("failure_reason", "")
 
 
 def test_run_pipeline_raises_permission_error_for_wrong_user():

@@ -6,12 +6,13 @@ unmet condition and that submit_application enforces all four checks.
 """
 
 import uuid
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from src.domain.applications.constants import (
     APPLICATION_STATUS_AWAITING_SUBMISSION,
+    APPLICATION_STATUS_FAILED,
     APPLICATION_STATUS_FILLED,
     APPLICATION_STATUS_SAVED,
     APPLICATION_STATUS_SUBMITTED,
@@ -223,3 +224,49 @@ class TestSubmitApplication:
             service.submit_application(app.user_id, app.id)
 
         fill_svc.fill_and_submit_from_plan.assert_not_called()
+
+    def test_submit_retries_transient_http_5xx_then_succeeds(self):
+        app = _make_application(
+            status=APPLICATION_STATUS_AWAITING_SUBMISSION,
+            is_ready_for_automation=True,
+            manual_review_required=False,
+        )
+        job = _make_job()
+        service, _, _ = _build_service(app, job)
+
+        service.automation_service.inspect_application_page.side_effect = [
+            RuntimeError("HTTP 503 from ATS endpoint"),
+            {"fields": [], "title": None, "job_context": None},
+        ]
+
+        with patch("src.domain.applications.pipeline_service.sleep") as sleep_mock:
+            service.submit_application(app.user_id, app.id)
+
+        assert service.automation_service.inspect_application_page.call_count == 2
+        sleep_mock.assert_called_once_with(1)
+
+    def test_submit_does_not_retry_permanent_already_applied_signal(self):
+        app = _make_application(
+            status=APPLICATION_STATUS_AWAITING_SUBMISSION,
+            is_ready_for_automation=True,
+            manual_review_required=False,
+        )
+        job = _make_job()
+        service, app_repo, fill_svc = _build_service(app, job)
+
+        fill_svc.fill_and_submit_from_plan.side_effect = RuntimeError(
+            "already applied signal detected"
+        )
+
+        with pytest.raises(RuntimeError):
+            service.submit_application(app.user_id, app.id)
+
+        assert fill_svc.fill_and_submit_from_plan.call_count == 1
+        failed_calls = [
+            c for c in app_repo.update_fields.call_args_list
+            if c.kwargs.get("status") == APPLICATION_STATUS_FAILED
+        ]
+        assert len(failed_calls) == 1
+        assert "already_applied_signal (permanent)" in failed_calls[0].kwargs.get(
+            "failure_reason", ""
+        )
