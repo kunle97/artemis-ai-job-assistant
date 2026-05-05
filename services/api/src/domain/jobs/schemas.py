@@ -116,5 +116,8 @@ class FeedPage(BaseModel):
     skip: int
     limit: int
     has_next: bool
+    prev_url: str | None = Field(default=None, serialization_alias="prevUrl")
     next_url: str | None
     jobs: list[JobRead]
+
+    model_config = ConfigDict(populate_by_name=True)

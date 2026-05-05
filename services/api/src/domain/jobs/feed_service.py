@@ -19,6 +19,7 @@ from src.domain.jobs.repository import (
     JobUserFeedRepository,
 )
 from src.domain.jobs.constants import JOB_SOURCE_REGISTRY
+from src.domain.jobs.helpers import matches_job_location
 from src.integrations.adapters.registry import get_adapter
 
 logger = logging.getLogger(__name__)
@@ -160,6 +161,7 @@ class JobFeedService:
         title_keywords = [t.lower() for t in (preferences.target_titles or [])]
         positive_keywords = [k.lower() for k in (preferences.positive_keywords or [])]
         negative_keywords = [k.lower() for k in (preferences.negative_keywords or [])]
+        preferred_locations = preferences.locations or []
         enabled_sources = set(preferences.enabled_sources or [])
 
         filtered = []
@@ -175,11 +177,14 @@ class JobFeedService:
 
             if title_keywords and not any(kw in title_lower for kw in title_keywords):
                 continue
-            # Check positive_keywords against title and description. Title is always present
-            # so this filter always runs. If there is no description, the title alone is checked.
-            if positive_keywords and not any(kw in searchable for kw in positive_keywords):
+            # Positive keywords are matched against title only. Title is always present
+            # and descriptions are rarely populated from ATS listing APIs. Checking only
+            # the title keeps the filter meaningful and consistent regardless of description availability.
+            if positive_keywords and not any(kw in title_lower for kw in positive_keywords):
                 continue
             if negative_keywords and any(kw in searchable for kw in negative_keywords):
+                continue
+            if not matches_job_location(job.location, preferred_locations):
                 continue
             if preferences.remote_only and (job.workplace_type or "").lower() != "remote":
                 continue

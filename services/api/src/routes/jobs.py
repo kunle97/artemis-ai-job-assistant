@@ -49,6 +49,21 @@ def _next_url(request: Request, skip: int, limit: int) -> str:
     return f"{base}{path}?{query}"
 
 
+def _prev_url(request: Request, skip: int, limit: int) -> str | None:
+    """Build an absolute previous-page URL when a prior page exists."""
+    if skip <= 0:
+        return None
+
+    previous_skip = max(skip - limit, 0)
+    base = settings.api_base_url.rstrip("/") if settings.api_base_url else str(request.base_url).rstrip("/")
+    path = request.url.path
+    params = dict(request.query_params)
+    params["skip"] = str(previous_skip)
+    params["limit"] = str(limit)
+    query = "&".join(f"{k}={v}" for k, v in params.items())
+    return f"{base}{path}?{query}"
+
+
 class JobCreateRequest(BaseModel):
     apply_url: str
 
@@ -139,6 +154,7 @@ def search_jobs(
         skip=skip,
         limit=limit,
         has_next=has_next,
+        prev_url=_prev_url(request, skip, limit),
         next_url=_next_url(request, next_offset, limit) if has_next else None,
         jobs=[JobRead.model_validate(j) for j in jobs],
     )
@@ -164,6 +180,7 @@ def list_jobs(
         skip=skip,
         limit=limit,
         has_next=has_next,
+        prev_url=_prev_url(request, skip, limit),
         next_url=_next_url(request, next_offset, limit) if has_next else None,
         jobs=[JobRead.model_validate(j) for j in jobs],
     )
@@ -228,6 +245,7 @@ def get_job_feed(
         skip=skip,
         limit=limit,
         has_next=has_next,
+        prev_url=_prev_url(request, skip, limit),
         next_url=_next_url(request, next_offset, limit) if has_next else None,
         jobs=[JobRead.model_validate(j) for j in jobs],
     )

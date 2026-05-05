@@ -1,8 +1,10 @@
 """
 Job domain helper functions.
 
-Contains reusable token-resolution logic for board-backed job searches.
+Contains reusable token-resolution and preference-matching logic for job searches.
 """
+
+import re
 
 from src.domain.jobs.schemas import JobSearchRequest
 from src.domain.jobs.constants import JOB_SOURCE_REGISTRY
@@ -81,3 +83,97 @@ def filter_job_by_title(title: str, positive: list[str], negative: list[str]) ->
     negative_match = any(keyword in title_lower for keyword in negative_keywords)
 
     return positive_match and not negative_match
+
+
+def matches_job_location(job_location: str | None, preferred_locations: list[str]) -> bool:
+    """Return True when a job location matches at least one preferred location.
+
+    Matching is case-insensitive and compares normalized locality keys so
+    values like "New York City", "New York, NY", and similar city variants
+    match each other consistently.
+    """
+    if not preferred_locations:
+        return True
+
+    job_location_keys = _location_match_keys(job_location)
+    if not job_location_keys:
+        return False
+
+    return any(
+        _location_keys_overlap(job_location_keys, _location_match_keys(preferred_location))
+        for preferred_location in preferred_locations
+        if preferred_location
+    )
+
+
+def _normalize_location_value(value: str | None) -> str:
+    """Normalize free-form location text for stable substring matching."""
+    if not value:
+        return ""
+
+    normalized = value.lower().strip()
+    normalized = normalized.replace("new york city", "new york")
+    normalized = normalized.replace("nyc", "new york")
+    normalized = normalized.replace("new york, ny", "new york")
+    normalized = re.sub(r"\bnew york\s+ny\b", "new york", normalized)
+    normalized = re.sub(r"[^a-z0-9]+", " ", normalized)
+    normalized = re.sub(r"\s+", " ", normalized).strip()
+    return normalized
+
+
+def _location_match_keys(value: str | None) -> set[str]:
+    """Build comparable location keys from a free-form location string."""
+    if not value:
+        return set()
+
+    keys: set[str] = set()
+    raw_segments = [value]
+    raw_segments.extend(segment.strip() for segment in re.split(r"[;/|]", value) if segment.strip())
+
+    for segment in raw_segments:
+        segment = segment.strip()
+        if not segment:
+            continue
+
+        comma_parts = [part.strip() for part in segment.split(",") if part.strip()]
+        dash_parts = [part.strip() for part in re.split(r"\s*-\s*", segment) if part.strip()]
+
+        candidate_parts = {segment}
+        candidate_parts.update(comma_parts)
+        candidate_parts.update(dash_parts)
+        if comma_parts:
+            candidate_parts.add(comma_parts[0])
+
+        for candidate in candidate_parts:
+            normalized_candidate = _normalize_location_value(candidate)
+            if not normalized_candidate:
+                continue
+
+            keys.add(normalized_candidate)
+            stripped_candidate = _strip_location_suffixes(normalized_candidate)
+            if stripped_candidate:
+                keys.add(stripped_candidate)
+
+    return keys
+
+
+def _strip_location_suffixes(value: str) -> str:
+    """Strip generic locality suffixes that should not affect city matching."""
+    tokens = value.split()
+    while tokens and tokens[-1] in {"city", "metro", "metropolitan", "region", "area"}:
+        tokens.pop()
+    return " ".join(tokens)
+
+
+def _location_keys_overlap(job_location_keys: set[str], preferred_location_keys: set[str]) -> bool:
+    """Return True when any normalized job/preference location key overlaps."""
+    if not preferred_location_keys:
+        return False
+
+    return any(
+        job_key == preferred_key
+        or job_key in preferred_key
+        or preferred_key in job_key
+        for job_key in job_location_keys
+        for preferred_key in preferred_location_keys
+    )
