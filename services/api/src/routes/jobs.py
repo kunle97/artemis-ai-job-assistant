@@ -13,11 +13,16 @@ from sqlalchemy.orm import Session
 from fastapi import Query
 
 from src.deps.auth import get_current_user
+from src.domain.applications.repository import ApplicationRepository
+from src.domain.profile.repository import CandidateProfileRepository
 from src.domain.jobs.feed_service import JobFeedService
 from src.domain.jobs.models import Job
 from src.domain.jobs.models import JobFeedStatus
 from src.domain.jobs.repository import JobPreferencesRepository, JobRepository, JobSourceRepository
+from src.domain.jobs.scoring.repository import ApplicationScoreRepository
+from src.domain.jobs.scoring.service import score_job_fit_preview
 from src.domain.jobs.schemas import (
+    FeedJobRead,
     FeedPage,
     FeedScanResponse,
     JobFeedStatusUpdateRequest,
@@ -75,6 +80,41 @@ def _build_job_service(db: Session) -> JobService:
         preferences_repository=JobPreferencesRepository(db),
         job_source_repository=JobSourceRepository(db),
     )
+
+
+def _build_feed_job_reads(db: Session, user_id, jobs: list[Job]) -> list[FeedJobRead]:
+    if not jobs:
+        return []
+
+    application_repository = ApplicationRepository(db)
+    profile_repository = CandidateProfileRepository(db)
+    score_repository = ApplicationScoreRepository(db)
+    profile = profile_repository.get_by_user_id(user_id)
+
+    applications = application_repository.list_by_user_and_job_ids(
+        user_id=user_id,
+        job_ids=[job.id for job in jobs],
+    )
+    applications_by_job_id = {application.job_id: application for application in applications}
+    scores_by_application_id = {
+        score.application_id: score
+        for score in score_repository.list_by_application_ids([application.id for application in applications])
+    }
+
+    feed_jobs: list[FeedJobRead] = []
+    for job in jobs:
+        application = applications_by_job_id.get(job.id)
+        score = scores_by_application_id.get(application.id) if application else None
+        preview_score = score_job_fit_preview(job, profile) if score is None else None
+        payload = JobRead.model_validate(job).model_dump(mode="python")
+        payload.update(
+            application_id=application.id if application else None,
+            fit_score=score.global_score if score else preview_score["global_score"],
+            fit_recommendation=score.recommendation if score else preview_score["recommendation"],
+        )
+        feed_jobs.append(FeedJobRead.model_validate(payload))
+
+    return feed_jobs
 
 
 @router.get("/sources", response_model=list[JobSourceRead])
@@ -169,7 +209,7 @@ def search_jobs(
         has_next=has_next,
         prev_url=_prev_url(request, skip, limit),
         next_url=_next_url(request, next_offset, limit) if has_next else None,
-        jobs=[JobRead.model_validate(j) for j in jobs],
+        jobs=_build_feed_job_reads(db=db, user_id=current_user.id, jobs=jobs),
     )
 
 
@@ -195,7 +235,7 @@ def list_jobs(
         has_next=has_next,
         prev_url=_prev_url(request, skip, limit),
         next_url=_next_url(request, next_offset, limit) if has_next else None,
-        jobs=[JobRead.model_validate(j) for j in jobs],
+        jobs=_build_feed_job_reads(db=db, user_id=current_user.id, jobs=jobs),
     )
 
 
@@ -240,6 +280,7 @@ def get_job_feed(
     request: Request,
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=20, ge=1, le=100),
+    query: str | None = Query(default=None),
     current_user=Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -250,7 +291,7 @@ def get_job_feed(
     target_titles, positive_keywords, negative_keywords, remote_only, salary_min.
     """
     service = JobFeedService(user_id=current_user.id, db=db)
-    jobs, total = service.get_feed(skip=skip, limit=limit)
+    jobs, total = service.get_feed(skip=skip, limit=limit, query=query)
     next_offset = skip + limit
     has_next = next_offset < total
     return FeedPage(
@@ -260,7 +301,7 @@ def get_job_feed(
         has_next=has_next,
         prev_url=_prev_url(request, skip, limit),
         next_url=_next_url(request, next_offset, limit) if has_next else None,
-        jobs=[JobRead.model_validate(j) for j in jobs],
+        jobs=_build_feed_job_reads(db=db, user_id=current_user.id, jobs=jobs),
     )
 
 

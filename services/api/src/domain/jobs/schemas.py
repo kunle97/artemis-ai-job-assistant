@@ -98,6 +98,12 @@ class JobRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class FeedJobRead(JobRead):
+    application_id: UUID | None = None
+    fit_score: float | None = None
+    fit_recommendation: str | None = None
+
+
 class JobSourceRead(BaseModel):
     id: int
     source: str
@@ -131,6 +137,6 @@ class FeedPage(BaseModel):
     has_next: bool
     prev_url: str | None = Field(default=None, serialization_alias="prevUrl")
     next_url: str | None
-    jobs: list[JobRead]
+    jobs: list[FeedJobRead]
 
     model_config = ConfigDict(populate_by_name=True)

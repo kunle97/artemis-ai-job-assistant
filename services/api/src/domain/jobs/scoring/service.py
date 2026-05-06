@@ -145,6 +145,29 @@ def _heuristic_skills_gap_summary(
     return f"Potential gaps (from JD keywords not found in profile): {', '.join(top_gaps)}."
 
 
+def score_job_fit_preview(job, profile) -> dict:
+    """Return a non-persistent heuristic fit score for a job/profile pair."""
+    skills = list(profile.skills or []) if profile else []
+    experience = list(profile.experience_sections or []) if profile else []
+    work_arrangement = getattr(profile, "work_arrangement", None) if profile else None
+
+    role_fit = _heuristic_role_fit(job.description or "", skills)
+    seniority_match = _heuristic_seniority_match(job.title or "", experience)
+    location_match = _heuristic_location_match(job.workplace_type, work_arrangement)
+    global_score = _weighted_global(role_fit, seniority_match, location_match)
+    skills_gap_summary = _heuristic_skills_gap_summary(job.description or "", skills)
+    recommendation = _recommendation_from_score(global_score)
+
+    return {
+        "role_fit": role_fit,
+        "seniority_match": seniority_match,
+        "location_match": location_match,
+        "global_score": global_score,
+        "skills_gap_summary": skills_gap_summary,
+        "recommendation": recommendation,
+    }
+
+
 class JobScoringService:
     def __init__(
         self,
@@ -262,22 +285,4 @@ class JobScoringService:
     # ------------------------------------------------------------------
 
     def _score_heuristic(self, job, profile) -> dict:
-        skills = list(profile.skills or []) if profile else []
-        experience = list(profile.experience_sections or []) if profile else []
-        work_arrangement = getattr(profile, "work_arrangement", None) if profile else None
-
-        role_fit = _heuristic_role_fit(job.description or "", skills)
-        seniority_match = _heuristic_seniority_match(job.title or "", experience)
-        location_match = _heuristic_location_match(job.workplace_type, work_arrangement)
-        global_score = _weighted_global(role_fit, seniority_match, location_match)
-        skills_gap_summary = _heuristic_skills_gap_summary(job.description or "", skills)
-        recommendation = _recommendation_from_score(global_score)
-
-        return {
-            "role_fit": role_fit,
-            "seniority_match": seniority_match,
-            "location_match": location_match,
-            "global_score": global_score,
-            "skills_gap_summary": skills_gap_summary,
-            "recommendation": recommendation,
-        }
+        return score_job_fit_preview(job, profile)

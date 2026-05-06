@@ -42,6 +42,17 @@ class ApplicationRepository:
             .all()
         )
 
+    def list_by_user_and_job_ids(self, user_id, job_ids):
+        if not job_ids:
+            return []
+
+        return (
+            self.db.query(Application)
+            .filter(Application.user_id == user_id, Application.job_id.in_(job_ids))
+            .order_by(Application.created_at.desc())
+            .all()
+        )
+
     def update_fields(self, application_id, **fields):
         application = self.get_by_id(application_id)
         if not application:

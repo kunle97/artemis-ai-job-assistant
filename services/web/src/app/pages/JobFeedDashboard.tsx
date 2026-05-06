@@ -1,68 +1,251 @@
 'use client';
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { AppShell } from '../components/AppShell';
-import { Button, Card, Badge, ScoreIndicator } from '../components/ui';
-import type { ScoreRecommendation } from '../components/ui';
-import { Search, SlidersHorizontal, MapPin, DollarSign, Briefcase, Heart, X, RefreshCw } from 'lucide-react';
-
-const mockJobs = [
-  {
-    id: '1',
-    title: 'Senior Product Manager',
-    company: 'TechCorp Inc.',
-    location: 'San Francisco, CA',
-    workMode: 'Hybrid',
-    salary: '$150k - $200k',
-    posted: '2 days ago',
-    description: 'Leading product strategy for our flagship SaaS platform...',
-    fitScore: 4.6,
-    fitRecommendation: 'apply_immediately' as ScoreRecommendation,
-  },
-  {
-    id: '2',
-    title: 'Product Manager',
-    company: 'Innovate Labs',
-    location: 'Remote',
-    workMode: 'Remote',
-    salary: '$130k - $170k',
-    posted: '1 week ago',
-    description: 'Drive product vision and roadmap for AI-powered tools...',
-    fitScore: 3.2,
-    fitRecommendation: 'recommend_against' as ScoreRecommendation,
-  },
-  {
-    id: '3',
-    title: 'Product Lead',
-    company: 'StartupXYZ',
-    location: 'New York, NY',
-    workMode: 'On-site',
-    salary: '$140k - $180k',
-    posted: '3 days ago',
-    description: 'Own end-to-end product development lifecycle...',
-    fitScore: 4.1,
-    fitRecommendation: 'worth_applying' as ScoreRecommendation,
-  },
-];
+import { Button, Card, Badge, Input, ScoreIndicator } from '../components/ui';
+import {
+  Search,
+  SlidersHorizontal,
+  MapPin,
+  DollarSign,
+  Briefcase,
+  Heart,
+  X,
+  RefreshCw,
+  Loader2,
+  Link,
+  Plus,
+} from 'lucide-react';
+import {
+  getJobFeed,
+  scanJobFeed,
+  updateFeedJobStatus,
+  type FeedPageResponse,
+  type JobItem,
+} from '../../services/jobs/job-feed.service';
+import { getStoredAccessToken } from '../../services/auth/auth.service';
 
 export const JobFeedDashboard: React.FC = () => {
   const router = useRouter();
-  const [jobs, setJobs] = useState(mockJobs);
+  const [jobs, setJobs] = useState<JobItem[]>([]);
+  const [hasScanned, setHasScanned] = useState(false);
+  const [scanMessage, setScanMessage] = useState<string | null>(null);
+  const [scanError, setScanError] = useState<string | null>(null);
+  const [statusTransitionError, setStatusTransitionError] = useState<string | null>(null);
+  const [loadingFeed, setLoadingFeed] = useState(true);
   const [scanning, setScanning] = useState(false);
+  const [jobUpdatingId, setJobUpdatingId] = useState<string | null>(null);
+  const [skip, setSkip] = useState(0);
+  const [itemsPerPage, setItemsPerPage] = useState(12);
+  const [total, setTotal] = useState(0);
+  const [hasNext, setHasNext] = useState(false);
+  const [hasPrev, setHasPrev] = useState(false);
 
-  const handleScanJobs = () => {
+  const [keywordFilter, setKeywordFilter] = useState('');
+  const [locationFilter, setLocationFilter] = useState('All Locations');
+  const [workModeFilter, setWorkModeFilter] = useState('All Work Modes');
+  const [sortOrder, setSortOrder] = useState<'newest' | 'salary_high' | 'salary_low'>('newest');
+  const [isKeywordSearchActive, setIsKeywordSearchActive] = useState(false);
+
+  const [jobStatuses, setJobStatuses] = useState<Record<string, 'saved' | 'dismissed'>>({});
+
+  const token = getStoredAccessToken();
+
+  const hydratePageState = (page: FeedPageResponse, pageSkip: number) => {
+    setJobs(page.jobs);
+    setTotal(page.total);
+    setHasNext(page.has_next);
+    setHasPrev(pageSkip > 0);
+    setSkip(pageSkip);
+  };
+
+  const loadFeed = async (pageSkip = 0, query?: string) => {
+    if (!token) {
+      setLoadingFeed(false);
+      setScanError('Please sign in to view your job feed.');
+      return;
+    }
+
+    setLoadingFeed(true);
+    setScanError(null);
+
+    try {
+      const page = await getJobFeed(token, pageSkip, itemsPerPage, query);
+      hydratePageState(page, pageSkip);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to load job feed.';
+      setScanError(message);
+    } finally {
+      setLoadingFeed(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadFeed(0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [itemsPerPage]);
+
+  // Debounced keyword search
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (keywordFilter.trim() && !token) {
+        setScanError('Please sign in to search jobs.');
+        return;
+      }
+
+      if (keywordFilter.trim()) {
+        void handleKeywordSearch();
+      } else if (!keywordFilter.trim() && isKeywordSearchActive) {
+        // If user clears the keyword filter, go back to regular feed
+        setIsKeywordSearchActive(false);
+        void loadFeed(0);
+      }
+    }, 500);
+
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [keywordFilter]);
+
+  const handleScanJobs = async () => {
+    if (!token) {
+      setScanError('Please sign in to scan for jobs.');
+      return;
+    }
+
     setScanning(true);
-    setTimeout(() => {
+    setScanError(null);
+
+    try {
+      const response = await scanJobFeed(token);
+      setHasScanned(true);
+      setScanMessage(
+        response.new_jobs_found > 0
+          ? `Scan complete. ${response.new_jobs_found} new job${response.new_jobs_found === 1 ? '' : 's'} found.`
+          : 'Scan complete. No new jobs found.',
+      );
+      await loadFeed(0);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Job scan failed.';
+      setScanError(message);
+    } finally {
       setScanning(false);
-    }, 2000);
+    }
   };
 
-  const handleSaveJob = (jobId: string) => {
-    router.push(`/applications/new?jobId=${jobId}`);
+  const handleSaveJob = async (jobId: string) => {
+    if (!token) {
+      setStatusTransitionError('Please sign in to save jobs.');
+      return;
+    }
+
+    setJobUpdatingId(jobId);
+    setStatusTransitionError(null);
+
+    try {
+      await updateFeedJobStatus(token, jobId, 'saved');
+      setJobStatuses((prev) => ({ ...prev, [jobId]: 'saved' }));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to save job.';
+      setStatusTransitionError(message);
+    } finally {
+      setJobUpdatingId(null);
+    }
   };
 
-  const handleDismissJob = (jobId: string) => {
-    setJobs(jobs.filter((j) => j.id !== jobId));
+  const handleDismissJob = async (jobId: string) => {
+    if (!token) {
+      setStatusTransitionError('Please sign in to dismiss jobs.');
+      return;
+    }
+
+    setJobUpdatingId(jobId);
+    setStatusTransitionError(null);
+
+    try {
+      await updateFeedJobStatus(token, jobId, 'dismissed');
+      setJobStatuses((prev) => ({ ...prev, [jobId]: 'dismissed' }));
+      setJobs((prev) => prev.filter((j) => j.id !== jobId));
+      setTotal((prev) => Math.max(0, prev - 1));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to dismiss job.';
+      setStatusTransitionError(message);
+    } finally {
+      setJobUpdatingId(null);
+    }
+  };
+
+  const handleKeywordSearch = async () => {
+    if (!token) {
+      return;
+    }
+
+    setLoadingFeed(true);
+    setScanError(null);
+
+    try {
+      setIsKeywordSearchActive(true);
+      const page = await getJobFeed(token, 0, itemsPerPage, keywordFilter.trim());
+      hydratePageState(page, 0);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Search failed.';
+      setScanError(message);
+    } finally {
+      setLoadingFeed(false);
+    }
+  };
+
+  const handlePageChange = async (direction: 'next' | 'prev') => {
+    if (!token) {
+      return;
+    }
+
+    const nextSkip = direction === 'next' ? skip + itemsPerPage : Math.max(0, skip - itemsPerPage);
+
+    if (isKeywordSearchActive) {
+      setLoadingFeed(true);
+      try {
+        const page = await getJobFeed(token, nextSkip, itemsPerPage, keywordFilter.trim());
+        hydratePageState(page, nextSkip);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Pagination failed.';
+        setScanError(message);
+      } finally {
+        setLoadingFeed(false);
+      }
+    } else {
+      await loadFeed(nextSkip);
+    }
+  };
+
+  const visibleJobs = useMemo(() => {
+    let filtered = [...jobs];
+
+    if (locationFilter !== 'All Locations') {
+      filtered = filtered.filter((job) => (job.location || 'Unknown').includes(locationFilter));
+    }
+
+    if (workModeFilter !== 'All Work Modes') {
+      filtered = filtered.filter((job) => (job.workplace_type || 'Unknown') === workModeFilter);
+    }
+
+    if (sortOrder === 'salary_high') {
+      filtered.sort((a, b) => (b.salary_max || b.salary_min || 0) - (a.salary_max || a.salary_min || 0));
+    } else if (sortOrder === 'salary_low') {
+      filtered.sort((a, b) => (a.salary_min || a.salary_max || 0) - (b.salary_min || b.salary_max || 0));
+    } else {
+      filtered.sort((a, b) => +new Date(b.created_at) - +new Date(a.created_at));
+    }
+
+    return filtered;
+  }, [jobs, locationFilter, workModeFilter, sortOrder]);
+
+  const formatSalary = (job: JobItem): string | null => {
+    if (job.salary_min == null && job.salary_max == null) return null;
+    const prefix = job.currency ? `${job.currency} ` : '$';
+    if (job.salary_min != null && job.salary_max != null) {
+      return `${prefix}${job.salary_min.toLocaleString()} - ${prefix}${job.salary_max.toLocaleString()}`;
+    }
+    return `${prefix}${(job.salary_min || job.salary_max || 0).toLocaleString()}`;
   };
 
   const handleGoToPreferences = () => {
@@ -77,9 +260,13 @@ export const JobFeedDashboard: React.FC = () => {
           <div className="flex items-center justify-between mb-4">
             <div>
               <h1 className="text-3xl font-semibold text-foreground">Job Feed</h1>
-              <p className="mt-2 text-muted-foreground">Discover opportunities matched to your preferences</p>
+              <p className="mt-2 text-muted-foreground">Scan, review, and organize opportunities into saved and dismissed buckets</p>
             </div>
             <div className="flex items-center gap-3">
+              <Button variant="outline" onClick={() => router.push('/jobs/add')}>
+                <Plus className="h-4 w-4" />
+                Add Job by URL
+              </Button>
               <Button variant="outline" onClick={handleGoToPreferences}>
                 <SlidersHorizontal className="h-4 w-4" />
                 Preferences
@@ -90,42 +277,84 @@ export const JobFeedDashboard: React.FC = () => {
               </Button>
             </div>
           </div>
+          {scanMessage && <p className="mt-2 text-sm text-brand">{scanMessage}</p>}
+          {scanError && <p className="mt-2 text-sm text-destructive">{scanError}</p>}
+          {statusTransitionError && <p className="mt-2 text-sm text-destructive">{statusTransitionError}</p>}
         </div>
 
         {/* Filters */}
         <Card padding="sm" variant="outlined" className="mb-6">
-          <div className="flex items-center gap-4">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center">
             <div className="flex-1 flex items-center gap-2 px-3 py-2 rounded-lg bg-input-background border border-border">
               <Search className="h-5 w-5 text-muted-foreground" />
               <input
                 type="text"
                 placeholder="Search jobs..."
+                value={keywordFilter}
+                onChange={(e) => setKeywordFilter(e.target.value)}
                 className="flex-1 bg-transparent border-none outline-none text-foreground placeholder:text-muted-foreground"
               />
             </div>
-            <select className="px-4 py-2 rounded-lg bg-input-background border border-border text-foreground">
+            <select
+              className="px-4 py-2 rounded-lg bg-input-background border border-border text-foreground"
+              value={locationFilter}
+              onChange={(e) => setLocationFilter(e.target.value)}
+            >
               <option>All Locations</option>
               <option>Remote</option>
               <option>San Francisco</option>
               <option>New York</option>
             </select>
-            <select className="px-4 py-2 rounded-lg bg-input-background border border-border text-foreground">
+            <select
+              className="px-4 py-2 rounded-lg bg-input-background border border-border text-foreground"
+              value={workModeFilter}
+              onChange={(e) => setWorkModeFilter(e.target.value)}
+            >
               <option>All Work Modes</option>
               <option>Remote</option>
               <option>Hybrid</option>
               <option>On-site</option>
+            </select>
+            <select
+              className="px-4 py-2 rounded-lg bg-input-background border border-border text-foreground"
+              value={sortOrder}
+              onChange={(e) => setSortOrder(e.target.value as 'newest' | 'salary_high' | 'salary_low')}
+            >
+              <option value="newest">Sort: Newest</option>
+              <option value="salary_high">Sort: Salary High</option>
+              <option value="salary_low">Sort: Salary Low</option>
+            </select>
+            <select
+              className="px-4 py-2 rounded-lg bg-input-background border border-border text-foreground"
+              value={itemsPerPage}
+              onChange={(e) => setItemsPerPage(Number(e.target.value))}
+            >
+              <option value={10}>10 per page</option>
+              <option value={12}>12 per page</option>
+              <option value={20}>20 per page</option>
+              <option value={50}>50 per page</option>
             </select>
           </div>
         </Card>
 
         {/* Results Count */}
         <div className="mb-4">
-          <p className="text-sm text-muted-foreground">{jobs.length} opportunities found</p>
+          <p className="text-sm text-muted-foreground">
+            {visibleJobs.length} shown of {total} total opportunities
+          </p>
         </div>
 
+        {loadingFeed && (
+          <Card padding="lg" className="text-center mb-6">
+            <Loader2 className="h-8 w-8 text-brand animate-spin mx-auto mb-3" />
+            <p className="text-muted-foreground">Loading job feed...</p>
+          </Card>
+        )}
+
         {/* Job Cards */}
+        {!loadingFeed && visibleJobs.length > 0 && (
         <div className="space-y-4">
-          {jobs.map((job) => (
+          {visibleJobs.map((job) => (
             <Card key={job.id} padding="md" variant="outlined" className="hover:shadow-md transition-shadow">
               <div className="flex items-start justify-between gap-6">
                 <div className="flex-1">
@@ -135,63 +364,113 @@ export const JobFeedDashboard: React.FC = () => {
                     </div>
                     <div className="flex-1">
                       <h3 className="text-xl font-semibold text-foreground mb-1">{job.title}</h3>
-                      <p className="text-foreground mb-3">{job.company}</p>
+                      <div className="mb-3 flex flex-wrap items-center gap-3">
+                        <p className="text-foreground">{job.company_name}</p>
+                        <span className="h-4 w-px bg-border" aria-hidden="true" />
+                        <ScoreIndicator
+                          compact
+                          score={job.fit_score}
+                          recommendation={job.fit_recommendation}
+                        />
+                      </div>
 
                       <div className="flex flex-wrap items-center gap-3 mb-4">
                         <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
                           <MapPin className="h-4 w-4" />
-                          {job.location}
+                          {job.location || 'Location not provided'}
                         </div>
                         <Badge variant="default" size="sm">
-                          {job.workMode}
+                          {job.workplace_type || 'Work type unknown'}
                         </Badge>
-                        {job.salary && (
+                        {formatSalary(job) && (
                           <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
                             <DollarSign className="h-4 w-4" />
-                            {job.salary}
+                            {formatSalary(job)}
                           </div>
                         )}
-                        <span className="text-sm text-muted-foreground">{job.posted}</span>
+                        <Badge variant="secondary" size="sm">{job.source}</Badge>
+                        <a href={job.apply_url} target="_blank" rel="noreferrer" className="text-sm text-brand hover:underline inline-flex items-center gap-1">
+                          <Link className="h-3.5 w-3.5" />
+                          Apply URL
+                        </a>
                       </div>
 
-                      <p className="text-muted-foreground line-clamp-2">{job.description}</p>
+                      {job.description && <p className="text-muted-foreground line-clamp-2">{job.description}</p>}
                     </div>
                   </div>
                 </div>
 
                 <div className="flex flex-col gap-2 items-end">
-                  <Button variant="primary" size="sm" onClick={() => handleSaveJob(job.id)}>
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={() => void handleSaveJob(job.id)}
+                    loading={jobUpdatingId === job.id && jobStatuses[job.id] !== 'dismissed'}
+                    disabled={jobStatuses[job.id] === 'saved'}
+                  >
                     <Heart className="h-4 w-4" />
-                    Apply
+                    {jobStatuses[job.id] === 'saved' ? 'Saved' : 'Save'}
                   </Button>
-                  <Button variant="ghost" size="sm" onClick={() => handleDismissJob(job.id)}>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => void handleDismissJob(job.id)}
+                    loading={jobUpdatingId === job.id && jobStatuses[job.id] !== 'saved'}
+                  >
                     <X className="h-4 w-4" />
                     Dismiss
                   </Button>
-                  {job.fitScore !== undefined && (
-                    <div className="mt-2 pt-2 border-t border-border">
-                      <ScoreIndicator score={job.fitScore} recommendation={job.fitRecommendation} compact />
-                    </div>
-                  )}
                 </div>
               </div>
             </Card>
           ))}
         </div>
+        )}
 
-        {/* Empty State */}
-        {jobs.length === 0 && (
+        {/* Pagination */}
+        {!loadingFeed && total > 0 && (
+          <div className="mt-6 flex items-center justify-between">
+            <p className="text-sm text-muted-foreground">
+              Showing {skip + 1}-{Math.min(skip + itemsPerPage, total)} of {total}
+            </p>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" onClick={() => void handlePageChange('prev')} disabled={!hasPrev || scanning || loadingFeed}>
+                Previous
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => void handlePageChange('next')} disabled={!hasNext || scanning || loadingFeed}>
+                Next
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* Empty pre-scan state */}
+        {!loadingFeed && jobs.length === 0 && !hasScanned && (
+          <Card padding="lg" className="text-center">
+            <RefreshCw className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+            <h3 className="text-lg font-semibold text-foreground mb-2">Ready for your first feed scan</h3>
+            <p className="text-muted-foreground mb-6">
+              Start by scanning configured job sources to build your personalized feed.
+            </p>
+            <Button variant="primary" onClick={() => void handleScanJobs()} loading={scanning}>
+              Scan Job Feed
+            </Button>
+          </Card>
+        )}
+
+        {/* No new jobs found state */}
+        {!loadingFeed && jobs.length === 0 && hasScanned && (
           <Card padding="lg" className="text-center">
             <Search className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-            <h3 className="text-lg font-semibold text-foreground mb-2">No more jobs in your feed</h3>
+            <h3 className="text-lg font-semibold text-foreground mb-2">No new jobs found</h3>
             <p className="text-muted-foreground mb-6">
-              Try scanning for new opportunities or adjusting your preferences
+              Try another scan, update preferences, or add a job manually.
             </p>
             <div className="flex items-center justify-center gap-3">
               <Button variant="outline" onClick={handleGoToPreferences}>
                 Update Preferences
               </Button>
-              <Button variant="primary" onClick={handleScanJobs}>
+              <Button variant="primary" onClick={() => void handleScanJobs()} loading={scanning}>
                 Scan for Jobs
               </Button>
             </div>

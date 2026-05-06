@@ -1,6 +1,7 @@
 import * as React from "react";
 import { Slot } from "@radix-ui/react-slot";
 import { cva, type VariantProps } from "class-variance-authority";
+import { Loader2 } from "lucide-react";
 
 import { cn } from "./utils";
 
@@ -44,6 +45,7 @@ function Button({
   asChild = false,
   fullWidth = false,
   loading = false,
+  children,
   ...props
 }: React.ComponentProps<"button"> &
   VariantProps<typeof buttonVariants> & {
@@ -59,7 +61,12 @@ function Button({
       className={cn(buttonVariants({ variant, size, className }), fullWidth && "w-full")}
       disabled={loading || props.disabled}
       {...props}
-    />
+    >
+      {loading && <Loader2 className="h-4 w-4 animate-spin" />}
+      <span className={cn("inline-flex items-center gap-2", loading && "[&>svg]:hidden")}>
+        {children}
+      </span>
+    </Comp>
   );
 }
 

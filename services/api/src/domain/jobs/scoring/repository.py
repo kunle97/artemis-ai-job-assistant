@@ -22,6 +22,16 @@ class ApplicationScoreRepository:
             .first()
         )
 
+    def list_by_application_ids(self, application_ids):
+        if not application_ids:
+            return []
+
+        return (
+            self.db.query(ApplicationScore)
+            .filter(ApplicationScore.application_id.in_(application_ids))
+            .all()
+        )
+
     def create_or_update(self, application_id, user_id, **score_data):
         existing = self.get_by_application_id(application_id)
         if existing:

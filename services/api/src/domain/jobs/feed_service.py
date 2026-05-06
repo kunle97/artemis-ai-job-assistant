@@ -162,17 +162,38 @@ class JobFeedService:
         )
         return new_jobs
 
-    def get_feed(self, skip: int = 0, limit: int = 20) -> tuple[list, int]:
+    def get_feed(self, skip: int = 0, limit: int = 20, query: str | None = None) -> tuple[list, int]:
         """Return a paginated, preference-filtered view of the job pool.
 
         Filters are applied at read time against the user's current preferences.
         Returns (page_jobs, total_matching_count).
         """
-        logger.info("[JobFeedService] Loading feed for user %s (skip=%d, limit=%d)", self.user_id, skip, limit)
+        logger.info(
+            "[JobFeedService] Loading feed for user %s (skip=%d, limit=%d, query=%s)",
+            self.user_id,
+            skip,
+            limit,
+            query,
+        )
 
         preferences = self._preferences_repo.get_or_create_by_user_id(self.user_id)
         feed_rows = self._user_feed_repo.list_for_user(self.user_id)
         filtered = self._apply_preference_filters(feed_rows, preferences)
+
+        if query:
+            normalized_query = query.strip().lower()
+            filtered = [
+                job for job in filtered
+                if normalized_query in " ".join(
+                    part for part in [
+                        job.title or "",
+                        job.company_name or "",
+                        job.description or "",
+                        job.location or "",
+                        job.source or "",
+                    ] if part
+                ).lower()
+            ]
 
         total = len(filtered)
         page = filtered[skip : skip + limit]
