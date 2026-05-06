@@ -4,6 +4,12 @@ import React, { useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { Sparkles, Briefcase, FileText, BookOpen, User, Settings, Search, Menu, X, CreditCard, UserCircle } from 'lucide-react';
 import { FollowUpDropdown } from './FollowUpDropdown';
+import {
+  clearStoredTokens,
+  getStoredAccessToken,
+  getStoredRefreshToken,
+  logoutUser,
+} from '../../services/auth/auth.service';
 
 interface AppShellProps {
   children: React.ReactNode;
@@ -32,8 +38,18 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
     router.push(href);
   };
 
-  const handleSignOut = () => {
-    router.push('/');
+  const handleSignOut = async () => {
+    const accessToken = getStoredAccessToken();
+    const refreshToken = getStoredRefreshToken();
+
+    try {
+      if (accessToken) {
+        await logoutUser(accessToken, refreshToken ?? undefined);
+      }
+    } finally {
+      clearStoredTokens();
+      router.push('/signin');
+    }
   };
 
   return (
