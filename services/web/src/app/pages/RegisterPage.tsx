@@ -8,7 +8,8 @@ export const RegisterPage: React.FC = () => {
   const router = useRouter();
   const [step, setStep] = useState<'register' | 'onboarding'>('register');
   const [formData, setFormData] = useState({
-    name: '',
+    firstName: '',
+    lastName: '',
     email: '',
     password: '',
     confirmPassword: '',
@@ -139,15 +140,28 @@ export const RegisterPage: React.FC = () => {
               </div>
             )}
 
-            <Input
-              type="text"
-              label="Full Name"
-              placeholder="John Doe"
-              value={formData.name}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              required
-              fullWidth
-            />
+            <div className="grid grid-cols-2 gap-3">
+              <Input
+                type="text"
+                label="First Name"
+                placeholder="John"
+                value={formData.firstName}
+                onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
+                required
+                fullWidth
+                autoComplete="given-name"
+              />
+              <Input
+                type="text"
+                label="Last Name"
+                placeholder="Doe"
+                value={formData.lastName}
+                onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
+                required
+                fullWidth
+                autoComplete="family-name"
+              />
+            </div>
 
             <Input
               type="email"
