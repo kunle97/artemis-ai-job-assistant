@@ -6,6 +6,10 @@ import logging
 from uuid import UUID
 
 from services.worker import API_ROOT  # noqa: F401
+from services.worker.concurrency import AutomationConcurrencyLimiter
+from src.core.config import settings
+from src.domain.applications.constants import APPLICATION_STATUS_FAILED
+from src.domain.applications.repository import ApplicationRepository
 from src.domain.applications.factory import build_pipeline_service
 from src.domain.jobs.feed_service import JobFeedService
 from src.domain.jobs.repository import JobPreferencesRepository
@@ -26,6 +30,32 @@ def run_application_pipeline_async(user_id: str, application_id: str) -> dict[st
     )
 
     db = SessionLocal()
+    limiter = AutomationConcurrencyLimiter(
+        redis_url=settings.redis_url,
+        global_limit=settings.automation_max_concurrent_sessions,
+        per_user_limit=settings.automation_max_concurrent_sessions_per_user,
+        ttl_seconds=settings.automation_session_limit_ttl_seconds,
+    )
+    acquired, reason = limiter.acquire(user_id=user_id)
+    if not acquired:
+        failure_reason = f"concurrency_limit (transient): RuntimeError: {reason}"
+        logger.warning(
+            "[Worker] Concurrency guard blocked pipeline user_id=%s application_id=%s reason=%s",
+            user_id,
+            application_id,
+            reason,
+        )
+        try:
+            application_repo = ApplicationRepository(db)
+            application_repo.update_fields(
+                UUID(str(application_id)),
+                status=APPLICATION_STATUS_FAILED,
+                failure_reason=failure_reason,
+            )
+        finally:
+            db.close()
+        raise RuntimeError(reason)
+
     try:
         pipeline_service = build_pipeline_service(db)
         application = pipeline_service.run_pipeline(
@@ -49,6 +79,7 @@ def run_application_pipeline_async(user_id: str, application_id: str) -> dict[st
         )
         raise
     finally:
+        limiter.release(user_id=user_id)
         db.close()
 
 

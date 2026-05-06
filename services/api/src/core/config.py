@@ -48,6 +48,9 @@ class Settings(BaseSettings):
     enable_resume_parser: bool = True
     enable_automation: bool = True
     save_screenshots: bool = False
+    automation_max_concurrent_sessions: int = 4
+    automation_max_concurrent_sessions_per_user: int = 1
+    automation_session_limit_ttl_seconds: int = 3600
     max_pipeline_retries: int = 3
     job_scan_interval_hours: int = 24
 

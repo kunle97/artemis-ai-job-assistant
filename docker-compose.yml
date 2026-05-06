@@ -27,7 +27,7 @@ services:
     container_name: artemis_worker
     restart: always
     working_dir: /app
-    command: celery -A services.worker.celery_app:celery_app worker --loglevel=info
+    command: celery -A services.worker.celery_app:celery_app worker --loglevel=info --concurrency=${CELERYD_CONCURRENCY:-4}
     env_file:
       - services/api/.env.development
     environment:
@@ -35,6 +35,9 @@ services:
       REDIS_URL: redis://redis:6379/0
       PYTHONPATH: /app:/app/services/api
       JOB_SCAN_INTERVAL_HOURS: ${JOB_SCAN_INTERVAL_HOURS:-24}
+      AUTOMATION_MAX_CONCURRENT_SESSIONS: ${AUTOMATION_MAX_CONCURRENT_SESSIONS:-4}
+      AUTOMATION_MAX_CONCURRENT_SESSIONS_PER_USER: ${AUTOMATION_MAX_CONCURRENT_SESSIONS_PER_USER:-1}
+      AUTOMATION_SESSION_LIMIT_TTL_SECONDS: ${AUTOMATION_SESSION_LIMIT_TTL_SECONDS:-3600}
       STORAGE_BACKEND: ${STORAGE_BACKEND:-local}
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
@@ -63,6 +66,9 @@ services:
       REDIS_URL: redis://redis:6379/0
       PYTHONPATH: /app:/app/services/api
       JOB_SCAN_INTERVAL_HOURS: ${JOB_SCAN_INTERVAL_HOURS:-24}
+      AUTOMATION_MAX_CONCURRENT_SESSIONS: ${AUTOMATION_MAX_CONCURRENT_SESSIONS:-4}
+      AUTOMATION_MAX_CONCURRENT_SESSIONS_PER_USER: ${AUTOMATION_MAX_CONCURRENT_SESSIONS_PER_USER:-1}
+      AUTOMATION_SESSION_LIMIT_TTL_SECONDS: ${AUTOMATION_SESSION_LIMIT_TTL_SECONDS:-3600}
       STORAGE_BACKEND: ${STORAGE_BACKEND:-local}
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}

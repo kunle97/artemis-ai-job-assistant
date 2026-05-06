@@ -7,6 +7,8 @@ import sys
 from uuid import uuid4
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 REPO_ROOT = Path(__file__).resolve().parents[4]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
@@ -58,9 +60,11 @@ def test_scan_job_feed_for_all_users_continues_after_failure(
 
 
 @patch("services.worker.tasks.build_pipeline_service")
+@patch("services.worker.tasks.AutomationConcurrencyLimiter")
 @patch("services.worker.tasks.SessionLocal")
 def test_run_application_pipeline_async_returns_final_status(
     mock_session_local,
+    mock_concurrency_limiter,
     mock_build_pipeline_service,
 ):
     session = MagicMock()
@@ -68,6 +72,10 @@ def test_run_application_pipeline_async_returns_final_status(
 
     fake_application = MagicMock()
     fake_application.status = "filled"
+
+    limiter = MagicMock()
+    limiter.acquire.return_value = (True, None)
+    mock_concurrency_limiter.return_value = limiter
 
     pipeline_service = MagicMock()
     pipeline_service.run_pipeline.return_value = fake_application
@@ -83,13 +91,17 @@ def test_run_application_pipeline_async_returns_final_status(
         "status": "filled",
     }
     pipeline_service.run_pipeline.assert_called_once()
+    limiter.acquire.assert_called_once()
+    limiter.release.assert_called_once()
     session.close.assert_called_once()
 
 
 @patch("services.worker.tasks.build_pipeline_service")
+@patch("services.worker.tasks.AutomationConcurrencyLimiter")
 @patch("services.worker.tasks.SessionLocal")
 def test_run_application_pipeline_async_closes_session_on_failure(
     mock_session_local,
+    mock_concurrency_limiter,
     mock_build_pipeline_service,
 ):
     session = MagicMock()
@@ -98,6 +110,10 @@ def test_run_application_pipeline_async_closes_session_on_failure(
     pipeline_service = MagicMock()
     pipeline_service.run_pipeline.side_effect = RuntimeError("pipeline boom")
     mock_build_pipeline_service.return_value = pipeline_service
+
+    limiter = MagicMock()
+    limiter.acquire.return_value = (True, None)
+    mock_concurrency_limiter.return_value = limiter
 
     try:
         run_application_pipeline_async(
@@ -109,4 +125,31 @@ def test_run_application_pipeline_async_closes_session_on_failure(
     else:
         raise AssertionError("Expected RuntimeError")
 
+    limiter.release.assert_called_once()
+    session.close.assert_called_once()
+
+
+@patch("services.worker.tasks.ApplicationRepository")
+@patch("services.worker.tasks.AutomationConcurrencyLimiter")
+@patch("services.worker.tasks.SessionLocal")
+def test_run_application_pipeline_async_marks_failed_when_limit_reached(
+    mock_session_local,
+    mock_concurrency_limiter,
+    mock_application_repository,
+):
+    session = MagicMock()
+    mock_session_local.return_value = session
+
+    limiter = MagicMock()
+    limiter.acquire.return_value = (False, "user limit reached")
+    mock_concurrency_limiter.return_value = limiter
+
+    with pytest.raises(RuntimeError, match="user limit reached"):
+        run_application_pipeline_async(
+            user_id="f47ac10b-58cc-4372-a567-0e02b2c3d479",
+            application_id="123e4567-e89b-12d3-a456-426614174000",
+        )
+
+    mock_application_repository.return_value.update_fields.assert_called_once()
+    limiter.release.assert_not_called()
     session.close.assert_called_once()
