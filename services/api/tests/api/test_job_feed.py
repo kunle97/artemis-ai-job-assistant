@@ -8,7 +8,7 @@ from uuid import UUID
 from unittest.mock import patch
 
 from src.domain.jobs.feed_service import JobFeedService
-from src.domain.jobs.models import Job, JobFeedStatus, JobUserFeed
+from src.domain.jobs.models import Job, JobFeedStatus, JobSource, JobUserFeed
 
 
 def _register_and_login(client, sample_user_payload):
@@ -24,6 +24,19 @@ def _register_and_login(client, sample_user_payload):
     )
     assert login_response.status_code == 200
     return login_response.json()["access_token"]
+
+
+def _seed_job_sources(db_session) -> None:
+    db_session.add(
+        JobSource(
+            source="greenhouse",
+            company_key="fakeco",
+            board_token="fakeco",
+            display_name="FakeCo",
+            is_active=True,
+        )
+    )
+    db_session.commit()
 
 
 _FAKE_JOBS = [
@@ -58,9 +71,10 @@ _FAKE_JOBS = [
 ]
 
 
-def test_feed_scan_returns_new_jobs(client, sample_user_payload):
+def test_feed_scan_returns_new_jobs(client, sample_user_payload, db_session):
     """POST /jobs/feed/scan returns newly ingested jobs."""
     token = _register_and_login(client, sample_user_payload)
+    _seed_job_sources(db_session)
 
     client.put(
         "/jobs/preferences",
@@ -80,9 +94,10 @@ def test_feed_scan_returns_new_jobs(client, sample_user_payload):
     assert "jobs" not in data
 
 
-def test_feed_scan_deduplicates_on_rescan(client, sample_user_payload):
+def test_feed_scan_deduplicates_on_rescan(client, sample_user_payload, db_session):
     """Re-scanning the same boards does not create duplicate job records."""
     token = _register_and_login(client, sample_user_payload)
+    _seed_job_sources(db_session)
 
     client.put(
         "/jobs/preferences",

@@ -6,7 +6,7 @@ Coordinates adapters, board-token resolution, and persistence.
 
 import logging
 
-from src.domain.jobs.repository import JobPreferencesRepository, JobRepository
+from src.domain.jobs.repository import JobPreferencesRepository, JobRepository, JobSourceRepository
 from src.domain.jobs.schemas import JobPreferencesUpsertRequest, JobSearchRequest
 from src.domain.jobs.helpers import filter_job_by_title, resolve_board_tokens
 from src.integrations.adapters.registry import get_adapter
@@ -19,9 +19,26 @@ class JobService:
         self,
         repository: JobRepository,
         preferences_repository: JobPreferencesRepository | None = None,
+        job_source_repository: JobSourceRepository | None = None,
     ):
         self.repository = repository
         self.preferences_repository = preferences_repository
+        self.job_source_repository = job_source_repository
+
+    def _build_source_map(self, source: str) -> dict[str, dict]:
+        if self.job_source_repository is None:
+            return {}
+
+        source_map: dict[str, dict] = {}
+        for entry in self.job_source_repository.list_active():
+            if entry.source != source:
+                continue
+            source_map[entry.company_key] = {
+                "board_token": entry.board_token,
+                "display_name": entry.display_name,
+            }
+
+        return source_map
 
     def search_and_store_jobs(
         self,
@@ -31,7 +48,14 @@ class JobService:
         limit: int = 20,
     ) -> tuple[list, int]:
         adapter = get_adapter(payload.source)
-        board_tokens = resolve_board_tokens(payload)
+        source_map: dict[str, dict] = {}
+        if not payload.board_token:
+            source_map = self._build_source_map(payload.source)
+
+        board_tokens = resolve_board_tokens(
+            payload,
+            source_map=source_map,
+        )
 
         positive_keywords: list[str] = []
         negative_keywords: list[str] = []

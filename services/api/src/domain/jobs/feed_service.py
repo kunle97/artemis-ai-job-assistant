@@ -16,9 +16,9 @@ from src.domain.jobs.models import Job, JobFeedStatus
 from src.domain.jobs.repository import (
     JobPreferencesRepository,
     JobRepository,
+    JobSourceRepository,
     JobUserFeedRepository,
 )
-from src.domain.jobs.constants import JOB_SOURCE_REGISTRY
 from src.domain.jobs.helpers import matches_job_location
 from src.infrastructure.db.session import SessionLocal
 from src.integrations.adapters.registry import get_adapter
@@ -40,6 +40,7 @@ class JobFeedService:
         self.db = db
         self._preferences_repo = JobPreferencesRepository(db)
         self._job_repo = JobRepository(db)
+        self._job_source_repo = JobSourceRepository(db)
         self._user_feed_repo = JobUserFeedRepository(db)
 
     @classmethod
@@ -59,7 +60,7 @@ class JobFeedService:
 
         Flow:
         1. Load user's JobPreferences.
-        2. For each enabled_source, collect board tokens from JOB_SOURCE_REGISTRY.
+        2. For each enabled source, collect active board tokens from job_sources.
         3. Fetch all boards concurrently (max 10 workers).
         4. Apply title keyword filter from target_titles.
         5. Dedup in-memory and against DB.
@@ -80,11 +81,21 @@ class JobFeedService:
             len(title_keywords),
         )
 
-        # Build (source, board_token) work items from the registry
+        if not enabled_sources:
+            logger.info(
+                "[JobFeedService] No enabled sources configured for user %s",
+                self.user_id,
+            )
+            return []
+
+        # Build (source, board_token) work items from DB-backed job sources.
         work_items: list[tuple[str, str]] = []
-        for source in enabled_sources:
-            for _company_key, company_config in JOB_SOURCE_REGISTRY.get(source, {}).items():
-                work_items.append((source, company_config["board_token"]))
+        active_job_sources = self._job_source_repo.list_active()
+        enabled_source_set = set(enabled_sources)
+        for job_source in active_job_sources:
+            if enabled_source_set and job_source.source not in enabled_source_set:
+                continue
+            work_items.append((job_source.source, job_source.board_token))
 
         if not work_items:
             logger.info(

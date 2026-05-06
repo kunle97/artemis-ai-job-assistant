@@ -56,7 +56,14 @@ def test_search_and_store_jobs_applies_user_title_filters(mock_get_adapter, _moc
         negative_keywords=["php"],
     )
 
-    service = JobService(repository=repo, preferences_repository=prefs_repo)
+    job_source_repo = MagicMock()
+    job_source_repo.list_active.return_value = []
+
+    service = JobService(
+        repository=repo,
+        preferences_repository=prefs_repo,
+        job_source_repository=job_source_repo,
+    )
     payload = JobSearchRequest(source="greenhouse", company_name="stripe")
 
     jobs, total = service.search_and_store_jobs(payload, user_id="user-1")
@@ -106,7 +113,10 @@ def test_search_and_store_jobs_without_user_preferences_keeps_all(mock_get_adapt
     repo = MagicMock()
     repo.get_or_create.side_effect = lambda **job_data: SimpleNamespace(**job_data)
 
-    service = JobService(repository=repo)
+    job_source_repo = MagicMock()
+    job_source_repo.list_active.return_value = []
+
+    service = JobService(repository=repo, job_source_repository=job_source_repo)
     payload = JobSearchRequest(source="greenhouse", company_name="stripe")
 
     jobs, total = service.search_and_store_jobs(payload)

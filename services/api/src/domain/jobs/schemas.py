@@ -98,6 +98,19 @@ class JobRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class JobSourceRead(BaseModel):
+    id: int
+    source: str
+    company_key: str
+    board_token: str
+    display_name: str
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class FeedScanResponse(BaseModel):
     new_jobs_found: int
 

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from sqlalchemy.orm import Session, joinedload
 
-from src.domain.jobs.models import Job, JobFeedStatus, JobPreferences, JobUserFeed
+from src.domain.jobs.models import Job, JobFeedStatus, JobPreferences, JobSource, JobUserFeed
 
 
 class JobRepository:
@@ -99,6 +99,55 @@ class JobPreferencesRepository:
         """Return user IDs whose job preferences have at least one enabled source."""
         preferences = self.db.query(JobPreferences).all()
         return [preference.user_id for preference in preferences if preference.enabled_sources]
+
+
+class JobSourceRepository:
+    """Repository for configurable ATS source and board-token mappings."""
+
+    def __init__(self, db: Session):
+        self.db = db
+
+    def list_active(self) -> list[JobSource]:
+        return (
+            self.db.query(JobSource)
+            .filter(JobSource.is_active == True)  # noqa: E712
+            .order_by(JobSource.source.asc(), JobSource.company_key.asc())
+            .all()
+        )
+
+    def get_by_source_and_key(self, source: str, company_key: str) -> JobSource | None:
+        return (
+            self.db.query(JobSource)
+            .filter(JobSource.source == source, JobSource.company_key == company_key)
+            .first()
+        )
+
+    def upsert(
+        self,
+        source: str,
+        company_key: str,
+        board_token: str,
+        display_name: str,
+        is_active: bool = True,
+    ) -> JobSource:
+        entry = self.get_by_source_and_key(source=source, company_key=company_key)
+        if entry is None:
+            entry = JobSource(
+                source=source,
+                company_key=company_key,
+                board_token=board_token,
+                display_name=display_name,
+                is_active=is_active,
+            )
+        else:
+            entry.board_token = board_token
+            entry.display_name = display_name
+            entry.is_active = is_active
+
+        self.db.add(entry)
+        self.db.commit()
+        self.db.refresh(entry)
+        return entry
 
 
 class JobUserFeedRepository:

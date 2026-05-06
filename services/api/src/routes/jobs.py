@@ -16,7 +16,7 @@ from src.deps.auth import get_current_user
 from src.domain.jobs.feed_service import JobFeedService
 from src.domain.jobs.models import Job
 from src.domain.jobs.models import JobFeedStatus
-from src.domain.jobs.repository import JobPreferencesRepository, JobRepository
+from src.domain.jobs.repository import JobPreferencesRepository, JobRepository, JobSourceRepository
 from src.domain.jobs.schemas import (
     FeedPage,
     FeedScanResponse,
@@ -26,6 +26,7 @@ from src.domain.jobs.schemas import (
     JobPreferencesUpsertRequest,
     JobRead,
     JobSearchRequest,
+    JobSourceRead,
 )
 from src.domain.jobs.service import JobService
 from src.infrastructure.db.session import get_db
@@ -72,7 +73,19 @@ def _build_job_service(db: Session) -> JobService:
     return JobService(
         repository=JobRepository(db),
         preferences_repository=JobPreferencesRepository(db),
+        job_source_repository=JobSourceRepository(db),
     )
+
+
+@router.get("/sources", response_model=list[JobSourceRead])
+def list_job_sources(
+    current_user=Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Return active job source mappings configured in the database."""
+    _ = current_user
+    repository = JobSourceRepository(db)
+    return repository.list_active()
 
 
 @router.post("", response_model=JobRead)

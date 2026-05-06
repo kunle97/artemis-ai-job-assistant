@@ -8,6 +8,7 @@ Covers: title keyword filter, in-memory dedup, DB dedup,
 from __future__ import annotations
 
 import uuid
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -18,15 +19,11 @@ from src.domain.jobs.feed_service import JobFeedService
 # Shared test fixtures & helpers
 # ---------------------------------------------------------------------------
 
-MOCK_REGISTRY = {
-    "greenhouse": {
-        "stripe": {"board_token": "stripe", "display_name": "Stripe"},
-        "figma": {"board_token": "figma", "display_name": "Figma"},
-    },
-    "lever": {
-        "netflix": {"board_token": "netflix", "display_name": "Netflix"},
-    },
-}
+MOCK_JOB_SOURCES = [
+    SimpleNamespace(source="greenhouse", company_key="stripe", board_token="stripe", display_name="Stripe"),
+    SimpleNamespace(source="greenhouse", company_key="figma", board_token="figma", display_name="Figma"),
+    SimpleNamespace(source="lever", company_key="netflix", board_token="netflix", display_name="Netflix"),
+]
 
 
 def _make_job_data(source="greenhouse", source_job_id="1", title="Software Engineer"):
@@ -62,9 +59,9 @@ def _make_service(user_id=None):
 # Helper: common patch stack
 # ---------------------------------------------------------------------------
 
-PATCH_REGISTRY = "src.domain.jobs.feed_service.JOB_SOURCE_REGISTRY"
 PATCH_PREFS_REPO = "src.domain.jobs.feed_service.JobPreferencesRepository"
 PATCH_JOB_REPO = "src.domain.jobs.feed_service.JobRepository"
+PATCH_JOB_SOURCE_REPO = "src.domain.jobs.feed_service.JobSourceRepository"
 PATCH_USER_FEED_REPO = "src.domain.jobs.feed_service.JobUserFeedRepository"
 PATCH_GET_ADAPTER = "src.domain.jobs.feed_service.get_adapter"
 
@@ -76,15 +73,16 @@ PATCH_GET_ADAPTER = "src.domain.jobs.feed_service.get_adapter"
 class TestTitleKeywordFilter:
     def test_jobs_matching_target_title_are_kept(self):
         with (
-            patch(PATCH_REGISTRY, MOCK_REGISTRY),
             patch(PATCH_PREFS_REPO) as mock_prefs_cls,
             patch(PATCH_JOB_REPO) as mock_job_cls,
+            patch(PATCH_JOB_SOURCE_REPO) as mock_job_source_cls,
             patch(PATCH_USER_FEED_REPO) as mock_user_feed_cls,
             patch(PATCH_GET_ADAPTER) as mock_get_adapter,
         ):
             mock_prefs_cls.return_value.get_or_create_by_user_id.return_value = (
                 _make_preferences(enabled_sources=["greenhouse"], target_titles=["engineer"])
             )
+            mock_job_source_cls.return_value.list_active.return_value = MOCK_JOB_SOURCES
 
             mock_adapter = MagicMock()
             mock_adapter.search_jobs.return_value = [
@@ -107,15 +105,16 @@ class TestTitleKeywordFilter:
 
     def test_no_target_titles_keeps_all_jobs(self):
         with (
-            patch(PATCH_REGISTRY, MOCK_REGISTRY),
             patch(PATCH_PREFS_REPO) as mock_prefs_cls,
             patch(PATCH_JOB_REPO) as mock_job_cls,
+            patch(PATCH_JOB_SOURCE_REPO) as mock_job_source_cls,
             patch(PATCH_USER_FEED_REPO) as mock_user_feed_cls,
             patch(PATCH_GET_ADAPTER) as mock_get_adapter,
         ):
             mock_prefs_cls.return_value.get_or_create_by_user_id.return_value = (
                 _make_preferences(enabled_sources=["greenhouse"], target_titles=[])
             )
+            mock_job_source_cls.return_value.list_active.return_value = MOCK_JOB_SOURCES
 
             mock_adapter = MagicMock()
             mock_adapter.search_jobs.return_value = [
@@ -143,15 +142,16 @@ class TestDeduplication:
     def test_in_memory_dedup_removes_duplicate_across_boards(self):
         """Same (source, source_job_id) returned by two boards is created once."""
         with (
-            patch(PATCH_REGISTRY, MOCK_REGISTRY),
             patch(PATCH_PREFS_REPO) as mock_prefs_cls,
             patch(PATCH_JOB_REPO) as mock_job_cls,
+            patch(PATCH_JOB_SOURCE_REPO) as mock_job_source_cls,
             patch(PATCH_USER_FEED_REPO) as mock_user_feed_cls,
             patch(PATCH_GET_ADAPTER) as mock_get_adapter,
         ):
             mock_prefs_cls.return_value.get_or_create_by_user_id.return_value = (
                 _make_preferences(enabled_sources=["greenhouse"])
             )
+            mock_job_source_cls.return_value.list_active.return_value = MOCK_JOB_SOURCES
 
             duplicate = _make_job_data(source_job_id="99", title="Data Engineer")
             mock_adapter = MagicMock()
@@ -179,15 +179,23 @@ class TestDeduplication:
     def test_db_dedup_skips_already_stored_jobs(self):
         """Jobs already in the DB are not re-created and not returned."""
         with (
-            patch(PATCH_REGISTRY, {"greenhouse": {"stripe": {"board_token": "stripe", "display_name": "Stripe"}}}),
             patch(PATCH_PREFS_REPO) as mock_prefs_cls,
             patch(PATCH_JOB_REPO) as mock_job_cls,
+            patch(PATCH_JOB_SOURCE_REPO) as mock_job_source_cls,
             patch(PATCH_USER_FEED_REPO) as mock_user_feed_cls,
             patch(PATCH_GET_ADAPTER) as mock_get_adapter,
         ):
             mock_prefs_cls.return_value.get_or_create_by_user_id.return_value = (
                 _make_preferences(enabled_sources=["greenhouse"])
             )
+            mock_job_source_cls.return_value.list_active.return_value = [
+                SimpleNamespace(
+                    source="greenhouse",
+                    company_key="stripe",
+                    board_token="stripe",
+                    display_name="Stripe",
+                )
+            ]
 
             mock_adapter = MagicMock()
             mock_adapter.search_jobs.return_value = [
@@ -213,15 +221,16 @@ class TestPartialFailure:
     def test_board_failure_continues_scan(self):
         """A failing board is skipped; other boards still yield results."""
         with (
-            patch(PATCH_REGISTRY, MOCK_REGISTRY),
             patch(PATCH_PREFS_REPO) as mock_prefs_cls,
             patch(PATCH_JOB_REPO) as mock_job_cls,
+            patch(PATCH_JOB_SOURCE_REPO) as mock_job_source_cls,
             patch(PATCH_USER_FEED_REPO) as mock_user_feed_cls,
             patch(PATCH_GET_ADAPTER) as mock_get_adapter,
         ):
             mock_prefs_cls.return_value.get_or_create_by_user_id.return_value = (
                 _make_preferences(enabled_sources=["greenhouse"])
             )
+            mock_job_source_cls.return_value.list_active.return_value = MOCK_JOB_SOURCES
 
             def _search_jobs(board_token):
                 if board_token == "stripe":
@@ -251,9 +260,9 @@ class TestPartialFailure:
 class TestEdgeCases:
     def test_empty_enabled_sources_returns_empty(self):
         with (
-            patch(PATCH_REGISTRY, MOCK_REGISTRY),
             patch(PATCH_PREFS_REPO) as mock_prefs_cls,
             patch(PATCH_JOB_REPO),
+            patch(PATCH_JOB_SOURCE_REPO),
             patch(PATCH_USER_FEED_REPO),
             patch(PATCH_GET_ADAPTER) as mock_get_adapter,
         ):
@@ -269,14 +278,15 @@ class TestEdgeCases:
 
     def test_source_not_in_registry_returns_empty(self):
         with (
-            patch(PATCH_REGISTRY, {}),  # empty registry
             patch(PATCH_PREFS_REPO) as mock_prefs_cls,
             patch(PATCH_JOB_REPO),
+            patch(PATCH_JOB_SOURCE_REPO) as mock_job_source_cls,
             patch(PATCH_GET_ADAPTER) as mock_get_adapter,
         ):
             mock_prefs_cls.return_value.get_or_create_by_user_id.return_value = (
                 _make_preferences(enabled_sources=["greenhouse"])
             )
+            mock_job_source_cls.return_value.list_active.return_value = []
 
             service = _make_service()
             result = service.scan()

@@ -7,10 +7,9 @@ Contains reusable token-resolution and preference-matching logic for job searche
 import re
 
 from src.domain.jobs.schemas import JobSearchRequest
-from src.domain.jobs.constants import JOB_SOURCE_REGISTRY
 
 
-def resolve_board_tokens(payload: JobSearchRequest) -> list[str]:
+def resolve_board_tokens(payload: JobSearchRequest, source_map: dict[str, dict]) -> list[str]:
     """
     Resolve one or more board tokens from the request using:
     1. direct board_token
@@ -20,7 +19,6 @@ def resolve_board_tokens(payload: JobSearchRequest) -> list[str]:
     if payload.board_token:
         return [payload.board_token]
 
-    source_map = JOB_SOURCE_REGISTRY.get(payload.source, {})
     resolved_tokens: list[str] = []
 
     if payload.company_name:

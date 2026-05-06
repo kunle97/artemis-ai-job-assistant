@@ -114,3 +114,25 @@ class JobPreferences(Base):
         onupdate=lambda: datetime.now(UTC),
         nullable=False,
     )
+
+
+class JobSource(Base):
+    """Configurable ATS source/board mappings used for feed scans and lookups."""
+
+    __tablename__ = "job_sources"
+    __table_args__ = (UniqueConstraint("source", "company_key", name="uq_job_sources_source_company"),)
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    source = Column(String(50), nullable=False)
+    company_key = Column(String(120), nullable=False)
+    board_token = Column(String(255), nullable=False)
+    display_name = Column(String(255), nullable=False)
+    is_active = Column(Boolean, nullable=False, default=True)
+
+    created_at = Column(DateTime, default=lambda: datetime.now(UTC), nullable=False)
+    updated_at = Column(
+        DateTime,
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
+        nullable=False,
+    )
