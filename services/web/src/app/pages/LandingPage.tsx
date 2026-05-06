@@ -61,9 +61,6 @@ export const LandingPage: React.FC = () => {
               <Button variant="primary" size="lg" onClick={handleGetStarted}>
                 Get Started Free
               </Button>
-              <Button variant="outline" size="lg">
-                Watch Demo
-              </Button>
             </div>
           </div>
         </div>
@@ -84,37 +81,43 @@ export const LandingPage: React.FC = () => {
             {[
               {
                 step: '1',
+                title: 'Create Your Profile',
+                description: 'Set your career basics so Artemis can personalize the full workflow to you.',
+                icon: Target,
+              },
+              {
+                step: '2',
                 title: 'Upload Your Resume',
                 description: 'Artemis parses your resume and builds your candidate profile automatically.',
                 icon: FileText,
               },
               {
-                step: '2',
+                step: '3',
                 title: 'Discover Opportunities',
                 description: 'Get a personalized job feed based on your skills, preferences, and career goals.',
                 icon: Target,
               },
               {
-                step: '3',
+                step: '4',
                 title: 'Track Applications',
                 description: 'Manage all your applications in one place with clear status tracking.',
                 icon: Briefcase,
               },
               {
-                step: '4',
+                step: '5',
                 title: 'Reuse Your Answers',
                 description: 'Save time by building a library of reusable answers to common application questions.',
                 icon: Sparkles,
               },
               {
-                step: '5',
-                title: 'Automate Safely',
-                description: 'Let Artemis help fill out forms while you maintain complete control and authorization.',
+                step: '6',
+                title: 'Run Automation Readiness',
+                description: 'Validate profile completeness and form readiness before any automation can run.',
                 icon: CheckCircle,
               },
               {
-                step: '6',
-                title: 'Submit With Confidence',
+                step: '7',
+                title: 'Authorize Submission Manually',
                 description: 'Review and authorize every submission. Artemis never submits without your approval.',
                 icon: Shield,
               },
@@ -232,12 +235,33 @@ export const LandingPage: React.FC = () => {
       {/* Footer */}
       <footer className="border-t border-border py-12">
         <div className="mx-auto max-w-7xl px-6">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
             <div className="flex items-center gap-2">
               <Sparkles className="h-6 w-6 text-brand" />
               <span className="text-lg font-semibold text-foreground">Artemis</span>
             </div>
-            <p className="text-sm text-muted-foreground">© 2026 Artemis. All rights reserved.</p>
+            <div className="grid grid-cols-2 gap-10 text-sm">
+              <div>
+                <p className="font-medium text-foreground mb-2">Auth</p>
+                <div className="space-y-1">
+                  <button onClick={handleGetStarted} className="block text-muted-foreground hover:text-foreground">
+                    Create account
+                  </button>
+                  <button onClick={handleSignIn} className="block text-muted-foreground hover:text-foreground">
+                    Sign in
+                  </button>
+                </div>
+              </div>
+              <div>
+                <p className="font-medium text-foreground mb-2">Product</p>
+                <div className="space-y-1">
+                  <span className="block text-muted-foreground">Workflow overview</span>
+                  <span className="block text-muted-foreground">Trust and safety</span>
+                  <span className="block text-muted-foreground">Application tracking</span>
+                </div>
+              </div>
+            </div>
+            <p className="text-sm text-muted-foreground md:self-end">© 2026 Artemis. All rights reserved.</p>
           </div>
         </div>
       </footer>
