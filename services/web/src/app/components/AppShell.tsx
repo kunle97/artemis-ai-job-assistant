@@ -85,7 +85,9 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
             <div className="pt-4 mt-4 border-t border-border">
               {secondaryNavigation.map((item) => {
                 const Icon = item.icon;
-                const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
+                const isActive =
+                  pathname === item.href ||
+                  (item.href !== '/profile' && pathname.startsWith(item.href + '/'));
                 return (
                   <button
                     key={item.name}
