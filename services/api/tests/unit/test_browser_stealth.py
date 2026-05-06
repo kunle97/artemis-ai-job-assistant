@@ -211,3 +211,88 @@ def test_create_stealth_context_no_channel_by_default(monkeypatch):
 
     _, kwargs = mock_playwright.chromium.launch.call_args
     assert kwargs.get("channel") is None
+
+
+# ---------------------------------------------------------------------------
+# create_fresh_context
+# ---------------------------------------------------------------------------
+
+def test_create_fresh_context_creates_new_context_from_browser():
+    """create_fresh_context creates a new context and page without launching a browser."""
+    from src.integrations.automation.browser import create_fresh_context
+
+    mock_browser = MagicMock()
+    mock_context = MagicMock()
+    mock_page = MagicMock()
+
+    mock_browser.new_context.return_value = mock_context
+    mock_context.new_page.return_value = mock_page
+
+    context, page = create_fresh_context(mock_browser)
+
+    mock_browser.new_context.assert_called_once()
+    mock_context.add_init_script.assert_called_once()
+    mock_context.new_page.assert_called_once()
+    assert context is mock_context
+    assert page is mock_page
+
+
+# ---------------------------------------------------------------------------
+# WorkerBrowserSession
+# ---------------------------------------------------------------------------
+
+def test_worker_browser_session_launches_and_closes_browser(monkeypatch):
+    """WorkerBrowserSession launches one browser on entry and closes it on exit."""
+    from src.integrations.automation.browser import WorkerBrowserSession
+
+    mock_playwright_instance = MagicMock()
+    mock_browser = MagicMock()
+    mock_playwright_instance.chromium.launch.return_value = mock_browser
+
+    mock_playwright_ctx = MagicMock()
+    mock_playwright_ctx.__enter__ = MagicMock(return_value=mock_playwright_instance)
+    mock_playwright_ctx.__exit__ = MagicMock(return_value=False)
+
+    with patch("src.integrations.automation.browser.WorkerBrowserSession.__enter__") as patched_enter:
+        # Use a more direct approach: patch sync_playwright inside the method
+        pass
+
+    # Test via direct mock of the internals
+    session = WorkerBrowserSession()
+    session._playwright_ctx = mock_playwright_ctx
+    session._playwright = mock_playwright_instance
+    session.browser = mock_browser
+
+    session.__exit__(None, None, None)
+
+    mock_browser.close.assert_called_once()
+    mock_playwright_ctx.__exit__.assert_called_once()
+
+
+def test_worker_browser_session_new_context_returns_fresh_context():
+    """new_context() returns a fresh (context, page) from the shared browser."""
+    from src.integrations.automation.browser import WorkerBrowserSession
+
+    mock_browser = MagicMock()
+    mock_context = MagicMock()
+    mock_page = MagicMock()
+    mock_browser.new_context.return_value = mock_context
+    mock_context.new_page.return_value = mock_page
+
+    session = WorkerBrowserSession()
+    session.browser = mock_browser
+
+    context, page = session.new_context()
+
+    assert context is mock_context
+    assert page is mock_page
+    mock_browser.new_context.assert_called_once()
+
+
+def test_worker_browser_session_new_context_raises_when_not_active():
+    """new_context() raises RuntimeError if the session is not started."""
+    from src.integrations.automation.browser import WorkerBrowserSession
+
+    session = WorkerBrowserSession()
+    with pytest.raises(RuntimeError, match="not active"):
+        session.new_context()

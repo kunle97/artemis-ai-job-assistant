@@ -42,6 +42,7 @@ from constants import JOBS, RESUME_PATH
 BASE_URL = "http://localhost:8000"
 USERNAME = "adekunledev97@gmail.com"
 PASSWORD = "password"
+PIPELINE_POLL_TIMEOUT_SECONDS = int(os.getenv("PIPELINE_POLL_TIMEOUT_SECONDS", "900"))
 
 SCREENSHOTS_DIR = os.path.join(
     os.path.dirname(__file__),
@@ -153,6 +154,19 @@ def _stop_loading_indicator(stop_event: threading.Event, worker: threading.Threa
     worker.join(timeout=1)
 
 
+def _run_timed(label: str, func):
+    """Run a callable with spinner + elapsed timing and return (result, elapsed_seconds)."""
+    indicator = _start_loading_indicator(label)
+    start = time.time()
+    try:
+        result = func()
+    finally:
+        _stop_loading_indicator(*indicator)
+    elapsed = round(time.time() - start, 1)
+    log(f"✓ {label} complete ({elapsed}s)")
+    return result, elapsed
+
+
 # ─── SCREENSHOT CLEANER ─────────────────────────────────────────────────────
 
 def clear_screenshots() -> None:
@@ -181,11 +195,14 @@ def clear_screenshots() -> None:
 
 def authenticate() -> str:
     log(f"Authenticating as {USERNAME} ...")
-    resp = requests.post(
-        f"{BASE_URL}/auth/login",
-        data={"username": USERNAME, "password": PASSWORD},
-        headers={"Content-Type": "application/x-www-form-urlencoded"},
-        timeout=15,
+    resp, _ = _run_timed(
+        "Authenticating",
+        lambda: requests.post(
+            f"{BASE_URL}/auth/login",
+            data={"username": USERNAME, "password": PASSWORD},
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            timeout=15,
+        ),
     )
     if resp.status_code != 200:
         log(f"❌ Login failed — HTTP {resp.status_code}")
@@ -205,10 +222,13 @@ def authenticate() -> str:
 def fetch_resume_path(token: str, storage_mode: str) -> str:
     """Fetch the most recent resume path from the API for a storage mode."""
     log(f"Fetching resume from API for storage={storage_mode}...")
-    resp = requests.get(
-        f"{BASE_URL}/resumes",
-        headers={"Authorization": f"Bearer {token}"},
-        timeout=15,
+    resp, _ = _run_timed(
+        "Fetching resumes",
+        lambda: requests.get(
+            f"{BASE_URL}/resumes",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=15,
+        ),
     )
     if resp.status_code != 200:
         log(f"❌ GET /resumes failed — HTTP {resp.status_code}: {resp.text}")
@@ -259,10 +279,13 @@ def clear_applications_for_current_user(token: str) -> None:
     from src.infrastructure.db.session import SessionLocal
 
     log("Resolving current authenticated user for application cleanup...")
-    session_resp = requests.get(
-        f"{BASE_URL}/auth/session",
-        headers={"Authorization": f"Bearer {token}"},
-        timeout=15,
+    session_resp, _ = _run_timed(
+        "Resolving auth session",
+        lambda: requests.get(
+            f"{BASE_URL}/auth/session",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=15,
+        ),
     )
     if session_resp.status_code != 200:
         log(
@@ -302,10 +325,13 @@ def get_or_create_job(token: str, application_url: str) -> str:
     log(f"Looking for job matching {application_url[:60]}...")
     
     # Try to find existing jobs
-    resp = requests.get(
-        f"{BASE_URL}/jobs",
-        headers={"Authorization": f"Bearer {token}"},
-        timeout=15,
+    resp, _ = _run_timed(
+        "Loading jobs",
+        lambda: requests.get(
+            f"{BASE_URL}/jobs",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=15,
+        ),
     )
     
     if resp.status_code == 200:
@@ -332,11 +358,14 @@ def get_or_create_job(token: str, application_url: str) -> str:
     # Create a new job record
     log(f"  Creating new job record...")
     
-    resp = requests.post(
-        f"{BASE_URL}/jobs",
-        json={"apply_url": application_url},
-        headers={"Authorization": f"Bearer {token}"},
-        timeout=15,
+    resp, _ = _run_timed(
+        "Creating job",
+        lambda: requests.post(
+            f"{BASE_URL}/jobs",
+            json={"apply_url": application_url},
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=15,
+        ),
     )
     
     if resp.status_code not in (200, 201):
@@ -353,11 +382,14 @@ def create_application(token: str, job_id: str) -> str:
     """Create an application for the given job. Returns the application ID."""
     log(f"Creating application for job {job_id}...")
     
-    resp = requests.post(
-        f"{BASE_URL}/applications",
-        json={"job_id": job_id},
-        headers={"Authorization": f"Bearer {token}"},
-        timeout=15,
+    resp, _ = _run_timed(
+        "Creating application",
+        lambda: requests.post(
+            f"{BASE_URL}/applications",
+            json={"job_id": job_id},
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=15,
+        ),
     )
     
     if resp.status_code not in (200, 201):
@@ -369,13 +401,17 @@ def create_application(token: str, job_id: str) -> str:
     return app_id
 
 
-def get_application(token: str, app_id: str) -> dict:
+def get_application(token: str, app_id: str, timed: bool = False) -> dict:
     """Fetch current application record."""
-    resp = requests.get(
+    request = lambda: requests.get(
         f"{BASE_URL}/applications/{app_id}",
         headers={"Authorization": f"Bearer {token}"},
         timeout=15,
     )
+    if timed:
+        resp, _ = _run_timed(f"Fetching application {app_id}", request)
+    else:
+        resp = request()
     
     if resp.status_code != 200:
         log(f"  ❌ Could not fetch application — HTTP {resp.status_code}")
@@ -388,10 +424,13 @@ def authorize_application(token: str, app_id: str) -> dict:
     """Explicitly authorize an application for submission."""
     log(f"Authorizing application {app_id} for submission...")
 
-    resp = requests.post(
-        f"{BASE_URL}/applications/{app_id}/authorize",
-        headers={"Authorization": f"Bearer {token}"},
-        timeout=15,
+    resp, _ = _run_timed(
+        "Authorizing application",
+        lambda: requests.post(
+            f"{BASE_URL}/applications/{app_id}/authorize",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=15,
+        ),
     )
 
     if resp.status_code != 200:
@@ -412,6 +451,7 @@ def run_pipeline(token: str, job: dict, run_dir: str, resume_path: str | None = 
     status_progression = []
     application_id = None
     error_msg = None
+    pipeline_start = time.time()
 
     try:
         # Step 1: Get or create job
@@ -424,17 +464,14 @@ def run_pipeline(token: str, job: dict, run_dir: str, resume_path: str | None = 
         log(f"Running pipeline for application {application_id}...")
         log(f"POST {BASE_URL}/applications/{application_id}/run")
 
-        start = time.time()
-        pipeline_indicator = _start_loading_indicator("Pipeline running")
-        try:
-            resp = requests.post(
+        resp, _ = _run_timed(
+            "Dispatching pipeline",
+            lambda: requests.post(
                 f"{BASE_URL}/applications/{application_id}/run",
                 headers={"Authorization": f"Bearer {token}"},
                 timeout=300,  # pipeline can take longer
-            )
-        finally:
-            _stop_loading_indicator(*pipeline_indicator)
-        elapsed = round(time.time() - start, 1)
+            ),
+        )
 
         if resp.status_code != 200:
             log(f"❌ Pipeline failed — HTTP {resp.status_code}")
@@ -450,25 +487,32 @@ def run_pipeline(token: str, job: dict, run_dir: str, resume_path: str | None = 
                 log("Polling application status until terminal state...")
 
                 last_status = None
-                poll_deadline = time.time() + 300
-                while time.time() < poll_deadline:
-                    current_app = get_application(token, application_id)
-                    current_status = current_app.get("status")
+                poll_deadline = time.time() + PIPELINE_POLL_TIMEOUT_SECONDS
+                poll_indicator = _start_loading_indicator("Polling status")
+                try:
+                    while time.time() < poll_deadline:
+                        current_app = get_application(token, application_id)
+                        current_status = current_app.get("status")
 
-                    if current_status != last_status:
-                        log(f"  status -> {current_status}")
-                        status_progression.append(current_status)
-                        last_status = current_status
+                        if current_status != last_status:
+                            log(f"  status -> {current_status}")
+                            status_progression.append(current_status)
+                            last_status = current_status
 
-                    if current_status in TERMINAL_APPLICATION_STATUSES:
-                        app_data = current_app
-                        final_status = current_status
-                        break
+                        if current_status in TERMINAL_APPLICATION_STATUSES:
+                            app_data = current_app
+                            final_status = current_status
+                            break
 
-                    time.sleep(2)
+                        time.sleep(2)
+                finally:
+                    _stop_loading_indicator(*poll_indicator)
 
                 if final_status not in TERMINAL_APPLICATION_STATUSES:
-                    error_msg = "Pipeline polling timed out before reaching a terminal status"
+                    error_msg = (
+                        "Pipeline polling timed out before reaching a terminal status "
+                        f"(timeout={PIPELINE_POLL_TIMEOUT_SECONDS}s)"
+                    )
                     log(f"❌ {error_msg}")
                     app_data = get_application(token, application_id)
                     final_status = app_data.get("status")
@@ -485,15 +529,14 @@ def run_pipeline(token: str, job: dict, run_dir: str, resume_path: str | None = 
                     app_data = authorize_application(token, application_id)
 
                 log(f"--enable-submit set — calling POST /applications/{application_id}/submit ...")
-                submit_indicator = _start_loading_indicator("Submitting application")
-                try:
-                    submit_resp = requests.post(
+                submit_resp, _ = _run_timed(
+                    "Submitting application",
+                    lambda: requests.post(
                         f"{BASE_URL}/applications/{application_id}/submit",
                         headers={"Authorization": f"Bearer {token}"},
                         timeout=300,
-                    )
-                finally:
-                    _stop_loading_indicator(*submit_indicator)
+                    ),
+                )
                 if submit_resp.status_code != 200:
                     log(f"❌ Submit failed — HTTP {submit_resp.status_code}: {submit_resp.text}")
                     error_msg = f"Submit HTTP {submit_resp.status_code}: {submit_resp.text}"
@@ -544,8 +587,9 @@ def run_pipeline(token: str, job: dict, run_dir: str, resume_path: str | None = 
             json.dump(export, fh, indent=2, ensure_ascii=False)
         log(f"\n  💾 Error record saved → {path}")
     else:
-        elapsed = 0  # Would need to track from start if not errored
+        elapsed = round(time.time() - pipeline_start, 1)
         result_path = save_result(run_dir, job, application_id, status_progression, elapsed, error=error_msg)
+        log(f"  Total elapsed   : {elapsed}s")
         log(f"\n  💾 Result saved → {result_path}")
 
 

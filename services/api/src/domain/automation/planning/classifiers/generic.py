@@ -356,6 +356,8 @@ class GenericAutomationFieldClassifier:
             token in haystack
             for token in [
                 "authorized to work",
+                "legally authorized",
+                "leagally authorized",
                 "lawfully in the united states",
                 "require sponsorship",
                 "sponsor an immigration case",

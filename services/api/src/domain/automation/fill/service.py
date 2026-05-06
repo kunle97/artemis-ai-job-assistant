@@ -11,7 +11,9 @@ import random
 import uuid
 from pathlib import Path
 
-from playwright.sync_api import Page, sync_playwright
+from contextlib import ExitStack
+
+from playwright.sync_api import Browser, Page, sync_playwright
 
 from src.core.config import AUTOMATION_UPLOADS_DIR
 from src.domain.automation.planning.constants import (
@@ -43,7 +45,7 @@ from src.domain.automation.fill.constants import (
 )
 from src.domain.automation.fill.helpers import is_backing_input_label
 from src.integrations.automation.helpers import normalize_application_url, prepare_application_page
-from src.integrations.automation.browser import create_stealth_context, human_delay, simulate_mouse_movement
+from src.integrations.automation.browser import create_fresh_context, create_stealth_context, human_delay, simulate_mouse_movement
 from src.domain.automation.fill.models import (
     AutomationFillFieldResult,
     AutomationFillRequest,
@@ -99,6 +101,7 @@ class AutomationFillService:
         plan,
         application_id=None,
         resume_file_path: str | None = None,
+        browser: Browser | None = None,
     ) -> AutomationFillResult:
         """Execute the fill phase using a pre-built plan.
 
@@ -122,6 +125,7 @@ class AutomationFillService:
             plan=plan,
             resume_file_path=resume_file_path,
             profile=profile,
+            browser=browser,
         )
 
     def fill_and_submit_from_plan(
@@ -131,6 +135,7 @@ class AutomationFillService:
         plan,
         application_id=None,
         resume_file_path: str | None = None,
+        browser: Browser | None = None,
     ) -> AutomationFillResult:
         """Fill the form from a pre-built plan and click the submit button.
 
@@ -155,6 +160,7 @@ class AutomationFillService:
             resume_file_path=resume_file_path,
             profile=profile,
             should_submit=True,
+            browser=browser,
         )
 
     def _execute_fill(
@@ -164,8 +170,14 @@ class AutomationFillService:
         resume_file_path: str | None,
         profile,
         should_submit: bool = False,
+        browser: Browser | None = None,
     ) -> AutomationFillResult:
-        """Run Playwright to fill the form using a pre-built plan."""
+        """Run Playwright to fill the form using a pre-built plan.
+
+        When *browser* is supplied the caller's browser process is reused and
+        only a fresh context is created per fill operation.  When it is
+        ``None`` a full Playwright stack is launched and torn down here.
+        """
         fill_results: list[AutomationFillFieldResult] = []
         screenshot_path: str | None = None
         submission_confirmed: bool = False
@@ -173,68 +185,66 @@ class AutomationFillService:
         has_explicit_race_field = any(_is_race_label(getattr(field, "label", None)) for field in plan.fields)
         race_followup_attempted = False
 
-        with sync_playwright() as playwright:
-            browser, context, page = create_stealth_context(playwright)
+        with ExitStack() as stack:
+            if browser is not None:
+                context, page = create_fresh_context(browser)
+                stack.callback(context.close)
+            else:
+                _playwright = stack.enter_context(sync_playwright())
+                _browser, context, page = create_stealth_context(_playwright)
+                stack.callback(context.close)
+                stack.callback(_browser.close)
 
-            try:
-                page.goto(
-                    application_url,
-                    wait_until="domcontentloaded",
-                    timeout=30000,
+            page.goto(application_url, wait_until="domcontentloaded", timeout=30000)
+            # Random pause — mimics human reading time, reduces bot signal
+            page.wait_for_timeout(random.randint(1800, 3200))
+
+            prepare_application_page(page, application_url)
+            page.wait_for_timeout(800)
+
+            # Simulate human presence before touching any fields
+            simulate_mouse_movement(page)
+
+            for planned_field in plan.fields:
+                field_dict = planned_field.model_dump()
+
+                result = self._fill_planned_field(
+                    page=page,
+                    field=field_dict,
+                    resume_file_path=resume_file_path,
+                    platform=platform,
                 )
-                # Random pause — mimics human reading time, reduces bot signal
-                page.wait_for_timeout(random.randint(1800, 3200))
+                fill_results.append(result)
 
-                prepare_application_page(page, application_url)
-                page.wait_for_timeout(800)
+                # Keep a short random pause between fields to avoid bot-like
+                # machine-speed transitions while preserving throughput.
+                human_delay(INTER_FIELD_DELAY_MIN_MS, INTER_FIELD_DELAY_MAX_MS)
 
-                # Simulate human presence before touching any fields
-                simulate_mouse_movement(page)
-
-                for planned_field in plan.fields:
-                    field_dict = planned_field.model_dump()
-
-                    result = self._fill_planned_field(
+                if (
+                    platform == PLATFORM_GREENHOUSE
+                    and not has_explicit_race_field
+                    and not race_followup_attempted
+                ):
+                    race_followup_result = self._maybe_fill_greenhouse_race_followup(
                         page=page,
-                        field=field_dict,
-                        resume_file_path=resume_file_path,
-                        platform=platform,
+                        filled_field=field_dict,
+                        field_result=result,
+                        profile=profile,
                     )
-                    fill_results.append(result)
+                    if race_followup_result is not None:
+                        race_followup_attempted = True
+                        if race_followup_result.fill_status == "filled":
+                            fill_results.append(race_followup_result)
 
-                    # Keep a short random pause between fields to avoid bot-like
-                    # machine-speed transitions while preserving throughput.
-                    human_delay(INTER_FIELD_DELAY_MIN_MS, INTER_FIELD_DELAY_MAX_MS)
+            if should_submit:
+                submitted = self._click_submit_button(page, plan)
+                if submitted:
+                    logger.info("[AutomationFill] Submit button clicked successfully.")
+                    submission_confirmed = self._verify_submission_confirmation(page)
+                else:
+                    logger.warning("[AutomationFill] Could not locate submit button on page.")
 
-                    if (
-                        platform == PLATFORM_GREENHOUSE
-                        and not has_explicit_race_field
-                        and not race_followup_attempted
-                    ):
-                        race_followup_result = self._maybe_fill_greenhouse_race_followup(
-                            page=page,
-                            filled_field=field_dict,
-                            field_result=result,
-                            profile=profile,
-                        )
-                        if race_followup_result is not None:
-                            race_followup_attempted = True
-                            if race_followup_result.fill_status == "filled":
-                                fill_results.append(race_followup_result)
-
-                if should_submit:
-                    submitted = self._click_submit_button(page, plan)
-                    if submitted:
-                        logger.info("[AutomationFill] Submit button clicked successfully.")
-                        submission_confirmed = self._verify_submission_confirmation(page)
-                    else:
-                        logger.warning("[AutomationFill] Could not locate submit button on page.")
-
-                screenshot_path = self._save_screenshot(page, application_url=application_url)
-
-            finally:
-                context.close()
-                browser.close()
+            screenshot_path = self._save_screenshot(page, application_url=application_url)
 
         filled = sum(1 for result in fill_results if result.fill_status == "filled")
         skipped = len(fill_results) - filled

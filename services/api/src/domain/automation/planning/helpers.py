@@ -205,14 +205,26 @@ def resolve_work_authorization_value(*, inspected_field: dict, profile) -> str |
 
         return _coerce_yes_no_answer(value)
 
-    if "authorized to work" in label or "lawfully in the united states" in label:
+    if any(
+        token in label
+        for token in [
+            "authorized to work",
+            "lawfully in the united states",
+            "legally authorized",
+            "leagally authorized",
+            "legal authorization",
+        ]
+    ):
         if _is_binary_yes_no_field(inspected_field):
             coerced = _coerce_work_auth_to_yes_no(work_auth_value)
             if coerced:
                 return coerced
         return work_auth_value
 
-    if "sponsor" in label or "sponsorship" in label or "immigration case" in label:
+    if any(
+        token in label
+        for token in ["sponsor", "sponsorship", "immigration case", "visa status"]
+    ):
         if _is_binary_yes_no_field(inspected_field):
             coerced = _coerce_yes_no_answer(visa_value)
             if coerced:
@@ -357,7 +369,7 @@ def _question_mentions_nyc_area(label: str) -> bool:
     lowered = (label or "").lower()
     return any(
         token in lowered
-        for token in ["new york", "ny office", "manhattan", "nyc"]
+        for token in ["new york", "ny office", "manhattan", "manhatten", "nyc"]
     )
 
 
@@ -393,23 +405,28 @@ def resolve_work_arrangement_value(*, inspected_field: dict, profile) -> str | N
     normalized_prefs, display = _normalize_work_arrangement_values(
         getattr(profile, "work_arrangement", None)
     )
-    if not normalized_prefs and not display:
+    label = (inspected_field.get("label") or "").strip()
+    requires_office_presence = _question_requires_office_presence(label)
+    is_binary = _is_binary_yes_no_field(inspected_field)
+
+    if not normalized_prefs and not display and not requires_office_presence:
         return None
 
-    label = (inspected_field.get("label") or "").strip()
-    if not _question_requires_office_presence(label) and not _is_binary_yes_no_field(inspected_field):
+    if not requires_office_presence and not is_binary:
         return display
 
-    if not _question_requires_office_presence(label):
+    if not requires_office_presence:
         return display
+
+    if _question_mentions_nyc_area(label):
+        location_match = _profile_matches_nyc_area(profile)
+        if location_match is True:
+            return "Yes"
+        if location_match is False:
+            return "No"
 
     if any(pref in {"hybrid", "onsite"} for pref in normalized_prefs):
         if _question_mentions_nyc_area(label):
-            location_match = _profile_matches_nyc_area(profile)
-            if location_match is True:
-                return "Yes"
-            if location_match is False:
-                return "No"
             return None
         return "Yes"
 
@@ -608,6 +625,14 @@ def _resolve_unknown_yes_no_value(
     salary_yes_no = _coerce_yes_no_answer(salary_value)
     if salary_yes_no:
         return salary_yes_no, False
+
+    work_auth_value = resolve_work_authorization_value(
+        inspected_field=inspected_field,
+        profile=profile,
+    )
+    work_auth_yes_no = _coerce_yes_no_answer(work_auth_value)
+    if work_auth_yes_no:
+        return work_auth_yes_no, False
 
     work_arrangement_value = resolve_work_arrangement_value(
         inspected_field=inspected_field,

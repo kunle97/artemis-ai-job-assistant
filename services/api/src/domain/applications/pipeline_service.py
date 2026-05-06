@@ -27,6 +27,7 @@ from src.domain.applications.constants import (
 )
 from src.domain.automation.planning.models import AutomationFillPlanRequest
 from src.domain.automation.schemas import ApplicationPageIntakeRequest
+from src.integrations.automation.browser import WorkerBrowserSession
 
 
 logger = logging.getLogger(__name__)
@@ -195,104 +196,112 @@ class ApplicationPipelineService:
                 application_id, status=APPLICATION_STATUS_QUEUED
             )
 
-            # INSPECT
-            logger.info(f"[PipelineService] Inspecting application_id={application_id}")
-            application = self.application_repo.update_fields(
-                application_id, status=APPLICATION_STATUS_INSPECTING
-            )
+            # INSPECT + FILL share a single browser process within this task.
+            # A fresh context is created for each operation; the browser is
+            # never shared across users or ATS domains.
+            with WorkerBrowserSession() as browser_session:
+                _browser = browser_session.browser
 
-            inspection_result = self._execute_with_retries(
-                "inspect_application_page",
-                lambda: self.automation_service.inspect_application_page(
-                    ApplicationPageIntakeRequest(application_url=job.apply_url)
-                ),
-            )
-
-            if self._inspection_has_already_applied(inspection_result):
+                # INSPECT
+                logger.info(f"[PipelineService] Inspecting application_id={application_id}")
                 application = self.application_repo.update_fields(
-                    application_id,
-                    status=APPLICATION_STATUS_SUBMITTED,
+                    application_id, status=APPLICATION_STATUS_INSPECTING
+                )
+
+                inspection_result = self._execute_with_retries(
+                    "inspect_application_page",
+                    lambda: self.automation_service.inspect_application_page(
+                        ApplicationPageIntakeRequest(application_url=job.apply_url),
+                        browser=_browser,
+                    ),
+                )
+
+                if self._inspection_has_already_applied(inspection_result):
+                    application = self.application_repo.update_fields(
+                        application_id,
+                        status=APPLICATION_STATUS_SUBMITTED,
+                    )
+                    logger.info(
+                        "[PipelineService] ATS already-applied signal detected during inspection; "
+                        "marking application_id=%s as submitted",
+                        application_id,
+                    )
+                    return application
+
+                # inspection_result is a plain dict from ApplicationPageInspector
+                if isinstance(inspection_result, dict):
+                    raw_fields = inspection_result.get("fields", [])
+                    page_title = inspection_result.get("title")
+                    job_context = inspection_result.get("job_context")
+                else:
+                    raw_fields = inspection_result.fields
+                    page_title = inspection_result.title
+                    job_context = inspection_result.job_context
+
+                inspected_fields = [
+                    f.model_dump() if hasattr(f, "model_dump") else (f if isinstance(f, dict) else dict(f))
+                    for f in raw_fields
+                ]
+
+                application = self.application_repo.update_fields(
+                    application_id, status=APPLICATION_STATUS_INSPECTED
                 )
                 logger.info(
-                    "[PipelineService] ATS already-applied signal detected during inspection; "
-                    "marking application_id=%s as submitted",
-                    application_id,
+                    f"[PipelineService] Inspection complete: {len(inspected_fields)} fields "
+                    f"application_id={application_id}"
                 )
-                return application
 
-            # inspection_result is a plain dict from ApplicationPageInspector
-            if isinstance(inspection_result, dict):
-                raw_fields = inspection_result.get("fields", [])
-                page_title = inspection_result.get("title")
-                job_context = inspection_result.get("job_context")
-            else:
-                raw_fields = inspection_result.fields
-                page_title = inspection_result.title
-                job_context = inspection_result.job_context
+                # PLAN (no browser needed)
+                logger.info(f"[PipelineService] Planning application_id={application_id}")
+                application = self.application_repo.update_fields(
+                    application_id, status=APPLICATION_STATUS_PLANNING
+                )
 
-            inspected_fields = [
-                f.model_dump() if hasattr(f, "model_dump") else (f if isinstance(f, dict) else dict(f))
-                for f in raw_fields
-            ]
-
-            application = self.application_repo.update_fields(
-                application_id, status=APPLICATION_STATUS_INSPECTED
-            )
-            logger.info(
-                f"[PipelineService] Inspection complete: {len(inspected_fields)} fields "
-                f"application_id={application_id}"
-            )
-
-            # PLAN
-            logger.info(f"[PipelineService] Planning application_id={application_id}")
-            application = self.application_repo.update_fields(
-                application_id, status=APPLICATION_STATUS_PLANNING
-            )
-
-            plan = self._execute_with_retries(
-                "build_fill_plan",
-                lambda: self.planning_service.build_fill_plan(
-                    user_id=user_id,
-                    payload=AutomationFillPlanRequest(
-                        application_url=job.apply_url,
-                        inspected_fields=inspected_fields,
-                        page_title=page_title,
-                        job_context=job_context,
+                plan = self._execute_with_retries(
+                    "build_fill_plan",
+                    lambda: self.planning_service.build_fill_plan(
+                        user_id=user_id,
+                        payload=AutomationFillPlanRequest(
+                            application_url=job.apply_url,
+                            inspected_fields=inspected_fields,
+                            page_title=page_title,
+                            job_context=job_context,
+                        ),
                     ),
-                ),
-            )
+                )
 
-            application = self.application_repo.update_fields(
-                application_id, status=APPLICATION_STATUS_PLANNED
-            )
-            logger.info(
-                f"[PipelineService] Planning complete: {len(plan.fields)} fields planned "
-                f"application_id={application_id}"
-            )
+                application = self.application_repo.update_fields(
+                    application_id, status=APPLICATION_STATUS_PLANNED
+                )
+                logger.info(
+                    f"[PipelineService] Planning complete: {len(plan.fields)} fields planned "
+                    f"application_id={application_id}"
+                )
 
-            # FILL
-            logger.info(f"[PipelineService] Filling application_id={application_id}")
-            application = self.application_repo.update_fields(
-                application_id, status=APPLICATION_STATUS_FILLING
-            )
+                # FILL — reuse same browser process
+                logger.info(f"[PipelineService] Filling application_id={application_id}")
+                application = self.application_repo.update_fields(
+                    application_id, status=APPLICATION_STATUS_FILLING
+                )
 
-            fill_result = self._execute_with_retries(
-                "fill_from_plan",
-                lambda: self.fill_service.fill_from_plan(
-                    user_id=user_id,
-                    application_url=job.apply_url,
-                    plan=plan,
-                    application_id=application_id,
-                ),
-            )
+                fill_result = self._execute_with_retries(
+                    "fill_from_plan",
+                    lambda: self.fill_service.fill_from_plan(
+                        user_id=user_id,
+                        application_url=job.apply_url,
+                        plan=plan,
+                        application_id=application_id,
+                        browser=_browser,
+                    ),
+                )
 
-            application = self.application_repo.update_fields(
-                application_id, status=APPLICATION_STATUS_FILLED
-            )
-            logger.info(
-                f"[PipelineService] Fill complete: filled={fill_result.filled_count}, "
-                f"skipped={fill_result.skipped_count} application_id={application_id}"
-            )
+                application = self.application_repo.update_fields(
+                    application_id, status=APPLICATION_STATUS_FILLED
+                )
+                logger.info(
+                    f"[PipelineService] Fill complete: filled={fill_result.filled_count}, "
+                    f"skipped={fill_result.skipped_count} application_id={application_id}"
+                )
 
             # GATE CHECK — advance to awaiting_submission if cleared
             application = self.application_repo.get_by_id(application_id)
@@ -395,75 +404,84 @@ class ApplicationPipelineService:
             raise ValueError("Job not found for this application.")
 
         try:
-            # Re-inspect and re-plan so the browser session is fresh
-            inspection_result = self._execute_with_retries(
-                "inspect_application_page",
-                lambda: self.automation_service.inspect_application_page(
-                    ApplicationPageIntakeRequest(application_url=job.apply_url)
-                ),
-            )
+            # INSPECT + FILL+SUBMIT share a single browser process within this task.
+            # A fresh context is created for each operation; the browser is
+            # never shared across users or ATS domains.
+            with WorkerBrowserSession() as browser_session:
+                _browser = browser_session.browser
 
-            if self._inspection_has_already_applied(inspection_result):
+                # Re-inspect and re-plan so the page state is fresh
+                inspection_result = self._execute_with_retries(
+                    "inspect_application_page",
+                    lambda: self.automation_service.inspect_application_page(
+                        ApplicationPageIntakeRequest(application_url=job.apply_url),
+                        browser=_browser,
+                    ),
+                )
+
+                if self._inspection_has_already_applied(inspection_result):
+                    application = self.application_repo.update_fields(
+                        application_id,
+                        status=APPLICATION_STATUS_SUBMITTED,
+                    )
+                    logger.info(
+                        "[PipelineService] ATS already-applied signal detected before submit; "
+                        "marking application_id=%s as submitted",
+                        application_id,
+                    )
+                    return application
+
+                if isinstance(inspection_result, dict):
+                    raw_fields = inspection_result.get("fields", [])
+                    page_title = inspection_result.get("title")
+                    job_context = inspection_result.get("job_context")
+                else:
+                    raw_fields = inspection_result.fields
+                    page_title = inspection_result.title
+                    job_context = inspection_result.job_context
+
+                inspected_fields = [
+                    f.model_dump() if hasattr(f, "model_dump") else (f if isinstance(f, dict) else dict(f))
+                    for f in raw_fields
+                ]
+
+                plan = self._execute_with_retries(
+                    "build_fill_plan",
+                    lambda: self.planning_service.build_fill_plan(
+                        user_id=user_id,
+                        payload=AutomationFillPlanRequest(
+                            application_url=job.apply_url,
+                            inspected_fields=inspected_fields,
+                            page_title=page_title,
+                            job_context=job_context,
+                        ),
+                    ),
+                )
+
+                # FILL+SUBMIT — reuse same browser process
+                fill_result = self._execute_with_retries(
+                    "fill_and_submit_from_plan",
+                    lambda: self.fill_service.fill_and_submit_from_plan(
+                        user_id=user_id,
+                        application_url=job.apply_url,
+                        plan=plan,
+                        application_id=application_id,
+                        browser=_browser,
+                    ),
+                )
+
+                if not fill_result.submission_confirmed:
+                    raise ValueError(
+                        "Submit button was clicked but no confirmation message was detected on the page. "
+                        "The application may not have been submitted successfully."
+                    )
+
                 application = self.application_repo.update_fields(
-                    application_id,
-                    status=APPLICATION_STATUS_SUBMITTED,
+                    application_id, status=APPLICATION_STATUS_SUBMITTED
                 )
                 logger.info(
-                    "[PipelineService] ATS already-applied signal detected before submit; "
-                    "marking application_id=%s as submitted",
-                    application_id,
+                    f"[PipelineService] submit_application complete application_id={application_id}"
                 )
-                return application
-
-            if isinstance(inspection_result, dict):
-                raw_fields = inspection_result.get("fields", [])
-                page_title = inspection_result.get("title")
-                job_context = inspection_result.get("job_context")
-            else:
-                raw_fields = inspection_result.fields
-                page_title = inspection_result.title
-                job_context = inspection_result.job_context
-
-            inspected_fields = [
-                f.model_dump() if hasattr(f, "model_dump") else (f if isinstance(f, dict) else dict(f))
-                for f in raw_fields
-            ]
-
-            plan = self._execute_with_retries(
-                "build_fill_plan",
-                lambda: self.planning_service.build_fill_plan(
-                    user_id=user_id,
-                    payload=AutomationFillPlanRequest(
-                        application_url=job.apply_url,
-                        inspected_fields=inspected_fields,
-                        page_title=page_title,
-                        job_context=job_context,
-                    ),
-                ),
-            )
-
-            fill_result = self._execute_with_retries(
-                "fill_and_submit_from_plan",
-                lambda: self.fill_service.fill_and_submit_from_plan(
-                    user_id=user_id,
-                    application_url=job.apply_url,
-                    plan=plan,
-                    application_id=application_id,
-                ),
-            )
-
-            if not fill_result.submission_confirmed:
-                raise ValueError(
-                    "Submit button was clicked but no confirmation message was detected on the page. "
-                    "The application may not have been submitted successfully."
-                )
-
-            application = self.application_repo.update_fields(
-                application_id, status=APPLICATION_STATUS_SUBMITTED
-            )
-            logger.info(
-                f"[PipelineService] submit_application complete application_id={application_id}"
-            )
 
         except Exception as exc:
             logger.error(

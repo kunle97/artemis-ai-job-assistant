@@ -18,9 +18,9 @@ from pathlib import Path
 
 import random
 
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import Browser, sync_playwright
 
-from src.integrations.automation.browser import create_stealth_context
+from src.integrations.automation.browser import create_fresh_context, create_stealth_context
 from src.integrations.automation.helpers import (
     detect_already_applied_signal,
     extract_fields,
@@ -64,37 +64,53 @@ def _extract_job_context(page) -> str | None:
 
 class ApplicationPageInspector:
     @staticmethod
-    def inspect(application_url: str) -> dict:
-        with sync_playwright() as playwright:
-            browser, context, page = create_stealth_context(playwright)
+    def inspect(application_url: str, browser: Browser | None = None) -> dict:
+        """Inspect a job application page and return structured field data.
 
+        When *browser* is supplied the caller's browser process is reused and
+        only a fresh context is created (no new browser launch).  When it is
+        ``None`` a full Playwright stack is launched and torn down internally.
+        """
+        if browser is not None:
+            context, page = create_fresh_context(browser)
             try:
-                normalized_application_url = normalize_application_url(application_url)
-                page.goto(normalized_application_url, wait_until="domcontentloaded", timeout=30000)
-                page.wait_for_timeout(random.randint(1800, 3200))
-
-                prepare_application_page(page, application_url)
-                page.wait_for_timeout(1000)
-
-                title = page.title()
-                job_context = _extract_job_context(page)
-                already_applied = detect_already_applied_signal(page)
-                fields = extract_fields(page)
-                screenshot_path = save_screenshot(page, url=application_url)
-
-                return {
-                    "application_url": normalized_application_url,
-                    "status": "inspected",
-                    "title": title,
-                    "job_context": job_context,
-                    "already_applied": already_applied,
-                    "fields": fields,
-                    "screenshot_path": screenshot_path,
-                    "notes": [
-                        "Playwright inspection completed.",
-                        "Inspector v4 adds richer radio/select/combobox extraction.",
-                    ],
-                }
+                return ApplicationPageInspector._do_inspect(page, application_url)
             finally:
                 context.close()
-                browser.close()
+        else:
+            with sync_playwright() as playwright:
+                _browser, context, page = create_stealth_context(playwright)
+                try:
+                    return ApplicationPageInspector._do_inspect(page, application_url)
+                finally:
+                    context.close()
+                    _browser.close()
+
+    @staticmethod
+    def _do_inspect(page, application_url: str) -> dict:
+        normalized_application_url = normalize_application_url(application_url)
+        page.goto(normalized_application_url, wait_until="domcontentloaded", timeout=30000)
+        page.wait_for_timeout(random.randint(1800, 3200))
+
+        prepare_application_page(page, application_url)
+        page.wait_for_timeout(1000)
+
+        title = page.title()
+        job_context = _extract_job_context(page)
+        already_applied = detect_already_applied_signal(page)
+        fields = extract_fields(page)
+        screenshot_path = save_screenshot(page, url=application_url)
+
+        return {
+            "application_url": normalized_application_url,
+            "status": "inspected",
+            "title": title,
+            "job_context": job_context,
+            "already_applied": already_applied,
+            "fields": fields,
+            "screenshot_path": screenshot_path,
+            "notes": [
+                "Playwright inspection completed.",
+                "Inspector v4 adds richer radio/select/combobox extraction.",
+            ],
+        }

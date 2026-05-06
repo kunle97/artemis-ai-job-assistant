@@ -446,6 +446,38 @@ def test_work_authorization_binary_question_uses_visa_sponsorship_yes_no():
     assert needs_review is False
 
 
+def test_work_authorization_handles_common_label_typo_leagally():
+    value, needs_review = resolve_field_value(
+        classified_role="unknown",
+        inspected_field={
+            "field_type": "select_like",
+            "label": "Are you leagally authorized to work in the united states?",
+            "options": [],
+        },
+        user=_User(),
+        profile=_Profile(work_authorization="U.S. Citizen"),
+        open_ended_provider=None,
+    )
+    assert value == "Yes"
+    assert needs_review is False
+
+
+def test_work_arrangement_nyc_commute_question_uses_location_without_work_arrangement():
+    value, needs_review = resolve_field_value(
+        classified_role="work_arrangement",
+        inspected_field={
+            "field_type": "select_like",
+            "label": "Are you currently based a commutable distance to manhatten for in person collaboration 2 times per week?",
+            "options": [],
+        },
+        user=_User(),
+        profile=_Profile(city="Jersey City", state="NJ", work_arrangement=None),
+        open_ended_provider=None,
+    )
+    assert value == "Yes"
+    assert needs_review is False
+
+
 def test_salary_expectation_yes_no_question_uses_range_not_raw_target():
     value, needs_review = resolve_field_value(
         classified_role="salary_expectation",

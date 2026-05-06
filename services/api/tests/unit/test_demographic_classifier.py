@@ -176,6 +176,16 @@ def test_generic_classifies_work_authorization():
     assert clf.classify(field_type="select_like", label="Are you authorized to work in the US?", name=None, placeholder=None) == FIELD_ROLE_WORK_AUTHORIZATION
 
 
+def test_generic_classifies_work_authorization_with_leagally_typo():
+    clf = GenericAutomationFieldClassifier()
+    assert clf.classify(
+        field_type="select_like",
+        label="Are you leagally authorized to work in the United States?",
+        name=None,
+        placeholder=None,
+    ) == FIELD_ROLE_WORK_AUTHORIZATION
+
+
 def test_greenhouse_classifies_work_authorization():
     clf = GreenhouseAutomationFieldClassifier()
     assert clf.classify(field_type="select_like", label="Are you authorized to work in the US?", name=None, placeholder=None) == FIELD_ROLE_WORK_AUTHORIZATION

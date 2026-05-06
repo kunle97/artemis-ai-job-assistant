@@ -11,7 +11,11 @@ import os
 import random
 import time
 
-from playwright.sync_api import BrowserContext, Page, Playwright
+import logging
+
+from playwright.sync_api import Browser, BrowserContext, Page, Playwright
+
+logger = logging.getLogger(__name__)
 
 _STEALTH_UA = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
@@ -152,6 +156,79 @@ def create_stealth_context(playwright: Playwright) -> tuple:
     context.add_init_script(_STEALTH_INIT_SCRIPT)
     page = context.new_page()
     return browser, context, page
+
+
+def create_fresh_context(browser: Browser) -> tuple[BrowserContext, Page]:
+    """Create a fresh stealth (context, page) from an already-running browser.
+
+    Use this when the Playwright process and browser are managed externally
+    (e.g. WorkerBrowserSession). The caller is responsible for closing the
+    returned context after use. The browser itself is NOT closed here.
+    """
+    context: BrowserContext = browser.new_context(
+        user_agent=_STEALTH_UA,
+        viewport={"width": 1280, "height": 800},
+        locale="en-US",
+        timezone_id="America/New_York",
+        java_script_enabled=True,
+        accept_downloads=False,
+    )
+    context.add_init_script(_STEALTH_INIT_SCRIPT)
+    page = context.new_page()
+    return context, page
+
+
+class WorkerBrowserSession:
+    """Reuse a single Playwright browser process within one worker task scope.
+
+    Reuses the browser process; each call to ``new_context()`` returns a
+    fresh, isolated context+page. Never share a session across users or
+    across different ATS domains.
+
+    Usage::
+
+        with WorkerBrowserSession() as session:
+            context, page = session.new_context()
+            try:
+                # ... do work
+            finally:
+                context.close()
+    """
+
+    def __init__(self) -> None:
+        self._playwright_ctx = None
+        self._playwright = None
+        self.browser: Browser | None = None
+
+    def __enter__(self) -> "WorkerBrowserSession":
+        from playwright.sync_api import sync_playwright
+
+        self._playwright_ctx = sync_playwright()
+        self._playwright = self._playwright_ctx.__enter__()
+        channel = os.environ.get("PLAYWRIGHT_BROWSER_CHANNEL") or None
+        headless = os.environ.get("PLAYWRIGHT_HEADLESS", "true").lower() == "true"
+        self.browser = self._playwright.chromium.launch(
+            headless=headless,
+            args=_STEALTH_LAUNCH_ARGS,
+            channel=channel,
+        )
+        logger.info("[BrowserPool] Browser process launched")
+        return self
+
+    def __exit__(self, *exc_info) -> None:
+        try:
+            if self.browser is not None:
+                self.browser.close()
+                logger.info("[BrowserPool] Browser process closed")
+        finally:
+            if self._playwright_ctx is not None:
+                self._playwright_ctx.__exit__(*exc_info)
+
+    def new_context(self) -> tuple[BrowserContext, Page]:
+        """Return a fresh (context, page). Caller must close the context when done."""
+        if self.browser is None:
+            raise RuntimeError("WorkerBrowserSession is not active — use it as a context manager")
+        return create_fresh_context(self.browser)
 
 
 class PlaywrightBrowser:
