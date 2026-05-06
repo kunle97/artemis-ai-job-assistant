@@ -15,6 +15,8 @@ import {
   FileText,
   ExternalLink,
 } from 'lucide-react';
+import { ScoreIndicator } from '../components/ui/ScoreIndicator';
+import type { ScoreRecommendation } from '../components/ui/ScoreIndicator';
 
 interface Blocker {
   id: string;
@@ -77,6 +79,14 @@ export const ApplicationDetailWorkspace: React.FC = () => {
   const [automationStatus, setAutomationStatus] = useState<'not-started' | 'running' | 'complete' | 'failed'>('not-started');
   const [authorized, setAuthorized] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+
+  /**
+   * TODO: replace with real data from POST /applications/{id}/score
+   * Stub values mirror the mock data on the dashboard for visual consistency.
+   */
+  const fitScore: number | null = 4.6;
+  const fitRecommendation: ScoreRecommendation = 'apply_immediately';
+  const skillsGapSummary = 'Potential gaps (from JD keywords not found in profile): Kubernetes, Figma.';
 
   const hasBlockers = mockBlockers.filter((b) => b.severity === 'error').length > 0;
   const isReadyForAutomation = !hasBlockers;
@@ -368,6 +378,19 @@ export const ApplicationDetailWorkspace: React.FC = () => {
                       Submit Application
                     </Button>
                   </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Fit Score */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Fit Score</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <ScoreIndicator score={fitScore} recommendation={fitRecommendation} />
+                {skillsGapSummary && (
+                  <p className="text-xs text-muted-foreground">{skillsGapSummary}</p>
                 )}
               </CardContent>
             </Card>

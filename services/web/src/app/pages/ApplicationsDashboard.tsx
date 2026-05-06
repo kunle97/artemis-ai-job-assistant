@@ -4,6 +4,8 @@ import { useRouter } from 'next/navigation';
 import { AppShell } from '../components/AppShell';
 import { Button, Card, Badge } from '../components/ui';
 import { Plus, AlertCircle, CheckCircle, Clock, XCircle, ArrowRight } from 'lucide-react';
+import { ScoreIndicator } from '../components/ui/ScoreIndicator';
+import type { ScoreRecommendation } from '../components/ui/ScoreIndicator';
 
 type ApplicationStatus = 'draft' | 'ready' | 'blocked' | 'submitted' | 'in-progress';
 type ReadinessStatus = 'complete' | 'partial' | 'blocked' | 'not-started';
@@ -16,6 +18,9 @@ interface Application {
   readiness: ReadinessStatus;
   lastUpdated: string;
   blockers?: number;
+  /** TODO: populated from POST /applications/{id}/score */
+  fitScore?: number | null;
+  fitRecommendation?: ScoreRecommendation;
 }
 
 const mockApplications: Application[] = [
@@ -26,6 +31,8 @@ const mockApplications: Application[] = [
     status: 'ready',
     readiness: 'complete',
     lastUpdated: '2 hours ago',
+    fitScore: 4.6,
+    fitRecommendation: 'apply_immediately',
   },
   {
     id: '2',
@@ -35,6 +42,8 @@ const mockApplications: Application[] = [
     readiness: 'blocked',
     lastUpdated: '1 day ago',
     blockers: 3,
+    fitScore: 3.2,
+    fitRecommendation: 'recommend_against',
   },
   {
     id: '3',
@@ -43,6 +52,8 @@ const mockApplications: Application[] = [
     status: 'in-progress',
     readiness: 'partial',
     lastUpdated: '3 hours ago',
+    fitScore: 4.1,
+    fitRecommendation: 'worth_applying',
   },
   {
     id: '4',
@@ -51,6 +62,8 @@ const mockApplications: Application[] = [
     status: 'submitted',
     readiness: 'complete',
     lastUpdated: '2 days ago',
+    fitScore: 3.7,
+    fitRecommendation: 'apply_if_specific_reason',
   },
   {
     id: '5',
@@ -59,6 +72,8 @@ const mockApplications: Application[] = [
     status: 'draft',
     readiness: 'not-started',
     lastUpdated: '1 week ago',
+    fitScore: null,
+    fitRecommendation: null,
   },
 ];
 
@@ -146,6 +161,7 @@ export const ApplicationsDashboard: React.FC = () => {
                   <th className="text-left px-6 py-4 text-sm font-medium text-muted-foreground">Company</th>
                   <th className="text-left px-6 py-4 text-sm font-medium text-muted-foreground">Status</th>
                   <th className="text-left px-6 py-4 text-sm font-medium text-muted-foreground">Readiness</th>
+                  <th className="text-left px-6 py-4 text-sm font-medium text-muted-foreground">Fit Score</th>
                   <th className="text-left px-6 py-4 text-sm font-medium text-muted-foreground">Last Updated</th>
                   <th className="text-right px-6 py-4 text-sm font-medium text-muted-foreground">Actions</th>
                 </tr>
@@ -184,6 +200,13 @@ export const ApplicationsDashboard: React.FC = () => {
                             <span className="text-sm text-muted-foreground">Not started</span>
                           )}
                         </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <ScoreIndicator
+                          score={app.fitScore}
+                          recommendation={app.fitRecommendation}
+                          compact
+                        />
                       </td>
                       <td className="px-6 py-4">
                         <span className="text-sm text-muted-foreground">{app.lastUpdated}</span>

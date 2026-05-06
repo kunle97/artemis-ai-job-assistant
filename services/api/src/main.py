@@ -30,6 +30,7 @@ from src.routes.application_planning import router as application_planning_route
 from src.routes.automation import router as automation_router
 from src.routes.automation_planning import router as automation_planning_router
 from src.routes.automation_fill import router as automation_fill_router
+from src.routes.application_scoring import router as application_scoring_router
 from src.routes.automation_manual_fill import router as automation_manual_fill_router
 from src.routes.automation_test_fill import router as automation_test_fill_router
 
@@ -76,4 +77,5 @@ app.include_router(automation_router)
 app.include_router(automation_planning_router)
 app.include_router(automation_fill_router)
 app.include_router(automation_test_fill_router)
+app.include_router(application_scoring_router)
 app.include_router(automation_manual_fill_router)

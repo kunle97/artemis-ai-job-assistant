@@ -2,7 +2,8 @@
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { AppShell } from '../components/AppShell';
-import { Button, Card, Badge } from '../components/ui';
+import { Button, Card, Badge, ScoreIndicator } from '../components/ui';
+import type { ScoreRecommendation } from '../components/ui';
 import { Search, SlidersHorizontal, MapPin, DollarSign, Briefcase, Heart, X, RefreshCw } from 'lucide-react';
 
 const mockJobs = [
@@ -15,6 +16,8 @@ const mockJobs = [
     salary: '$150k - $200k',
     posted: '2 days ago',
     description: 'Leading product strategy for our flagship SaaS platform...',
+    fitScore: 4.6,
+    fitRecommendation: 'apply_immediately' as ScoreRecommendation,
   },
   {
     id: '2',
@@ -25,6 +28,8 @@ const mockJobs = [
     salary: '$130k - $170k',
     posted: '1 week ago',
     description: 'Drive product vision and roadmap for AI-powered tools...',
+    fitScore: 3.2,
+    fitRecommendation: 'recommend_against' as ScoreRecommendation,
   },
   {
     id: '3',
@@ -35,6 +40,8 @@ const mockJobs = [
     salary: '$140k - $180k',
     posted: '3 days ago',
     description: 'Own end-to-end product development lifecycle...',
+    fitScore: 4.1,
+    fitRecommendation: 'worth_applying' as ScoreRecommendation,
   },
 ];
 
@@ -152,7 +159,7 @@ export const JobFeedDashboard: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="flex flex-col gap-2">
+                <div className="flex flex-col gap-2 items-end">
                   <Button variant="primary" size="sm" onClick={() => handleSaveJob(job.id)}>
                     <Heart className="h-4 w-4" />
                     Apply
@@ -161,6 +168,11 @@ export const JobFeedDashboard: React.FC = () => {
                     <X className="h-4 w-4" />
                     Dismiss
                   </Button>
+                  {job.fitScore !== undefined && (
+                    <div className="mt-2 pt-2 border-t border-border">
+                      <ScoreIndicator score={job.fitScore} recommendation={job.fitRecommendation} compact />
+                    </div>
+                  )}
                 </div>
               </div>
             </Card>
