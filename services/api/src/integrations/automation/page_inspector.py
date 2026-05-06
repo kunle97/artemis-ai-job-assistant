@@ -21,7 +21,13 @@ import random
 from playwright.sync_api import sync_playwright
 
 from src.integrations.automation.browser import create_stealth_context
-from src.integrations.automation.helpers import prepare_application_page, extract_fields, save_screenshot, normalize_application_url
+from src.integrations.automation.helpers import (
+    detect_already_applied_signal,
+    extract_fields,
+    normalize_application_url,
+    prepare_application_page,
+    save_screenshot,
+)
 
 
 def _extract_job_context(page) -> str | None:
@@ -72,6 +78,7 @@ class ApplicationPageInspector:
 
                 title = page.title()
                 job_context = _extract_job_context(page)
+                already_applied = detect_already_applied_signal(page)
                 fields = extract_fields(page)
                 screenshot_path = save_screenshot(page, url=application_url)
 
@@ -80,6 +87,7 @@ class ApplicationPageInspector:
                     "status": "inspected",
                     "title": title,
                     "job_context": job_context,
+                    "already_applied": already_applied,
                     "fields": fields,
                     "screenshot_path": screenshot_path,
                     "notes": [

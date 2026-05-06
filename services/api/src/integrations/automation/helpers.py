@@ -621,3 +621,33 @@ def save_screenshot(page, url: str | None = None) -> str | None:
 
     page.screenshot(path=str(path), full_page=True)
     return str(path)
+
+
+def detect_already_applied_signal(page) -> bool:
+    """Return True when the page indicates the user already applied.
+
+    This checks both the current URL and visible page text for common ATS
+    confirmation messages used after a prior submission.
+    """
+    current_url = (page.url or "").lower()
+    if any(token in current_url for token in ["already-applied", "already_applied", "application-submitted"]):
+        return True
+
+    text = page.evaluate(
+        """
+        () => {
+            const root = document.querySelector('main') || document.body;
+            if (!root) return '';
+            return (root.innerText || '').toLowerCase();
+        }
+        """
+    )
+
+    signals = [
+        "you have already applied",
+        "you already applied",
+        "already applied",
+        "application has already been submitted",
+        "you've already submitted",
+    ]
+    return any(signal in text for signal in signals)

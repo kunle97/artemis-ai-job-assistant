@@ -130,6 +130,16 @@ class ApplicationPipelineService:
                     )
                 raise
 
+    def _inspection_has_already_applied(self, inspection_result) -> bool:
+        """Return True when inspection signals the candidate already applied."""
+        value = None
+        if isinstance(inspection_result, dict):
+            value = inspection_result.get("already_applied")
+        else:
+            value = getattr(inspection_result, "already_applied", None)
+
+        return value is True
+
     def can_advance_past_filled(self, application) -> bool:
         """Return True if the application is cleared for submission."""
         if application.status != APPLICATION_STATUS_FILLED:
@@ -197,6 +207,18 @@ class ApplicationPipelineService:
                     ApplicationPageIntakeRequest(application_url=job.apply_url)
                 ),
             )
+
+            if self._inspection_has_already_applied(inspection_result):
+                application = self.application_repo.update_fields(
+                    application_id,
+                    status=APPLICATION_STATUS_SUBMITTED,
+                )
+                logger.info(
+                    "[PipelineService] ATS already-applied signal detected during inspection; "
+                    "marking application_id=%s as submitted",
+                    application_id,
+                )
+                return application
 
             # inspection_result is a plain dict from ApplicationPageInspector
             if isinstance(inspection_result, dict):
@@ -380,6 +402,18 @@ class ApplicationPipelineService:
                     ApplicationPageIntakeRequest(application_url=job.apply_url)
                 ),
             )
+
+            if self._inspection_has_already_applied(inspection_result):
+                application = self.application_repo.update_fields(
+                    application_id,
+                    status=APPLICATION_STATUS_SUBMITTED,
+                )
+                logger.info(
+                    "[PipelineService] ATS already-applied signal detected before submit; "
+                    "marking application_id=%s as submitted",
+                    application_id,
+                )
+                return application
 
             if isinstance(inspection_result, dict):
                 raw_fields = inspection_result.get("fields", [])

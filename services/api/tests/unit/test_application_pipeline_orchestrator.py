@@ -20,6 +20,7 @@ from src.domain.applications.constants import (
     APPLICATION_STATUS_PLANNED,
     APPLICATION_STATUS_PLANNING,
     APPLICATION_STATUS_QUEUED,
+    APPLICATION_STATUS_SUBMITTED,
 )
 from src.domain.applications.pipeline_service import ApplicationPipelineService
 from src.domain.automation.planning.models import AutomationFillPlan
@@ -172,6 +173,49 @@ def test_run_pipeline_calls_fill_from_plan_with_plan():
     kwargs = fill_svc.fill_from_plan.call_args.kwargs
     assert kwargs["plan"] is plan
     assert kwargs["application_id"] == app.id
+
+
+def test_run_pipeline_marks_submitted_when_already_applied_detected_on_inspection():
+    app = _make_application()
+    job = _make_job()
+    inspection = {
+        "title": "Software Engineer",
+        "job_context": None,
+        "fields": [],
+        "already_applied": True,
+    }
+
+    app_repo = MagicMock()
+    app_repo.get_by_id.return_value = app
+    app_repo.update_fields.return_value = app
+
+    job_repo = MagicMock()
+    job_repo.get_by_id.return_value = job
+
+    automation_svc = MagicMock()
+    automation_svc.inspect_application_page.return_value = inspection
+
+    planning_svc = MagicMock()
+    fill_svc = MagicMock()
+
+    service = ApplicationPipelineService(
+        application_repo=app_repo,
+        job_repo=job_repo,
+        automation_service=automation_svc,
+        planning_service=planning_svc,
+        fill_service=fill_svc,
+    )
+
+    service.run_pipeline(app.user_id, app.id)
+
+    statuses_set = {
+        kw["status"]
+        for _, kw in [c for c in app_repo.update_fields.call_args_list]
+        if "status" in kw
+    }
+    assert APPLICATION_STATUS_SUBMITTED in statuses_set
+    planning_svc.build_fill_plan.assert_not_called()
+    fill_svc.fill_from_plan.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

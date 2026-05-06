@@ -198,6 +198,32 @@ class TestSubmitApplication:
         }
         assert APPLICATION_STATUS_SUBMITTED in update_statuses
 
+    def test_submit_marks_submitted_when_already_applied_detected_before_submit(self):
+        app = _make_application(
+            status=APPLICATION_STATUS_AWAITING_SUBMISSION,
+            is_ready_for_automation=True,
+            manual_review_required=False,
+        )
+        job = _make_job()
+        inspection = {
+            "fields": [],
+            "title": "Software Engineer",
+            "job_context": None,
+            "already_applied": True,
+        }
+
+        service, app_repo, fill_svc = _build_service(app, job, inspection=inspection)
+
+        service.submit_application(app.user_id, app.id)
+
+        update_statuses = {
+            call.kwargs["status"]
+            for call in app_repo.update_fields.call_args_list
+            if "status" in call.kwargs
+        }
+        assert APPLICATION_STATUS_SUBMITTED in update_statuses
+        fill_svc.fill_and_submit_from_plan.assert_not_called()
+
     def test_submit_raises_permission_error_for_wrong_user(self):
         """Returns PermissionError when user does not own the application."""
         app = _make_application(

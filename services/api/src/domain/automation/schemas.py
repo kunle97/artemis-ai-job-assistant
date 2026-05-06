@@ -25,6 +25,7 @@ class ApplicationPageIntakeResult(BaseModel):
     status: str
     title: str | None = None
     job_context: str | None = None
+    already_applied: bool = False
     fields: list[ApplicationFieldInventoryItem] = Field(default_factory=list)
     screenshot_path: str | None = None
     notes: list[str] = Field(default_factory=list)
