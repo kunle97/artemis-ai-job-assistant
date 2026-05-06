@@ -213,3 +213,16 @@ Code must remain modular and separable into services.
 - `career-ops` is not a runtime dependency of Artemis: adapter logic is ported to Python in this repository and must not be invoked via subprocess calls.
 
 ------------------------------------------------------------------------
+
+## Frontend API Service Rules
+
+- All frontend HTTP requests must use `axios`. Do not use `fetch` for API calls in `services/web`.
+- Frontend API logic must live under `services/web/src/services/`.
+- Organize frontend service modules by backend domain ownership, for example:
+  - `src/services/auth/`
+  - `src/services/applications/`
+  - `src/services/profile/`
+- Do not place API-calling logic in `src/app/lib/`.
+- UI components and pages should call domain service functions, not inline HTTP logic.
+
+------------------------------------------------------------------------

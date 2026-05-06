@@ -1,14 +1,8 @@
 /**
- * Follow-up API client.
- *
- * Wraps GET /applications/follow-ups. Returns grouped follow-up
- * obligations (overdue, urgent, upcoming) for the authenticated user.
- *
- * Token is read from localStorage key "access_token". Swap this for
- * whatever auth storage the app uses once auth is fully wired up.
+ * Follow-up domain service for fetching follow-up notifications from the API.
  */
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
+import { httpClient } from '../../http/client';
 
 export type FollowUpType = 'first_followup' | 'subsequent_followup' | 'thank_you';
 
@@ -16,7 +10,7 @@ export interface FollowUpItem {
   id: string;
   application_id: string;
   user_id: string;
-  due_date: string;          // ISO 8601
+  due_date: string;
   followup_type: FollowUpType;
   is_overdue: boolean;
   created_at: string;
@@ -31,25 +25,16 @@ export interface FollowUpListResponse {
 }
 
 export async function fetchFollowUps(token: string): Promise<FollowUpListResponse> {
-  const res = await fetch(`${API_BASE}/applications/follow-ups`, {
+  const response = await httpClient.get<FollowUpListResponse>('/applications/follow-ups', {
     headers: {
       Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
     },
-    cache: 'no-store',
   });
 
-  if (!res.ok) {
-    throw new Error(`Failed to load follow-ups: ${res.status}`);
-  }
-
-  return res.json() as Promise<FollowUpListResponse>;
+  return response.data;
 }
 
-// ---------------------------------------------------------------------------
-// Mock data — used when no auth token is present (demo / dev mode)
-// ---------------------------------------------------------------------------
-
+// Mock data used when auth token is not present (demo/dev mode).
 const now = new Date();
 
 const daysFromNow = (n: number) =>

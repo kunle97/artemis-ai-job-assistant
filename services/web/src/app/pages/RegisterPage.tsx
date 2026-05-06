@@ -1,11 +1,64 @@
+// RegisterPage: account creation and handoff to onboarding component.
 'use client';
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button, Input, Card } from '../components/ui';
-import { Sparkles, CheckCircle, Circle } from 'lucide-react';
+import { Sparkles } from 'lucide-react';
+import {
+  loginUser,
+  registerUser,
+  type RegisterUserPayload,
+} from '../../services/auth/auth.service';
+import { RegistrationOnboarding } from '../components/RegistrationOnboarding';
+
+// ── Types ────────────────────────────────────────────────────────────────────
+
+interface FieldErrors {
+  firstName?: string;
+  lastName?: string;
+  email?: string;
+  password?: string;
+  confirmPassword?: string;
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function validateForm(data: {
+  firstName: string;
+  lastName: string;
+  email: string;
+  password: string;
+  confirmPassword: string;
+}): FieldErrors {
+  const errors: FieldErrors = {};
+  if (!data.firstName.trim()) errors.firstName = 'First name is required';
+  if (!data.lastName.trim()) errors.lastName = 'Last name is required';
+  if (!data.email.trim()) {
+    errors.email = 'Email is required';
+  } else if (!EMAIL_RE.test(data.email)) {
+    errors.email = 'Enter a valid email address';
+  }
+  if (!data.password) {
+    errors.password = 'Password is required';
+  } else if (data.password.length < 8) {
+    errors.password = 'Password must be at least 8 characters';
+  }
+  if (!data.confirmPassword) {
+    errors.confirmPassword = 'Please confirm your password';
+  } else if (data.password !== data.confirmPassword) {
+    errors.confirmPassword = 'Passwords do not match';
+  }
+  return errors;
+}
+
+// ── Component ─────────────────────────────────────────────────────────────────
 
 export const RegisterPage: React.FC = () => {
   const router = useRouter();
+
+  // Registration state
   const [step, setStep] = useState<'register' | 'onboarding'>('register');
   const [formData, setFormData] = useState({
     firstName: '',
@@ -14,30 +67,61 @@ export const RegisterPage: React.FC = () => {
     password: '',
     confirmPassword: '',
   });
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
+  const [globalError, setGlobalError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [termsAccepted, setTermsAccepted] = useState(false);
+
+  // ── Registration handlers ─────────────────────────────────────────────────
+
+  const handleFieldChange = (field: keyof typeof formData, value: string) => {
+    setFormData((prev) => ({ ...prev, [field]: value }));
+    // Clear per-field error on edit
+    if (fieldErrors[field]) {
+      setFieldErrors((prev) => ({ ...prev, [field]: undefined }));
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError(null);
+    setGlobalError(null);
 
-    if (formData.password !== formData.confirmPassword) {
-      setError('Passwords do not match');
+    const errors = validateForm(formData);
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors);
       return;
     }
 
     setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
+    try {
+      const payload: RegisterUserPayload = {
+        first_name: formData.firstName,
+        last_name: formData.lastName,
+        email: formData.email,
+        password: formData.password,
+      };
+
+      await registerUser(payload);
+      const tokens = await loginUser({
+        email: formData.email,
+        password: formData.password,
+      });
+
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('access_token', tokens.access_token);
+        localStorage.setItem('refresh_token', tokens.refresh_token);
+      }
+
       setStep('onboarding');
-    }, 1000);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to connect to the server. Please try again.';
+      setGlobalError(message);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleCompleteOnboarding = () => {
-    router.push('/jobs');
-  };
-
-  const handleSkipOnboarding = () => {
+  const handleEnterDashboard = () => {
     router.push('/jobs');
   };
 
@@ -50,78 +134,13 @@ export const RegisterPage: React.FC = () => {
   };
 
   if (step === 'onboarding') {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center px-6 py-12">
-        <div className="w-full max-w-2xl">
-          <div className="text-center mb-8">
-            <div className="flex items-center justify-center gap-2 mb-4">
-              <Sparkles className="h-10 w-10 text-brand" />
-              <span className="text-3xl font-semibold text-foreground">Artemis</span>
-            </div>
-            <h1 className="text-2xl font-semibold text-foreground">Welcome to Artemis!</h1>
-            <p className="mt-2 text-muted-foreground">Let's get your profile set up in just a few steps</p>
-          </div>
-
-          <Card>
-            <div className="space-y-6">
-              <div className="space-y-4">
-                <div className="flex items-start gap-4 p-4 rounded-lg border border-border hover:bg-secondary/50 transition-colors cursor-pointer">
-                  <Circle className="h-6 w-6 text-muted-foreground flex-shrink-0 mt-1" />
-                  <div className="flex-1">
-                    <h3 className="font-semibold text-foreground">Complete your profile</h3>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      Add your professional information and career goals
-                    </p>
-                  </div>
-                  <Button variant="outline" size="sm">
-                    Start
-                  </Button>
-                </div>
-
-                <div className="flex items-start gap-4 p-4 rounded-lg border border-border hover:bg-secondary/50 transition-colors cursor-pointer">
-                  <Circle className="h-6 w-6 text-muted-foreground flex-shrink-0 mt-1" />
-                  <div className="flex-1">
-                    <h3 className="font-semibold text-foreground">Upload your resume</h3>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      Let Artemis parse your resume and auto-fill your profile
-                    </p>
-                  </div>
-                  <Button variant="outline" size="sm">
-                    Upload
-                  </Button>
-                </div>
-
-                <div className="flex items-start gap-4 p-4 rounded-lg border border-border hover:bg-secondary/50 transition-colors cursor-pointer">
-                  <Circle className="h-6 w-6 text-muted-foreground flex-shrink-0 mt-1" />
-                  <div className="flex-1">
-                    <h3 className="font-semibold text-foreground">Set job preferences</h3>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      Tell us what kind of roles you're looking for
-                    </p>
-                  </div>
-                  <Button variant="outline" size="sm">
-                    Configure
-                  </Button>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between pt-6 border-t border-border">
-                <button onClick={handleSkipOnboarding} className="text-sm text-muted-foreground hover:text-foreground">
-                  Skip for now
-                </button>
-                <Button variant="primary" onClick={handleCompleteOnboarding}>
-                  Continue to Dashboard
-                </Button>
-              </div>
-            </div>
-          </Card>
-        </div>
-      </div>
-    );
+    return <RegistrationOnboarding firstName={formData.firstName} onComplete={handleEnterDashboard} />;
   }
 
+  // ── Registration form view ─────────────────────────────────────────────────
+
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center px-6 py-12">
+    <div className="min-h-screen bg-background flex items-center justify-center px-4 sm:px-6 py-12">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <div className="flex items-center justify-center gap-2 mb-4">
@@ -133,10 +152,11 @@ export const RegisterPage: React.FC = () => {
         </div>
 
         <Card>
-          <form onSubmit={handleSubmit} className="space-y-6">
-            {error && (
+          <form onSubmit={handleSubmit} className="space-y-5" noValidate>
+            {/* Global error (e.g. duplicate email, network failure) */}
+            {globalError && (
               <div className="p-4 rounded-lg bg-destructive/10 border border-destructive/20">
-                <p className="text-sm text-destructive">{error}</p>
+                <p className="text-sm text-destructive">{globalError}</p>
               </div>
             )}
 
@@ -146,20 +166,20 @@ export const RegisterPage: React.FC = () => {
                 label="First Name"
                 placeholder="John"
                 value={formData.firstName}
-                onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
-                required
+                onChange={(e) => handleFieldChange('firstName', e.target.value)}
                 fullWidth
                 autoComplete="given-name"
+                error={fieldErrors.firstName}
               />
               <Input
                 type="text"
                 label="Last Name"
                 placeholder="Doe"
                 value={formData.lastName}
-                onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
-                required
+                onChange={(e) => handleFieldChange('lastName', e.target.value)}
                 fullWidth
                 autoComplete="family-name"
+                error={fieldErrors.lastName}
               />
             </div>
 
@@ -168,10 +188,10 @@ export const RegisterPage: React.FC = () => {
               label="Email"
               placeholder="you@example.com"
               value={formData.email}
-              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-              required
+              onChange={(e) => handleFieldChange('email', e.target.value)}
               fullWidth
               autoComplete="email"
+              error={fieldErrors.email}
             />
 
             <Input
@@ -179,11 +199,11 @@ export const RegisterPage: React.FC = () => {
               label="Password"
               placeholder="Create a strong password"
               value={formData.password}
-              onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-              required
+              onChange={(e) => handleFieldChange('password', e.target.value)}
               fullWidth
               autoComplete="new-password"
-              helperText="At least 8 characters"
+              helperText={fieldErrors.password ? undefined : 'At least 8 characters'}
+              error={fieldErrors.password}
             />
 
             <Input
@@ -191,15 +211,21 @@ export const RegisterPage: React.FC = () => {
               label="Confirm Password"
               placeholder="Re-enter your password"
               value={formData.confirmPassword}
-              onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
-              required
+              onChange={(e) => handleFieldChange('confirmPassword', e.target.value)}
               fullWidth
               autoComplete="new-password"
+              error={fieldErrors.confirmPassword}
             />
 
             <div className="flex items-start gap-2">
-              <input type="checkbox" required className="h-4 w-4 rounded border-border text-brand mt-1" />
-              <label className="text-sm text-muted-foreground">
+              <input
+                type="checkbox"
+                id="terms"
+                checked={termsAccepted}
+                onChange={(e) => setTermsAccepted(e.target.checked)}
+                className="h-4 w-4 rounded border-border text-brand mt-1 cursor-pointer"
+              />
+              <label htmlFor="terms" className="text-sm text-muted-foreground cursor-pointer">
                 I agree to the{' '}
                 <a href="#" className="text-brand hover:underline">
                   Terms of Service
@@ -211,7 +237,14 @@ export const RegisterPage: React.FC = () => {
               </label>
             </div>
 
-            <Button type="submit" variant="primary" size="lg" fullWidth loading={loading}>
+            <Button
+              type="submit"
+              variant="primary"
+              size="lg"
+              fullWidth
+              loading={loading}
+              disabled={!termsAccepted}
+            >
               Create Account
             </Button>
           </form>
@@ -235,3 +268,4 @@ export const RegisterPage: React.FC = () => {
     </div>
   );
 };
+

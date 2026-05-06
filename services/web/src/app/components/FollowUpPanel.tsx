@@ -22,7 +22,7 @@ import {
   type FollowUpItem,
   type FollowUpListResponse,
   type FollowUpType,
-} from '../lib/followUpApi';
+} from '../../services/applications/followup/followup.service';
 
 // ---------------------------------------------------------------------------
 // Helpers
