@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { Sparkles, Briefcase, FileText, BookOpen, User, Settings, Search, Menu, X, CreditCard, UserCircle } from 'lucide-react';
+import { FollowUpDropdown } from './FollowUpDropdown';
 
 interface AppShellProps {
   children: React.ReactNode;
@@ -135,6 +136,7 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
             <Menu className="h-6 w-6 text-muted-foreground" />
           </button>
           <div className="flex-1" />
+          <FollowUpDropdown />
         </header>
 
         {/* Page content */}

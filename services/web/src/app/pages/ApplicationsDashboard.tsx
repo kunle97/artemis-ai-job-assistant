@@ -7,6 +7,7 @@ import { Plus, AlertCircle, CheckCircle, Clock, XCircle, ArrowRight } from 'luci
 import { ScoreIndicator } from '../components/ui/ScoreIndicator';
 import type { ScoreRecommendation } from '../components/ui/ScoreIndicator';
 
+
 type ApplicationStatus = 'draft' | 'ready' | 'blocked' | 'submitted' | 'in-progress';
 type ReadinessStatus = 'complete' | 'partial' | 'blocked' | 'not-started';
 
