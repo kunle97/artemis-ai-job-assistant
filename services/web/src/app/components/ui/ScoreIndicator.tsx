@@ -26,6 +26,7 @@ export type ScoreRecommendation =
 interface ScoreIndicatorProps {
   score?: number | null;
   recommendation?: ScoreRecommendation;
+  lowConfidence?: boolean;
   /** Compact pill mode — used in table rows */
   compact?: boolean;
   className?: string;
@@ -64,6 +65,7 @@ const RECOMMENDATION_CONFIG: Record<
 export const ScoreIndicator: React.FC<ScoreIndicatorProps> = ({
   score,
   recommendation,
+  lowConfidence = false,
   compact = false,
   className,
 }) => {
@@ -90,7 +92,7 @@ export const ScoreIndicator: React.FC<ScoreIndicatorProps> = ({
         )}
       >
         <Sparkles className="h-3 w-3" />
-        {score.toFixed(1)} · {config.label}
+        {score.toFixed(1)} · {config.label}{lowConfidence ? ' (Preliminary)' : ''}
       </span>
     );
   }

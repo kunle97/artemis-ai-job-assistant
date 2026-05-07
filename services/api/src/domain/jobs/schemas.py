@@ -102,6 +102,7 @@ class FeedJobRead(JobRead):
     application_id: UUID | None = None
     fit_score: float | None = None
     fit_recommendation: str | None = None
+    fit_score_confidence: str | None = None
 
 
 class JobSourceRead(BaseModel):

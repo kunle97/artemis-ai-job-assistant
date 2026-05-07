@@ -10,6 +10,7 @@ interface ApiErrorBody {
 }
 
 export type JobFeedStatus = 'new' | 'seen' | 'saved' | 'dismissed';
+export type JobFeedSortOrder = 'newest' | 'salary_high' | 'salary_low' | 'fit_high';
 
 export interface JobItem {
   id: string;
@@ -30,6 +31,7 @@ export interface JobItem {
   application_id?: string | null;
   fit_score?: number | null;
   fit_recommendation?: 'apply_immediately' | 'worth_applying' | 'apply_if_specific_reason' | 'recommend_against' | null;
+  fit_score_confidence?: 'high' | 'low' | null;
 }
 
 export interface FeedPageResponse {
@@ -92,11 +94,12 @@ export async function getJobFeed(
   skip = 0,
   limit = 20,
   query?: string,
+  sort: JobFeedSortOrder = 'newest',
 ): Promise<FeedPageResponse> {
   try {
     const response = await httpClient.get<FeedPageResponse>('/jobs/feed', {
       headers: buildAuthHeader(token),
-      params: { skip, limit, query },
+      params: { skip, limit, query, sort },
     });
     return response.data;
   } catch (error) {

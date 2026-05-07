@@ -8,7 +8,7 @@ export const CheckoutSuccess: React.FC = () => {
   const router = useRouter();
 
   const handleGoToBilling = () => {
-    router.push('/billing');
+    router.push('/preferences');
   };
 
   const handleGoToApp = () => {
@@ -52,7 +52,7 @@ export const CheckoutSuccess: React.FC = () => {
                 </li>
                 <li className="flex items-start gap-2">
                   <span className="text-brand mt-0.5">•</span>
-                  <span>You can manage your subscription anytime in the billing section</span>
+                  <span>You can manage your subscription anytime in My Account</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <span className="text-brand mt-0.5">•</span>
@@ -67,7 +67,7 @@ export const CheckoutSuccess: React.FC = () => {
                 <ArrowRight className="h-4 w-4" />
               </Button>
               <Button variant="outline" size="lg" fullWidth onClick={handleGoToBilling}>
-                View Billing Details
+                Open My Account
               </Button>
             </div>
 

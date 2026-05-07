@@ -60,7 +60,8 @@ def _weighted_global(role_fit: float, seniority_match: float, location_match: fl
 def _heuristic_role_fit(job_description: str, profile_skills: list[str]) -> float:
     """Score role fit by keyword overlap between JD and profile skills."""
     if not job_description or not profile_skills:
-        return 2.5
+        # Missing job description should not be treated as a hard mismatch.
+        return 3.8 if profile_skills else 3.2
 
     jd_lower = job_description.lower()
     matched = sum(1 for skill in profile_skills if skill.lower() in jd_lower)
@@ -102,7 +103,8 @@ def _heuristic_location_match(
 ) -> float:
     """Score location match by comparing job's workplace type to candidate preferences."""
     if not workplace_type:
-        return 3.0
+        # Unknown workplace type is neutral-positive when the user has preferences.
+        return 3.8 if work_arrangement else 3.4
 
     job_type = workplace_type.lower()
     base_score = _REMOTE_SCORE_MAP.get(job_type, 3.0)
@@ -150,6 +152,8 @@ def score_job_fit_preview(job, profile) -> dict:
     skills = list(profile.skills or []) if profile else []
     experience = list(profile.experience_sections or []) if profile else []
     work_arrangement = getattr(profile, "work_arrangement", None) if profile else None
+    has_description = bool((job.description or "").strip())
+    has_workplace_type = bool((job.workplace_type or "").strip())
 
     role_fit = _heuristic_role_fit(job.description or "", skills)
     seniority_match = _heuristic_seniority_match(job.title or "", experience)
@@ -157,6 +161,11 @@ def score_job_fit_preview(job, profile) -> dict:
     global_score = _weighted_global(role_fit, seniority_match, location_match)
     skills_gap_summary = _heuristic_skills_gap_summary(job.description or "", skills)
     recommendation = _recommendation_from_score(global_score)
+    confidence = "high" if has_description and has_workplace_type else "low"
+
+    # Soften recommendation labels when key job metadata is missing.
+    if confidence == "low" and recommendation == _RECOMMEND_AGAINST and global_score >= 3.0:
+        recommendation = _RECOMMEND_SPECIFIC_REASON
 
     return {
         "role_fit": role_fit,
@@ -165,6 +174,7 @@ def score_job_fit_preview(job, profile) -> dict:
         "global_score": global_score,
         "skills_gap_summary": skills_gap_summary,
         "recommendation": recommendation,
+        "confidence": confidence,
     }
 
 

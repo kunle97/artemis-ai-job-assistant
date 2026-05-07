@@ -83,6 +83,8 @@ class CandidateProfileRepository:
             profile.work_arrangement = payload.work_arrangement
         if payload.skills is not None:
             profile.skills = payload.skills
+        if payload.experience_sections is not None:
+            profile.experience_sections = payload.experience_sections
 
         self.db.add(profile)
         self.db.commit()

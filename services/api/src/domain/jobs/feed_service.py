@@ -162,18 +162,25 @@ class JobFeedService:
         )
         return new_jobs
 
-    def get_feed(self, skip: int = 0, limit: int = 20, query: str | None = None) -> tuple[list, int]:
+    def get_feed(
+        self,
+        skip: int = 0,
+        limit: int | None = 20,
+        query: str | None = None,
+        sort: str = "newest",
+    ) -> tuple[list, int]:
         """Return a paginated, preference-filtered view of the job pool.
 
         Filters are applied at read time against the user's current preferences.
         Returns (page_jobs, total_matching_count).
         """
         logger.info(
-            "[JobFeedService] Loading feed for user %s (skip=%d, limit=%d, query=%s)",
+            "[JobFeedService] Loading feed for user %s (skip=%d, limit=%s, query=%s, sort=%s)",
             self.user_id,
             skip,
             limit,
             query,
+            sort,
         )
 
         preferences = self._preferences_repo.get_or_create_by_user_id(self.user_id)
@@ -195,8 +202,18 @@ class JobFeedService:
                 ).lower()
             ]
 
+        if sort == "salary_high":
+            filtered.sort(key=lambda job: (job.salary_max or job.salary_min or 0), reverse=True)
+        elif sort == "salary_low":
+            filtered.sort(key=lambda job: (job.salary_min or job.salary_max or 0))
+        else:
+            filtered.sort(key=lambda job: job.created_at, reverse=True)
+
         total = len(filtered)
-        page = filtered[skip : skip + limit]
+        if limit is None:
+            page = filtered[skip:]
+        else:
+            page = filtered[skip : skip + limit]
 
         logger.info("[JobFeedService] Feed for user %s: %d total match, returning %d", self.user_id, total, len(page))
         return page, total

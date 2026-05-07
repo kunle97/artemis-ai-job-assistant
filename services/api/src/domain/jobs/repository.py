@@ -38,6 +38,17 @@ class JobRepository:
             source_job_id=job_data["source_job_id"],
         )
         if existing:
+            updated = False
+            for field in ["location", "workplace_type", "description", "apply_url", "salary_min", "salary_max", "currency"]:
+                incoming = job_data.get(field)
+                current = getattr(existing, field)
+                if incoming is not None and incoming != "" and (current is None or current == ""):
+                    setattr(existing, field, incoming)
+                    updated = True
+            if updated:
+                self.db.add(existing)
+                self.db.commit()
+                self.db.refresh(existing)
             return existing
         return self.create(**job_data)
 

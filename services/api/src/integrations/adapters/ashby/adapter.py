@@ -57,6 +57,13 @@ class AshbyAdapter(JobSourceAdapter):
     def _normalize_job(self, raw_job: dict, board_token: str) -> dict:
         """Convert an Ashby job into Artemis' normalized job shape."""
         salary_min, salary_max, currency = _extract_compensation(raw_job)
+        workplace_type = _infer_workplace_type(raw_job)
+        description = (
+            raw_job.get("descriptionPlain")
+            or raw_job.get("description")
+            or raw_job.get("jobDescription")
+            or None
+        )
 
         return {
             "source": "ashby",
@@ -64,14 +71,30 @@ class AshbyAdapter(JobSourceAdapter):
             "title": raw_job.get("title") or "Untitled Job",
             "company_name": board_token,
             "location": raw_job.get("location") or None,
-            "workplace_type": None,
-            "description": None,
+            "workplace_type": workplace_type,
+            "description": description,
             "apply_url": raw_job.get("jobUrl") or "",
             "salary_min": salary_min,
             "salary_max": salary_max,
             "currency": currency,
             "is_active": True,
         }
+
+
+def _infer_workplace_type(raw_job: dict) -> str | None:
+    candidates = [
+        raw_job.get("workplaceType"),
+        raw_job.get("employmentType"),
+        raw_job.get("location"),
+    ]
+    haystack = " ".join(str(value) for value in candidates if value).lower()
+    if "remote" in haystack:
+        return "remote"
+    if "hybrid" in haystack:
+        return "hybrid"
+    if any(token in haystack for token in ["on-site", "onsite", "in-office", "office"]):
+        return "on-site"
+    return None
 
 
 def _extract_compensation(raw_job: dict) -> tuple[int | None, int | None, str | None]:

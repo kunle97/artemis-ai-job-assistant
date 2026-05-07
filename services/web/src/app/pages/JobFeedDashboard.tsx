@@ -21,6 +21,7 @@ import {
   scanJobFeed,
   updateFeedJobStatus,
   type FeedPageResponse,
+  type JobFeedSortOrder,
   type JobItem,
 } from '../../services/jobs/job-feed.service';
 import { getStoredAccessToken } from '../../services/auth/auth.service';
@@ -44,7 +45,7 @@ export const JobFeedDashboard: React.FC = () => {
   const [keywordFilter, setKeywordFilter] = useState('');
   const [locationFilter, setLocationFilter] = useState('All Locations');
   const [workModeFilter, setWorkModeFilter] = useState('All Work Modes');
-  const [sortOrder, setSortOrder] = useState<'newest' | 'salary_high' | 'salary_low'>('newest');
+  const [sortOrder, setSortOrder] = useState<JobFeedSortOrder>('newest');
   const [isKeywordSearchActive, setIsKeywordSearchActive] = useState(false);
 
   const [jobStatuses, setJobStatuses] = useState<Record<string, 'saved' | 'dismissed'>>({});
@@ -59,7 +60,7 @@ export const JobFeedDashboard: React.FC = () => {
     setSkip(pageSkip);
   };
 
-  const loadFeed = async (pageSkip = 0, query?: string) => {
+  const loadFeed = async (pageSkip = 0, query?: string, sort: JobFeedSortOrder = sortOrder) => {
     if (!token) {
       setLoadingFeed(false);
       setScanError('Please sign in to view your job feed.');
@@ -70,7 +71,7 @@ export const JobFeedDashboard: React.FC = () => {
     setScanError(null);
 
     try {
-      const page = await getJobFeed(token, pageSkip, itemsPerPage, query);
+      const page = await getJobFeed(token, pageSkip, itemsPerPage, query, sort);
       hydratePageState(page, pageSkip);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to load job feed.';
@@ -81,9 +82,10 @@ export const JobFeedDashboard: React.FC = () => {
   };
 
   useEffect(() => {
-    void loadFeed(0);
+    const activeQuery = keywordFilter.trim() ? keywordFilter.trim() : undefined;
+    void loadFeed(0, activeQuery, sortOrder);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [itemsPerPage]);
+  }, [itemsPerPage, sortOrder]);
 
   // Debounced keyword search
   useEffect(() => {
@@ -98,7 +100,7 @@ export const JobFeedDashboard: React.FC = () => {
       } else if (!keywordFilter.trim() && isKeywordSearchActive) {
         // If user clears the keyword filter, go back to regular feed
         setIsKeywordSearchActive(false);
-        void loadFeed(0);
+        void loadFeed(0, undefined, sortOrder);
       }
     }, 500);
 
@@ -123,7 +125,7 @@ export const JobFeedDashboard: React.FC = () => {
           ? `Scan complete. ${response.new_jobs_found} new job${response.new_jobs_found === 1 ? '' : 's'} found.`
           : 'Scan complete. No new jobs found.',
       );
-      await loadFeed(0);
+      await loadFeed(0, undefined, sortOrder);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Job scan failed.';
       setScanError(message);
@@ -184,7 +186,7 @@ export const JobFeedDashboard: React.FC = () => {
 
     try {
       setIsKeywordSearchActive(true);
-      const page = await getJobFeed(token, 0, itemsPerPage, keywordFilter.trim());
+      const page = await getJobFeed(token, 0, itemsPerPage, keywordFilter.trim(), sortOrder);
       hydratePageState(page, 0);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Search failed.';
@@ -204,7 +206,7 @@ export const JobFeedDashboard: React.FC = () => {
     if (isKeywordSearchActive) {
       setLoadingFeed(true);
       try {
-        const page = await getJobFeed(token, nextSkip, itemsPerPage, keywordFilter.trim());
+        const page = await getJobFeed(token, nextSkip, itemsPerPage, keywordFilter.trim(), sortOrder);
         hydratePageState(page, nextSkip);
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Pagination failed.';
@@ -213,7 +215,7 @@ export const JobFeedDashboard: React.FC = () => {
         setLoadingFeed(false);
       }
     } else {
-      await loadFeed(nextSkip);
+      await loadFeed(nextSkip, undefined, sortOrder);
     }
   };
 
@@ -228,16 +230,8 @@ export const JobFeedDashboard: React.FC = () => {
       filtered = filtered.filter((job) => (job.workplace_type || 'Unknown') === workModeFilter);
     }
 
-    if (sortOrder === 'salary_high') {
-      filtered.sort((a, b) => (b.salary_max || b.salary_min || 0) - (a.salary_max || a.salary_min || 0));
-    } else if (sortOrder === 'salary_low') {
-      filtered.sort((a, b) => (a.salary_min || a.salary_max || 0) - (b.salary_min || b.salary_max || 0));
-    } else {
-      filtered.sort((a, b) => +new Date(b.created_at) - +new Date(a.created_at));
-    }
-
     return filtered;
-  }, [jobs, locationFilter, workModeFilter, sortOrder]);
+  }, [jobs, locationFilter, workModeFilter]);
 
   const formatSalary = (job: JobItem): string | null => {
     if (job.salary_min == null && job.salary_max == null) return null;
@@ -318,9 +312,10 @@ export const JobFeedDashboard: React.FC = () => {
             <select
               className="px-4 py-2 rounded-lg bg-input-background border border-border text-foreground"
               value={sortOrder}
-              onChange={(e) => setSortOrder(e.target.value as 'newest' | 'salary_high' | 'salary_low')}
+              onChange={(e) => setSortOrder(e.target.value as JobFeedSortOrder)}
             >
               <option value="newest">Sort: Newest</option>
+              <option value="fit_high">Sort: Fit Score</option>
               <option value="salary_high">Sort: Salary High</option>
               <option value="salary_low">Sort: Salary Low</option>
             </select>
@@ -371,6 +366,7 @@ export const JobFeedDashboard: React.FC = () => {
                           compact
                           score={job.fit_score}
                           recommendation={job.fit_recommendation}
+                          lowConfidence={job.fit_score_confidence === 'low'}
                         />
                       </div>
 
@@ -379,9 +375,11 @@ export const JobFeedDashboard: React.FC = () => {
                           <MapPin className="h-4 w-4" />
                           {job.location || 'Location not provided'}
                         </div>
-                        <Badge variant="default" size="sm">
-                          {job.workplace_type || 'Work type unknown'}
-                        </Badge>
+                        {job.workplace_type && (
+                          <Badge variant="default" size="sm">
+                            {job.workplace_type}
+                          </Badge>
+                        )}
                         {formatSalary(job) && (
                           <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
                             <DollarSign className="h-4 w-4" />

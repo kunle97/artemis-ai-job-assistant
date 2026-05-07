@@ -57,6 +57,13 @@ class LeverAdapter(JobSourceAdapter):
     def _normalize_job(self, raw_job: dict, board_token: str) -> dict:
         """Convert a Lever job into Artemis' normalized job shape."""
         categories = raw_job.get("categories") or {}
+        workplace_type = _infer_workplace_type(raw_job, categories)
+        description = (
+            raw_job.get("descriptionPlain")
+            or raw_job.get("description")
+            or raw_job.get("additionalPlain")
+            or None
+        )
 
         return {
             "source": "lever",
@@ -64,11 +71,28 @@ class LeverAdapter(JobSourceAdapter):
             "title": raw_job.get("text") or "Untitled Job",
             "company_name": board_token,
             "location": categories.get("location") or None,
-            "workplace_type": None,
-            "description": None,
+            "workplace_type": workplace_type,
+            "description": description,
             "apply_url": raw_job.get("hostedUrl") or "",
             "salary_min": None,
             "salary_max": None,
             "currency": None,
             "is_active": True,
         }
+
+
+def _infer_workplace_type(raw_job: dict, categories: dict) -> str | None:
+    candidates = [
+        raw_job.get("workplaceType"),
+        categories.get("commitment"),
+        categories.get("team"),
+        categories.get("location"),
+    ]
+    haystack = " ".join(str(value) for value in candidates if value).lower()
+    if "remote" in haystack:
+        return "remote"
+    if "hybrid" in haystack:
+        return "hybrid"
+    if any(token in haystack for token in ["on-site", "onsite", "in-office", "office"]):
+        return "on-site"
+    return None

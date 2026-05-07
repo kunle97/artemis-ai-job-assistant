@@ -4,6 +4,7 @@ Candidate profile schemas.
 
 from __future__ import annotations
 
+from typing import Any
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
@@ -40,6 +41,7 @@ class CandidateProfileUpsertRequest(BaseModel):
     preferred_relocation_cities: list[str] | None = None
     work_arrangement: list[str] | None = None
     skills: list[str] | None = None
+    experience_sections: list[dict[str, Any]] | None = None
 
 
 CandidateProfileCreate = CandidateProfileUpsertRequest
@@ -83,5 +85,6 @@ class CandidateProfileResponse(BaseModel):
     preferred_relocation_cities: list[str] | None = None
     work_arrangement: list[str] | None = None
     skills: list[str] | None = None
+    experience_sections: list[dict[str, Any]] | None = None
 
     location: str | None = None

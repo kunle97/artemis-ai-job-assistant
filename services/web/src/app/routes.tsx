@@ -9,13 +9,11 @@ import { ApplicationsDashboard } from "./pages/ApplicationsDashboard";
 import { ApplicationDetailWorkspace } from "./pages/ApplicationDetailWorkspace";
 import { AnswersLibrary } from "./pages/AnswersLibrary";
 import { ProfileSettings } from "./pages/ProfileSettings";
-import { ProfileManagementPage } from "./pages/ProfileManagementPage";
-import { SimpleProfileManagementPage } from "./pages/SimpleProfileManagementPage";
 import { ResumeLibrary } from "./pages/ResumeLibrary";
-import { JobPreferences } from "./pages/JobPreferences";
+import { JobPreferencesPage } from "./pages/JobPreferencesPage";
+import { MyAccountPage } from "./pages/MyAccountPage";
 import { ManualReviewPanel } from "./pages/ManualReviewPanel";
 import { DiagnosticsWorkbench } from "./pages/DiagnosticsWorkbench";
-import { BillingHub } from "./pages/BillingHub";
 import { CheckoutPage } from "./pages/CheckoutPage";
 import { CheckoutSuccess } from "./pages/CheckoutSuccess";
 import { CheckoutCanceled } from "./pages/CheckoutCanceled";
@@ -44,10 +42,9 @@ export const SimpleRouter: React.FC = () => {
   if (path.startsWith('/app/applications/')) return <ApplicationDetailWorkspace />;
   if (path === '/app/answers') return <AnswersLibrary />;
   if (path === '/app/profile') return <ProfileSettings />;
-  if (path === '/app/profile/career') return <SimpleProfileManagementPage />;
+  if (path === '/app/job-preferences') return <JobPreferencesPage />;
   if (path === '/app/resumes') return <ResumeLibrary />;
-  if (path === '/app/preferences') return <JobPreferences />;
-  if (path === '/app/billing') return <BillingHub />;
+  if (path === '/app/preferences') return <MyAccountPage />;
 
   // Internal routes
   if (path === '/internal/diagnostics') return <DiagnosticsWorkbench />;

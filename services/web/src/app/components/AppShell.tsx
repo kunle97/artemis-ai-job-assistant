@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { Sparkles, Briefcase, FileText, BookOpen, User, Settings, Search, Menu, X, CreditCard, UserCircle } from 'lucide-react';
+import { Sparkles, Briefcase, FileText, BookOpen, User, Settings, Search, Menu, X, SlidersHorizontal } from 'lucide-react';
 import { FollowUpDropdown } from './FollowUpDropdown';
 import {
   clearStoredTokens,
@@ -29,9 +29,8 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
 
   const secondaryNavigation = [
     { name: 'Candidate Profile', href: '/profile', icon: User },
-    { name: 'My Career', href: '/profile/career', icon: UserCircle },
-    { name: 'Billing', href: '/billing', icon: CreditCard },
-    { name: 'Preferences', href: '/preferences', icon: Settings },
+    { name: 'Job Preferences', href: '/job-preferences', icon: SlidersHorizontal },
+    { name: 'My Account', href: '/preferences', icon: Settings },
   ];
 
   const handleNavigate = (href: string) => {

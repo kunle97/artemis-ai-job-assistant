@@ -1,7 +1,7 @@
 "use client";
 
-import { JobPreferences } from "../pages/JobPreferences";
+import { MyAccountPage } from "../pages/MyAccountPage";
 
 export default function Page() {
-  return <JobPreferences />;
+  return <MyAccountPage />;
 }

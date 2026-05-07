@@ -62,18 +62,44 @@ class GreenhouseAdapter(JobSourceAdapter):
         """
         location_data = raw_job.get("location") or {}
         metadata = raw_job.get("metadata") or []
+        location_name = location_data.get("name")
+
+        workplace_type = _infer_workplace_type(location_name, metadata)
+        description = raw_job.get("content") or raw_job.get("description") or None
 
         return {
             "source": "greenhouse",
             "source_job_id": str(raw_job.get("id")),
             "title": raw_job.get("title") or "Untitled Job",
             "company_name": board_token,
-            "location": location_data.get("name"),
-            "workplace_type": None,
-            "description": raw_job.get("content"),
+            "location": location_name,
+            "workplace_type": workplace_type,
+            "description": description,
             "apply_url": raw_job.get("absolute_url") or "",
             "salary_min": None,
             "salary_max": None,
             "currency": None,
             "is_active": True,
         }
+
+
+def _infer_workplace_type(location_name: str | None, metadata: list[dict]) -> str | None:
+    candidates: list[str] = []
+    if location_name:
+        candidates.append(location_name)
+
+    for item in metadata:
+        if not isinstance(item, dict):
+            continue
+        value = item.get("value")
+        if isinstance(value, str):
+            candidates.append(value)
+
+    haystack = " ".join(candidates).lower()
+    if "remote" in haystack:
+        return "remote"
+    if "hybrid" in haystack:
+        return "hybrid"
+    if any(token in haystack for token in ["on-site", "onsite", "in-office", "office"]):
+        return "on-site"
+    return None

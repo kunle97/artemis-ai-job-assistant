@@ -186,17 +186,28 @@ export const SimpleExperienceEditor: React.FC<SimpleExperienceEditorProps> = ({
       );
     }
 
-    const dateRange = `${experience.startMonth} ${experience.startYear} - ${
-      experience.currentlyWorking ? 'Present' : `${experience.endMonth} ${experience.endYear}`
-    }`;
+    const roleText = experience.role?.trim() || 'Untitled role';
+    const companyText = experience.company?.trim() || 'Company not specified';
+
+    const startDate = [experience.startMonth, experience.startYear]
+      .map((value) => value?.trim())
+      .filter(Boolean)
+      .join(' ');
+    const endDate = experience.currentlyWorking
+      ? 'Present'
+      : [experience.endMonth, experience.endYear]
+        .map((value) => value?.trim())
+        .filter(Boolean)
+        .join(' ');
+    const dateRange = `${startDate || 'Start date not specified'} - ${endDate || 'End date not specified'}`;
 
     return (
       <div className="border border-border rounded-lg bg-background">
         <div className="p-4">
           <div className="flex items-start justify-between">
             <div className="flex-1 min-w-0">
-              <h3 className="font-semibold text-foreground">{experience.role}</h3>
-              <p className="text-sm text-muted-foreground">{experience.company}</p>
+              <h3 className="font-semibold text-foreground">{roleText}</h3>
+              <p className="text-sm text-muted-foreground">{companyText}</p>
               <p className="text-sm text-muted-foreground mt-1">{dateRange}</p>
             </div>
 
@@ -253,8 +264,8 @@ export const SimpleExperienceEditor: React.FC<SimpleExperienceEditorProps> = ({
 
       {experiences.length > 0 ? (
         <div className="space-y-3">
-          {experiences.map(exp => (
-            <ExperienceCard key={exp.id} experience={exp} />
+          {experiences.map((exp, index) => (
+            <ExperienceCard key={exp.id || `experience-${index}`} experience={exp} />
           ))}
         </div>
       ) : (

@@ -5,6 +5,7 @@ Thin HTTP endpoints for searching and listing normalized job records.
 """
 
 from uuid import UUID
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
@@ -111,6 +112,7 @@ def _build_feed_job_reads(db: Session, user_id, jobs: list[Job]) -> list[FeedJob
             application_id=application.id if application else None,
             fit_score=score.global_score if score else preview_score["global_score"],
             fit_recommendation=score.recommendation if score else preview_score["recommendation"],
+            fit_score_confidence="high" if score else preview_score["confidence"],
         )
         feed_jobs.append(FeedJobRead.model_validate(payload))
 
@@ -281,6 +283,7 @@ def get_job_feed(
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=20, ge=1, le=100),
     query: str | None = Query(default=None),
+    sort: Literal["newest", "salary_high", "salary_low", "fit_high"] = Query(default="newest"),
     current_user=Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -291,7 +294,19 @@ def get_job_feed(
     target_titles, positive_keywords, negative_keywords, remote_only, salary_min.
     """
     service = JobFeedService(user_id=current_user.id, db=db)
-    jobs, total = service.get_feed(skip=skip, limit=limit, query=query)
+    if sort == "fit_high":
+        all_jobs, _ = service.get_feed(skip=0, limit=None, query=query, sort="newest")
+        all_feed_jobs = _build_feed_job_reads(db=db, user_id=current_user.id, jobs=all_jobs)
+        all_feed_jobs.sort(
+            key=lambda job: (job.fit_score if job.fit_score is not None else -1, job.created_at),
+            reverse=True,
+        )
+        total = len(all_feed_jobs)
+        page_jobs = all_feed_jobs[skip : skip + limit]
+    else:
+        jobs, total = service.get_feed(skip=skip, limit=limit, query=query, sort=sort)
+        page_jobs = _build_feed_job_reads(db=db, user_id=current_user.id, jobs=jobs)
+
     next_offset = skip + limit
     has_next = next_offset < total
     return FeedPage(
@@ -301,7 +316,7 @@ def get_job_feed(
         has_next=has_next,
         prev_url=_prev_url(request, skip, limit),
         next_url=_next_url(request, next_offset, limit) if has_next else None,
-        jobs=_build_feed_job_reads(db=db, user_id=current_user.id, jobs=jobs),
+        jobs=page_jobs,
     )
 
 
