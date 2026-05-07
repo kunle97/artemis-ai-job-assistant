@@ -2,15 +2,11 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { AlertTriangle, CheckCircle, Save, X } from 'lucide-react';
+import { AlertTriangle, CheckCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { AppShell } from '../components/AppShell';
-import { Badge, Button, Card, CardHeader, CardTitle, CardContent, Input } from '../components/ui';
+import { Card, CardContent, CardHeader, CardTitle, Input } from '../components/ui';
 import { SimpleExperienceEditor, type SimpleExperience } from '../components/profile/SimpleExperienceEditor';
-import {
-  DemographicAutofillPreferences,
-  type DemographicAutofillSettings,
-} from '../components/profile/DemographicAutofillPreferences';
 import {
   getStoredAccessToken,
 } from '../../services/auth/auth.service';
@@ -26,12 +22,6 @@ type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
 
 const UNSAVED_PROFILE_TOAST_ID = 'unsaved-profile-toast';
 
-const WORK_ARRANGEMENT_OPTIONS = [
-  { value: 'remote', label: 'Remote' },
-  { value: 'hybrid', label: 'Hybrid' },
-  { value: 'onsite', label: 'On-site' },
-];
-
 function toFormData(profile: CandidateProfile) {
   return {
     phone: profile.phone ?? '',
@@ -39,35 +29,14 @@ function toFormData(profile: CandidateProfile) {
     state: profile.state ?? '',
     country: profile.country ?? '',
     zip_code: profile.zip_code ?? '',
-    salary_target: profile.salary_target ?? '',
-    min_salary: profile.min_salary ?? '',
     current_company: profile.current_company ?? '',
     linkedin_url: profile.linkedin_url ?? '',
     github_url: profile.github_url ?? '',
     portfolio_url: profile.portfolio_url ?? '',
-    skills: profile.skills ?? [],
-    target_job_titles: [],
-    target_keywords: [],
-    work_arrangement: profile.work_arrangement ?? [],
-    preferred_relocation_cities: profile.preferred_relocation_cities ?? [],
-
-    gender: profile.gender ?? '',
-    race: profile.race ?? '',
-    veteran_status: profile.veteran_status ?? '',
-    disability_status: profile.disability_status ?? '',
-    pronouns: profile.pronouns ?? '',
-
-    autofill_gender: profile.autofill_gender,
-    autofill_race: profile.autofill_race,
-    autofill_veteran_status: profile.autofill_veteran_status,
-    autofill_disability_status: profile.autofill_disability_status,
-    autofill_pronouns: profile.autofill_pronouns,
   };
 }
 
 type FormData = ReturnType<typeof toFormData>;
-
-type ChipField = 'target_job_titles' | 'target_keywords' | 'skills';
 
 const MONTH_PREFIX_TO_NAME: Record<string, string> = {
   jan: 'January',
@@ -153,10 +122,6 @@ export const ProfileSettings: React.FC = () => {
   const [originalExperiences, setOriginalExperiences] = useState<SimpleExperience[]>([]);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
   const [saveError, setSaveError] = useState<string | null>(null);
-  const [relocationCityQuery, setRelocationCityQuery] = useState('');
-  const [targetTitleQuery, setTargetTitleQuery] = useState('');
-  const [targetKeywordQuery, setTargetKeywordQuery] = useState('');
-  const [skillQuery, setSkillQuery] = useState('');
 
   const isDirty =
     formData && originalData
@@ -190,105 +155,6 @@ export const ProfileSettings: React.FC = () => {
 
   const setField = <K extends keyof FormData>(key: K, value: FormData[K]) => {
     setFormData((prev) => (prev ? { ...prev, [key]: value } : prev));
-  };
-
-  const toggleWorkArrangement = (value: string) => {
-    setFormData((prev) => {
-      if (!prev) return prev;
-      const updated = prev.work_arrangement.includes(value)
-        ? prev.work_arrangement.filter((v) => v !== value)
-        : [...prev.work_arrangement, value];
-      return { ...prev, work_arrangement: updated };
-    });
-  };
-
-  const addRelocationCity = useCallback((value: string) => {
-    const city = value.trim();
-    if (!city) return;
-
-    setFormData((prev) => {
-      if (!prev) return prev;
-      const exists = prev.preferred_relocation_cities.some(
-        (existingCity) => existingCity.toLowerCase() === city.toLowerCase(),
-      );
-      if (exists) return prev;
-      return {
-        ...prev,
-        preferred_relocation_cities: [...prev.preferred_relocation_cities, city],
-      };
-    });
-
-    setRelocationCityQuery('');
-  }, []);
-
-  const removeRelocationCity = (cityToRemove: string) => {
-    setFormData((prev) => {
-      if (!prev) return prev;
-      return {
-        ...prev,
-        preferred_relocation_cities: prev.preferred_relocation_cities.filter(
-          (city) => city !== cityToRemove,
-        ),
-      };
-    });
-  };
-
-  const addChipValue = useCallback((field: ChipField, value: string, onAdded?: () => void) => {
-    const normalized = value.trim();
-    if (!normalized) return;
-
-    setFormData((prev) => {
-      if (!prev) return prev;
-      const exists = prev[field].some((entry) => entry.toLowerCase() === normalized.toLowerCase());
-      if (exists) return prev;
-      return {
-        ...prev,
-        [field]: [...prev[field], normalized],
-      };
-    });
-
-    if (onAdded) onAdded();
-  }, []);
-
-  const removeChipValue = (field: ChipField, value: string) => {
-    setFormData((prev) => {
-      if (!prev) return prev;
-      return {
-        ...prev,
-        [field]: prev[field].filter((entry) => entry !== value),
-      };
-    });
-  };
-
-  const demographicSettings: DemographicAutofillSettings = {
-    race: { value: formData?.race ?? '', autofill: formData?.autofill_race ?? false },
-    gender: { value: formData?.gender ?? '', autofill: formData?.autofill_gender ?? false },
-    veteranStatus: {
-      value: formData?.veteran_status ?? '',
-      autofill: formData?.autofill_veteran_status ?? false,
-    },
-    disabilityStatus: {
-      value: formData?.disability_status ?? '',
-      autofill: formData?.autofill_disability_status ?? false,
-    },
-    pronouns: { value: formData?.pronouns ?? '', autofill: formData?.autofill_pronouns ?? false },
-  };
-
-  const handleDemographicsChange = (settings: DemographicAutofillSettings) => {
-    if (!formData) return;
-    setFormData({
-      ...formData,
-      race: settings.race.value,
-      gender: settings.gender.value,
-      veteran_status: settings.veteranStatus.value,
-      disability_status: settings.disabilityStatus.value,
-      pronouns: settings.pronouns.value,
-      autofill_race: settings.race.autofill,
-      autofill_gender: settings.gender.autofill,
-      autofill_veteran_status: settings.veteranStatus.autofill,
-      autofill_disability_status: settings.disabilityStatus.autofill,
-      autofill_pronouns: settings.pronouns.autofill,
-    });
   };
 
   const handleSave = useCallback(async () => {
