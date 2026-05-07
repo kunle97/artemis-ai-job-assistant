@@ -23,6 +23,7 @@ from src.integrations.groq.client import GroqClient
 logger = logging.getLogger(__name__)
 
 SOURCE_AI_GENERATED = "ai_generated"
+CATEGORY_AI_GENERATED = "AI Generated"
 
 _SYSTEM_PROMPT = (
     "You are filling out a job application on behalf of a candidate. "
@@ -144,7 +145,7 @@ class LLMOpenEndedAnswerProvider(OpenEndedAnswerProvider):
                 question_key=question_key,
                 question_text=request.question_text,
                 answer_text=answer_text,
-                category=SOURCE_AI_GENERATED,
+                category=CATEGORY_AI_GENERATED,
             )
             logger.info("[LLMProvider] Persisted AI-generated answer for future reuse.")
         except Exception as exc:

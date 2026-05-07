@@ -20,7 +20,7 @@ class ApplicationAnswerRepository:
         *,
         user_id,
         question_key: str,
-        question_text: str,
+        question_text: str | None,
         answer_text: str,
         category: str | None = None,
     ) -> ApplicationAnswer:
@@ -41,7 +41,7 @@ class ApplicationAnswerRepository:
         *,
         user_id,
         question_key: str,
-        question_text: str,
+        question_text: str | None,
         answer_text: str,
         category: str | None = None,
     ) -> ApplicationAnswer:
@@ -77,3 +77,18 @@ class ApplicationAnswerRepository:
             .order_by(ApplicationAnswer.created_at.desc())
             .all()
         )
+
+    def delete_by_id(self, *, answer_id: str, user_id) -> bool:
+        record = (
+            self.db.query(ApplicationAnswer)
+            .filter(
+                ApplicationAnswer.id == answer_id,
+                ApplicationAnswer.user_id == user_id,
+            )
+            .first()
+        )
+        if not record:
+            return False
+        self.db.delete(record)
+        self.db.commit()
+        return True
