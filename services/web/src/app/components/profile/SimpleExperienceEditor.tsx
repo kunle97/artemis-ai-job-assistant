@@ -11,6 +11,7 @@ export interface SimpleExperience {
   endMonth: string;
   endYear: string;
   currentlyWorking: boolean;
+  details: string[];
 }
 
 interface SimpleExperienceEditorProps {
@@ -42,6 +43,7 @@ export const SimpleExperienceEditor: React.FC<SimpleExperienceEditorProps> = ({
       endMonth: '',
       endYear: '',
       currentlyWorking: false,
+      details: [],
     };
     onChange([newExp, ...experiences]);
     setEditingId(newExp.id);
@@ -242,9 +244,17 @@ export const SimpleExperienceEditor: React.FC<SimpleExperienceEditorProps> = ({
 
           {isExpanded && (
             <div className="mt-4 pt-4 border-t border-border">
-              <p className="text-sm text-muted-foreground">
-                Additional details can be displayed here when expanded.
-              </p>
+              {experience.details.length > 0 ? (
+                <ul className="list-disc pl-5 space-y-2">
+                  {experience.details.map((detail, index) => (
+                    <li key={`${experience.id}-detail-${index}`} className="text-sm text-muted-foreground">
+                      {detail}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-sm text-muted-foreground">No additional details provided.</p>
+              )}
             </div>
           )}
         </div>

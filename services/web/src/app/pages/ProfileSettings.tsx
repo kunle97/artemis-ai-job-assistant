@@ -69,13 +69,51 @@ type FormData = ReturnType<typeof toFormData>;
 
 type ChipField = 'target_job_titles' | 'target_keywords' | 'skills';
 
+const MONTH_PREFIX_TO_NAME: Record<string, string> = {
+  jan: 'January',
+  feb: 'February',
+  mar: 'March',
+  apr: 'April',
+  may: 'May',
+  jun: 'June',
+  jul: 'July',
+  aug: 'August',
+  sep: 'September',
+  sept: 'September',
+  oct: 'October',
+  nov: 'November',
+  dec: 'December',
+};
+
+function parseMonthYear(value?: string | null): { month: string; year: string } {
+  const raw = value?.trim();
+  if (!raw) return { month: '', year: '' };
+
+  const match = raw.match(/^([A-Za-z]+)\s+(\d{4})$/);
+  if (match) {
+    const [, monthRaw, year] = match;
+    const normalizedMonth = MONTH_PREFIX_TO_NAME[monthRaw.toLowerCase().slice(0, 4)] || monthRaw;
+    return { month: normalizedMonth, year };
+  }
+
+  const yearOnly = raw.match(/^(\d{4})$/);
+  if (yearOnly) {
+    return { month: '', year: yearOnly[1] };
+  }
+
+  return { month: '', year: '' };
+}
+
 function mapApiExperienceToSimple(exp: CandidateExperienceSection, index: number): SimpleExperience {
-  const role = exp.role?.trim() ?? '';
+  const role = exp.role?.trim() || exp.position?.trim() || '';
   const company = exp.company?.trim() ?? '';
-  const startMonth = exp.start_month?.trim() ?? '';
-  const startYear = exp.start_year?.trim() ?? '';
-  const endMonth = exp.end_month?.trim() ?? '';
-  const endYear = exp.end_year?.trim() ?? '';
+  const parsedStart = parseMonthYear(exp.start_date);
+  const parsedEnd = parseMonthYear(exp.end_date);
+  const startMonth = exp.start_month?.trim() || parsedStart.month;
+  const startYear = exp.start_year?.trim() || parsedStart.year;
+  const endMonth = exp.end_month?.trim() || parsedEnd.month;
+  const endYear = exp.end_year?.trim() || parsedEnd.year;
+  const isCurrentFromEndDate = (exp.end_date?.trim().toLowerCase() ?? '') === 'current';
   const fallbackId = `exp-${company || 'company'}-${role || 'role'}-${startYear || 'start'}-${index}`;
 
   return {
@@ -86,7 +124,8 @@ function mapApiExperienceToSimple(exp: CandidateExperienceSection, index: number
     startYear,
     endMonth,
     endYear,
-    currentlyWorking: Boolean(exp.currently_working),
+    currentlyWorking: Boolean(exp.currently_working) || isCurrentFromEndDate,
+    details: (exp.details ?? []).map((detail) => detail.trim()).filter(Boolean),
   };
 }
 
@@ -100,6 +139,7 @@ function mapSimpleExperienceToApi(exp: SimpleExperience): CandidateExperienceSec
     end_month: exp.endMonth,
     end_year: exp.endYear,
     currently_working: exp.currentlyWorking,
+    details: exp.details,
   };
 }
 

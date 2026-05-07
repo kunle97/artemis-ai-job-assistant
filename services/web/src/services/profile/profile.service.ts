@@ -6,14 +6,19 @@ import axios from 'axios';
 import { httpClient } from '../http/client';
 
 export interface CandidateExperienceSection {
-  id: string;
-  role: string;
-  company: string;
-  start_month: string;
-  start_year: string;
-  end_month: string;
-  end_year: string;
-  currently_working: boolean;
+  id?: string | null;
+  role?: string | null;
+  position?: string | null;
+  company?: string | null;
+  start_month?: string | null;
+  start_year?: string | null;
+  end_month?: string | null;
+  end_year?: string | null;
+  start_date?: string | null;
+  end_date?: string | null;
+  currently_working?: boolean | null;
+  location?: string | null;
+  details?: string[] | null;
 }
 
 export interface CandidateProfile {
