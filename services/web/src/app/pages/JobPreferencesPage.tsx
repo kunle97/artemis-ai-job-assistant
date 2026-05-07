@@ -53,7 +53,7 @@ type FormData = {
   remote_only: boolean;
 };
 
-type ChipField = 'target_job_titles' | 'target_keywords' | 'skills';
+type ChipField = 'target_job_titles' | 'target_keywords' | 'skills' | 'negative_keywords';
 
 function toFormData(profile: CandidateProfile, jobPreferences: JobPreferences): FormData {
   return {
@@ -89,6 +89,7 @@ export const JobPreferencesPage: React.FC = () => {
   const [relocationCityQuery, setRelocationCityQuery] = useState('');
   const [targetTitleQuery, setTargetTitleQuery] = useState('');
   const [targetKeywordQuery, setTargetKeywordQuery] = useState('');
+  const [negativeKeywordQuery, setNegativeKeywordQuery] = useState('');
   const [skillQuery, setSkillQuery] = useState('');
 
   const isDirty =
@@ -272,7 +273,17 @@ export const JobPreferencesPage: React.FC = () => {
     ]);
     setOriginalData(formData);
     setSaveStatus('idle');
+    toast.success('Preferences saved', { description: 'Your job targeting settings have been updated.' });
   }, [formData]);
+
+  const handleSaveWithError = useCallback(async () => {
+    try {
+      await handleSave();
+    } catch {
+      setSaveStatus('idle');
+      toast.error('Failed to save preferences', { description: 'Please try again in a moment.' });
+    }
+  }, [handleSave]);
 
   useEffect(() => {
     if (!isDirty || saveStatus === 'saving') {
@@ -292,10 +303,10 @@ export const JobPreferencesPage: React.FC = () => {
       },
       action: {
         label: 'Save',
-        onClick: handleSave,
+        onClick: handleSaveWithError,
       },
     });
-  }, [handleSave, isDirty, saveStatus]);
+  }, [handleSaveWithError, isDirty, saveStatus]);
 
   if (loading || !formData) {
     return (
@@ -364,8 +375,9 @@ export const JobPreferencesPage: React.FC = () => {
                     }
                   }}
                   fullWidth
-                  placeholder="Add a title, then press Enter"
+                  placeholder="e.g. Software Engineer, Frontend Developer — press Enter to add"
                 />
+                <p className="mt-1 text-xs text-muted-foreground">Artemis will prioritize jobs matching these titles. Add variations like &quot;SWE&quot; and &quot;Software Engineer&quot;.</p>
                 {formData.target_job_titles.length > 0 && (
                   <div className="mt-3 flex flex-wrap gap-2">
                     {formData.target_job_titles.map((title) => (
@@ -387,7 +399,7 @@ export const JobPreferencesPage: React.FC = () => {
 
               <div>
                 <Input
-                  label="Keywords"
+                  label="Keywords to include"
                   value={targetKeywordQuery}
                   onChange={(e) => setTargetKeywordQuery(e.target.value)}
                   onKeyDown={(event) => {
@@ -397,8 +409,9 @@ export const JobPreferencesPage: React.FC = () => {
                     }
                   }}
                   fullWidth
-                  placeholder="Add a keyword, then press Enter"
+                  placeholder="e.g. React, TypeScript — press Enter to add"
                 />
+                <p className="mt-1 text-xs text-muted-foreground">Jobs containing these terms will be ranked higher in your feed.</p>
                 {formData.target_keywords.length > 0 && (
                   <div className="mt-3 flex flex-wrap gap-2">
                     {formData.target_keywords.map((keyword) => (
@@ -408,6 +421,40 @@ export const JobPreferencesPage: React.FC = () => {
                           type="button"
                           onClick={() => removeChipValue('target_keywords', keyword)}
                           className="rounded-sm p-0.5 hover:bg-secondary-foreground/10"
+                          aria-label={`Remove ${keyword}`}
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </Badge>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <Input
+                  label="Keywords to exclude"
+                  value={negativeKeywordQuery}
+                  onChange={(e) => setNegativeKeywordQuery(e.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ',') {
+                      event.preventDefault();
+                      addChipValue('negative_keywords', negativeKeywordQuery, () => setNegativeKeywordQuery(''));
+                    }
+                  }}
+                  fullWidth
+                  placeholder="e.g. manager, director — press Enter to add"
+                />
+                <p className="mt-1 text-xs text-muted-foreground">Jobs containing these terms will be ranked lower or hidden from your feed.</p>
+                {formData.negative_keywords.length > 0 && (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {formData.negative_keywords.map((keyword) => (
+                      <Badge key={keyword} variant="destructive" className="inline-flex items-center gap-1.5 pr-1">
+                        <span>{keyword}</span>
+                        <button
+                          type="button"
+                          onClick={() => removeChipValue('negative_keywords', keyword)}
+                          className="rounded-sm p-0.5 hover:bg-destructive-foreground/10"
                           aria-label={`Remove ${keyword}`}
                         >
                           <X className="h-3 w-3" />
@@ -481,6 +528,24 @@ export const JobPreferencesPage: React.FC = () => {
                       <span className="text-sm text-foreground">{opt.label}</span>
                     </label>
                   ))}
+                </div>
+              </div>
+
+              <div className="flex items-start gap-3 rounded-lg border border-border p-3">
+                <input
+                  id="remote-only"
+                  type="checkbox"
+                  checked={formData.remote_only}
+                  onChange={(e) => setField('remote_only', e.target.checked)}
+                  className="mt-0.5 h-4 w-4 rounded border-border text-brand"
+                />
+                <div>
+                  <label htmlFor="remote-only" className="text-sm font-medium text-foreground cursor-pointer">
+                    Remote only (hard filter)
+                  </label>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    When enabled, non-remote jobs are excluded entirely from your feed — not just ranked lower.
+                  </p>
                 </div>
               </div>
               <div>
