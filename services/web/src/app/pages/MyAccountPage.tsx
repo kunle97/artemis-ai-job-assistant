@@ -84,6 +84,9 @@ export const MyAccountPage: React.FC = () => {
       .then((profile) => {
         setAutoSubmit(profile.auto_submit ?? false);
       })
+      .catch(() => {
+        // Session-expiry redirects are handled in the service layer.
+      })
       .finally(() => {
         setLoadingAutoSubmit(false);
       });

@@ -4,6 +4,7 @@
 
 import axios from 'axios';
 import { httpClient } from '../http/client';
+import { redirectToLandingOnSessionExpired } from '../auth/auth.service';
 
 interface ApiErrorBody {
   detail?: string;
@@ -35,7 +36,8 @@ export async function getJobPreferences(token: string): Promise<JobPreferences> 
     if (axios.isAxiosError<ApiErrorBody>(error)) {
       const status = error.response?.status;
       if (status === 401) {
-        throw new Error('Session expired. Please sign in again.');
+        redirectToLandingOnSessionExpired();
+        throw new Error('Session expired. Redirecting to home.');
       }
       if (status) {
         throw new Error(`Failed to load job preferences with status ${status}.`);
@@ -59,7 +61,8 @@ export async function updateJobPreferences(
       const status = error.response?.status;
       const detail = error.response?.data?.detail?.trim();
       if (status === 401) {
-        throw new Error('Session expired. Please sign in again.');
+        redirectToLandingOnSessionExpired();
+        throw new Error('Session expired. Redirecting to home.');
       }
       if (status) {
         throw new Error(detail || `Failed to save job preferences with status ${status}.`);

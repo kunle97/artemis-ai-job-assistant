@@ -4,6 +4,7 @@
 
 import axios from 'axios';
 import { httpClient } from '../http/client';
+import { redirectToLandingOnSessionExpired } from '../auth/auth.service';
 
 export interface CandidateExperienceSection {
   id?: string | null;
@@ -96,7 +97,10 @@ export async function getProfile(accessToken: string): Promise<CandidateProfile>
     if (axios.isAxiosError<ApiErrorBody>(error)) {
       const status = error.response?.status;
       const detail = error.response?.data?.detail?.trim();
-      if (status === 401) throw new Error('Not authenticated. Please sign in again.');
+      if (status === 401) {
+        redirectToLandingOnSessionExpired();
+        throw new Error('Session expired. Redirecting to home.');
+      }
       if (status) throw new Error(detail || `Failed to load profile (status ${status}).`);
     }
     throw new Error('Unable to connect to the server. Please try again.');
@@ -116,7 +120,10 @@ export async function updateProfile(
     if (axios.isAxiosError<ApiErrorBody>(error)) {
       const status = error.response?.status;
       const detail = error.response?.data?.detail?.trim();
-      if (status === 401) throw new Error('Not authenticated. Please sign in again.');
+      if (status === 401) {
+        redirectToLandingOnSessionExpired();
+        throw new Error('Session expired. Redirecting to home.');
+      }
       if (status === 422) throw new Error('Some fields have invalid values. Please review and try again.');
       if (status) throw new Error(detail || `Failed to save profile (status ${status}).`);
     }

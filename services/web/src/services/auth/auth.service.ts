@@ -209,3 +209,9 @@ export function clearStoredTokens(): void {
   localStorage.removeItem('access_token');
   localStorage.removeItem('refresh_token');
 }
+
+export function redirectToLandingOnSessionExpired(): void {
+  if (typeof window === 'undefined') return;
+  clearStoredTokens();
+  window.location.replace('/');
+}
