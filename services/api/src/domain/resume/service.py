@@ -8,6 +8,7 @@ and candidate profile synchronization.
 import logging
 
 from src.domain.resume.helpers import validate_resume_file
+from src.domain.applications.repository import ApplicationRepository
 
 logger = logging.getLogger(__name__)
 from src.domain.resume.repository import ResumeRepository
@@ -31,11 +32,13 @@ class ResumeService:
         storage_service: StorageService,
         parser: ResumeParser,
         profile_repository: CandidateProfileRepository,
+        application_repository: ApplicationRepository,
     ):
         self.repository = repository
         self.storage_service = storage_service
         self.parser = parser
         self.profile_service = CandidateProfileService(profile_repository)
+        self.application_repository = application_repository
 
     def upload_resume(self, user_id, upload_file):
         """
@@ -97,3 +100,27 @@ class ResumeService:
         """
         logger.info("[ResumeService] list_resumes user_id=%s", user_id)
         return self.repository.get_by_user_id(user_id)
+
+    def delete_resume(self, user_id, resume_id):
+        """
+        Delete a resume owned by a user from storage and persistence.
+        """
+        logger.info("[ResumeService] delete_resume start user_id=%s resume_id=%s", user_id, resume_id)
+        resume = self.repository.get_by_id_and_user_id(resume_id, user_id)
+        if not resume:
+            logger.warning("[ResumeService] delete_resume not found user_id=%s resume_id=%s", user_id, resume_id)
+            return False
+
+        updated_rows = self.application_repository.clear_resume_references(user_id, resume_id)
+        if updated_rows:
+            logger.info(
+                "[ResumeService] cleared application resume references count=%d user_id=%s resume_id=%s",
+                updated_rows,
+                user_id,
+                resume_id,
+            )
+
+        self.storage_service.delete(resume.file_path)
+        self.repository.delete(resume)
+        logger.info("[ResumeService] delete_resume complete user_id=%s resume_id=%s", user_id, resume_id)
+        return True

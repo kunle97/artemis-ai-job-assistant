@@ -62,3 +62,15 @@ class ApplicationRepository:
         self.db.commit()
         self.db.refresh(application)
         return application
+
+    def clear_resume_references(self, user_id, resume_id):
+        updated_rows = (
+            self.db.query(Application)
+            .filter(
+                Application.user_id == user_id,
+                Application.resume_id == resume_id,
+            )
+            .update({Application.resume_id: None}, synchronize_session=False)
+        )
+        self.db.commit()
+        return updated_rows

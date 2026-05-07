@@ -38,3 +38,8 @@ class LocalStorageService:
     def get_read_path(self, stored_path: str) -> str:
         """Return the stored path unchanged — local files are read directly."""
         return stored_path
+
+    def delete(self, stored_path: str) -> None:
+        """Delete a locally stored file if present."""
+        if os.path.exists(stored_path):
+            os.remove(stored_path)

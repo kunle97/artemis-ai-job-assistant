@@ -57,3 +57,8 @@ class S3StorageService:
             Params={"Bucket": self._bucket, "Key": key},
             ExpiresIn=900,
         )
+
+    def delete(self, stored_path: str) -> None:
+        """Delete a stored object from S3."""
+        key = stored_path.removeprefix(f"s3://{self._bucket}/")
+        self._client.delete_object(Bucket=self._bucket, Key=key)

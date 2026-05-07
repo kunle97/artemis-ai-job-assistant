@@ -4,6 +4,7 @@
 
 import axios from 'axios';
 import { httpClient } from '../http/client';
+import { redirectToLandingOnSessionExpired } from '../auth/auth.service';
 
 interface ApiErrorBody {
   detail?: string;
@@ -50,6 +51,48 @@ export interface ResumeUploadResponse {
   message: string;
 }
 
+export interface ResumeRead {
+  id: string;
+  user_id: string;
+  file_name: string;
+  file_path: string;
+  mime_type?: string | null;
+  extracted_text?: string | null;
+  parsed_json?: ResumeParsedJson | null;
+  variant_type: string;
+  is_primary: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export async function getResumes(token: string): Promise<ResumeRead[]> {
+  try {
+    const response = await httpClient.get<ResumeRead[]>('/resumes', {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    return response.data;
+  } catch (error) {
+    if (axios.isAxiosError<ApiErrorBody>(error)) {
+      const status = error.response?.status;
+      const detail = error.response?.data?.detail?.trim();
+
+      if (status === 401) {
+        redirectToLandingOnSessionExpired();
+        throw new Error('Session expired. Redirecting to home.');
+      }
+
+      if (status) {
+        throw new Error(detail || `Unable to load resumes (status ${status}).`);
+      }
+    }
+
+    throw new Error('Unable to load resumes right now. Please try again.');
+  }
+}
+
 export async function uploadResume(file: File, token: string): Promise<ResumeUploadResponse> {
   const formData = new FormData();
   formData.append('file', file);
@@ -69,7 +112,8 @@ export async function uploadResume(file: File, token: string): Promise<ResumeUpl
       const detail = error.response?.data?.detail?.trim();
 
       if (status === 401) {
-        throw new Error('Your session expired. Please sign in again to upload your resume.');
+        redirectToLandingOnSessionExpired();
+        throw new Error('Session expired. Redirecting to home.');
       }
 
       if (status === 400) {
@@ -82,5 +126,35 @@ export async function uploadResume(file: File, token: string): Promise<ResumeUpl
     }
 
     throw new Error('Unable to upload resume right now. Please try again.');
+  }
+}
+
+export async function deleteResume(resumeId: string, token: string): Promise<void> {
+  try {
+    await httpClient.delete(`/resumes/${resumeId}`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+  } catch (error) {
+    if (axios.isAxiosError<ApiErrorBody>(error)) {
+      const status = error.response?.status;
+      const detail = error.response?.data?.detail?.trim();
+
+      if (status === 401) {
+        redirectToLandingOnSessionExpired();
+        throw new Error('Session expired. Redirecting to home.');
+      }
+
+      if (status === 404) {
+        throw new Error(detail || 'Resume not found.');
+      }
+
+      if (status) {
+        throw new Error(detail || `Unable to delete resume (status ${status}).`);
+      }
+    }
+
+    throw new Error('Unable to delete resume right now. Please try again.');
   }
 }

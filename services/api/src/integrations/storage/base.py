@@ -22,3 +22,7 @@ class StorageService(Protocol):
         For S3 this returns a short-lived pre-signed HTTPS URL.
         """
         ...
+
+    def delete(self, stored_path: str) -> None:
+        """Delete a previously stored file if it exists."""
+        ...
