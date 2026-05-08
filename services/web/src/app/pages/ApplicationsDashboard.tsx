@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 import { getStoredAccessToken } from '../../services/auth/auth.service';
 import { AppShell } from '../components/AppShell';
 import { Button, Card, Badge } from '../components/ui';
-import { Plus, AlertCircle, CheckCircle, Clock, XCircle, ArrowRight } from 'lucide-react';
+import { Plus, CheckCircle, Clock, XCircle, ArrowRight } from 'lucide-react';
 import { ScoreIndicator } from '../components/ui/ScoreIndicator';
 import type { ScoreRecommendation } from '../components/ui/ScoreIndicator';
 import {
@@ -15,73 +15,16 @@ import {
 } from '../../services/applications/application-workspace.service';
 
 type ApplicationStatus = 'draft' | 'ready' | 'blocked' | 'submitted' | 'in-progress';
-type ReadinessStatus = 'complete' | 'partial' | 'blocked' | 'not-started';
 
 interface ApplicationDisplay {
   id: string;
   jobTitle: string;
   company: string;
   status: ApplicationStatus;
-  readiness: ReadinessStatus;
   lastUpdated: string;
-  blockers?: number;
   fitScore?: number | null;
   fitRecommendation?: ScoreRecommendation;
 }
-
-const mockApplications: ApplicationDisplay[] = [
-  {
-    id: '1',
-    jobTitle: 'Senior Product Manager',
-    company: 'TechCorp Inc.',
-    status: 'ready',
-    readiness: 'complete',
-    lastUpdated: '2 hours ago',
-    fitScore: 4.6,
-    fitRecommendation: 'apply_immediately',
-  },
-  {
-    id: '2',
-    jobTitle: 'Product Manager',
-    company: 'Innovate Labs',
-    status: 'blocked',
-    readiness: 'blocked',
-    lastUpdated: '1 day ago',
-    blockers: 3,
-    fitScore: 3.2,
-    fitRecommendation: 'recommend_against',
-  },
-  {
-    id: '3',
-    jobTitle: 'Product Lead',
-    company: 'StartupXYZ',
-    status: 'in-progress',
-    readiness: 'partial',
-    lastUpdated: '3 hours ago',
-    fitScore: 4.1,
-    fitRecommendation: 'worth_applying',
-  },
-  {
-    id: '4',
-    jobTitle: 'VP of Product',
-    company: 'BigTech Co.',
-    status: 'submitted',
-    readiness: 'complete',
-    lastUpdated: '2 days ago',
-    fitScore: 3.7,
-    fitRecommendation: 'apply_if_specific_reason',
-  },
-  {
-    id: '5',
-    jobTitle: 'Director of Product',
-    company: 'Growth Startup',
-    status: 'draft',
-    readiness: 'not-started',
-    lastUpdated: '1 week ago',
-    fitScore: null,
-    fitRecommendation: null,
-  },
-];
 
 const statusConfig: Record<ApplicationStatus, { label: string; variant: any; icon: any }> = {
   draft: { label: 'Draft', variant: 'default', icon: Clock },
@@ -113,18 +56,6 @@ function deriveApplicationStatus(status: ApplicationStatusRecord): ApplicationSt
   }
   if (status.manual_review_required || status.missing_items.length > 0) return 'blocked';
   return mapApplicationStatus(status.status);
-}
-
-function deriveReadiness(status: ApplicationStatusRecord): ReadinessStatus {
-  const terminalStatuses = ['submitted', 'applied', 'complete'];
-  if (terminalStatuses.includes(status.status.trim().toLowerCase())) return 'complete';
-  if (status.missing_items.length > 0) return 'blocked';
-  if (status.is_ready_for_automation || status.available_answer_keys.length > 0) return 'partial';
-  return 'not-started';
-}
-
-function deriveBlockerCount(status: ApplicationStatusRecord): number {
-  return status.missing_items.length;
 }
 
 export const ApplicationsDashboard: React.FC = () => {
@@ -159,9 +90,7 @@ export const ApplicationsDashboard: React.FC = () => {
               jobTitle: job?.title || `Job ${app.job_id.slice(0, 8)}`,
               company: job?.company_name || 'Unknown company',
               status: deriveApplicationStatus(statusRecord),
-              readiness: deriveReadiness(statusRecord),
               lastUpdated: new Date(app.updated_at).toLocaleDateString(),
-              blockers: deriveBlockerCount(statusRecord),
               fitScore: job?.fit_score ?? null,
               fitRecommendation: job?.fit_recommendation ?? null,
             });
@@ -172,7 +101,6 @@ export const ApplicationsDashboard: React.FC = () => {
               jobTitle: `Job ${app.job_id.slice(0, 8)}`,
               company: 'Unknown company',
               status: mapApplicationStatus(app.status),
-              readiness: 'not-started',
               lastUpdated: new Date(app.updated_at).toLocaleDateString(),
               fitScore: null,
               fitRecommendation: null,
@@ -267,7 +195,6 @@ export const ApplicationsDashboard: React.FC = () => {
                   <th className="text-left px-6 py-4 text-sm font-medium text-muted-foreground">Position</th>
                   <th className="text-left px-6 py-4 text-sm font-medium text-muted-foreground">Company</th>
                   <th className="text-left px-6 py-4 text-sm font-medium text-muted-foreground">Status</th>
-                  <th className="text-left px-6 py-4 text-sm font-medium text-muted-foreground">Readiness</th>
                   <th className="text-left px-6 py-4 text-sm font-medium text-muted-foreground">Fit Score</th>
                   <th className="text-left px-6 py-4 text-sm font-medium text-muted-foreground">Last Updated</th>
                   <th className="text-right px-6 py-4 text-sm font-medium text-muted-foreground">Actions</th>
@@ -275,7 +202,6 @@ export const ApplicationsDashboard: React.FC = () => {
               </thead>
               <tbody className="divide-y divide-border">
                 {filteredApplications.map((app) => {
-                  const StatusIcon = statusConfig[app.status].icon;
                   return (
                     <tr key={app.id} className="hover:bg-secondary/30 transition-colors">
                       <td className="px-6 py-4">
@@ -288,25 +214,6 @@ export const ApplicationsDashboard: React.FC = () => {
                         <Badge variant={statusConfig[app.status].variant} size="sm">
                           {statusConfig[app.status].label}
                         </Badge>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-2">
-                          {app.readiness === 'complete' && (
-                            <CheckCircle className="h-4 w-4 text-success" />
-                          )}
-                          {app.readiness === 'blocked' && (
-                            <>
-                              <AlertCircle className="h-4 w-4 text-destructive" />
-                              <span className="text-sm text-muted-foreground">{app.blockers} blockers</span>
-                            </>
-                          )}
-                          {app.readiness === 'partial' && (
-                            <Clock className="h-4 w-4 text-warning" />
-                          )}
-                          {app.readiness === 'not-started' && (
-                            <span className="text-sm text-muted-foreground">Not started</span>
-                          )}
-                        </div>
                       </td>
                       <td className="px-6 py-4">
                         <ScoreIndicator
