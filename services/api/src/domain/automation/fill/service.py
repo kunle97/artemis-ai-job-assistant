@@ -44,7 +44,11 @@ from src.domain.automation.fill.constants import (
     INTER_FIELD_DELAY_MIN_MS,
 )
 from src.domain.automation.fill.helpers import is_backing_input_label
-from src.integrations.automation.helpers import normalize_application_url, prepare_application_page
+from src.integrations.automation.helpers import (
+    _has_detectable_form,
+    normalize_application_url,
+    prepare_application_page,
+)
 from src.integrations.automation.browser import create_fresh_context, create_stealth_context, human_delay, simulate_mouse_movement
 from src.domain.automation.fill.models import (
     AutomationFillFieldResult,
@@ -240,7 +244,10 @@ class AutomationFillService:
                 submitted = self._click_submit_button(page, plan)
                 if submitted:
                     logger.info("[AutomationFill] Submit button clicked successfully.")
-                    submission_confirmed = self._verify_submission_confirmation(page)
+                    submission_confirmed = self._verify_submission_confirmation(
+                        page,
+                        application_url=application_url,
+                    )
                 else:
                     logger.warning("[AutomationFill] Could not locate submit button on page.")
 
@@ -476,20 +483,37 @@ class AutomationFillService:
     _SUBMISSION_CONFIRMATION_PHRASES = (
         "thank you for applying",
         "thank you for your application",
+        "thanks for applying",
+        "thanks for your application",
         "your application has been submitted",
+        "your application was submitted",
         "application submitted",
         "application received",
         "application complete",
+        "your application is complete",
+        "application sent",
         "successfully submitted",
         "successfully applied",
         "we've received your application",
         "we received your application",
+        "we have received your application",
+        "we got your application",
         "you have applied",
         "you've applied",
         "application was submitted",
     )
 
-    def _verify_submission_confirmation(self, page: Page) -> bool:
+    _SUBMISSION_CONFIRMATION_URL_MARKERS = (
+        "submitted",
+        "confirmation",
+        "complete",
+        "success",
+        "thank",
+        "thanks",
+        "applied",
+    )
+
+    def _verify_submission_confirmation(self, page: Page, *, application_url: str | None = None) -> bool:
         """Wait briefly for post-submit navigation then scan page text for confirmation.
 
         Returns True if a confirmation phrase is found, False otherwise.
@@ -500,20 +524,65 @@ class AutomationFillService:
             # Timeout is acceptable — the page may not fully idle; still check content
             pass
 
+        page.wait_for_timeout(1500)
+
+        current_url = page.url or ""
+
+        try:
+            title = (page.title() or "").lower()
+        except Exception as exc:
+            logger.debug(f"[AutomationFill] Could not read page title for confirmation check: {exc}")
+            title = ""
+
         try:
             content = page.inner_text("body").lower()
         except Exception as exc:
             logger.debug(f"[AutomationFill] Could not read page body for confirmation check: {exc}")
             return False
 
+        combined_text = " ".join(part for part in (title, content) if part)
+
         for phrase in self._SUBMISSION_CONFIRMATION_PHRASES:
-            if phrase in content:
+            if phrase in combined_text:
                 logger.info(f"[AutomationFill] Submission confirmation detected: '{phrase}'")
                 return True
 
+        if application_url:
+            normalized_original = normalize_application_url(application_url)
+            if current_url and current_url.rstrip("/") != normalized_original.rstrip("/"):
+                if any(marker in current_url.lower() for marker in self._SUBMISSION_CONFIRMATION_URL_MARKERS):
+                    logger.info(
+                        "[AutomationFill] Submission confirmation inferred from post-submit URL change: %s",
+                        current_url,
+                    )
+                    return True
+
+                if any(marker in title for marker in self._SUBMISSION_CONFIRMATION_URL_MARKERS):
+                    logger.info(
+                        "[AutomationFill] Submission confirmation inferred from post-submit title change: %s",
+                        title,
+                    )
+                    return True
+
+        try:
+            if not _has_detectable_form(page):
+                submit_buttons = page.locator("button[type='submit'], input[type='submit']")
+                if submit_buttons.count() == 0 and any(
+                    marker in combined_text for marker in ("thank", "thanks", "received", "submitted", "complete")
+                ):
+                    logger.info(
+                        "[AutomationFill] Submission confirmation inferred from form disappearance and success text."
+                    )
+                    return True
+        except Exception as exc:
+            logger.debug(f"[AutomationFill] Fallback confirmation heuristic failed: {exc}")
+
         logger.warning(
-            "[AutomationFill] No submission confirmation phrase found on page after submit. "
-            "The form may not have been submitted successfully."
+            "[AutomationFill] No submission confirmation signal found after submit. "
+            "url=%s title=%s body_preview=%s",
+            current_url,
+            title[:120],
+            content[:240],
         )
         return False
 

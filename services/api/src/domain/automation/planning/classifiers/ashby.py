@@ -92,6 +92,9 @@ class AshbyAutomationFieldClassifier(BaseAutomationFieldClassifier):
         if "country" in text:
             return FIELD_ROLE_COUNTRY
 
+        if "where do you plan on working from" in text:
+            return FIELD_ROLE_LOCATION
+
         if "location" in text or "city" in text:
             return FIELD_ROLE_LOCATION
 

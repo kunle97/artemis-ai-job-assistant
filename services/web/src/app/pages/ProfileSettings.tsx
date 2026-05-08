@@ -8,6 +8,10 @@ import { AppShell } from '../components/AppShell';
 import { Card, CardContent, CardHeader, CardTitle, Input } from '../components/ui';
 import { SimpleExperienceEditor, type SimpleExperience } from '../components/profile/SimpleExperienceEditor';
 import {
+  DemographicAutofillPreferences,
+  type DemographicAutofillSettings,
+} from '../components/profile/DemographicAutofillPreferences';
+import {
   getStoredAccessToken,
 } from '../../services/auth/auth.service';
 import {
@@ -30,9 +34,21 @@ function toFormData(profile: CandidateProfile) {
     country: profile.country ?? '',
     zip_code: profile.zip_code ?? '',
     current_company: profile.current_company ?? '',
+    work_authorization: profile.work_authorization ?? '',
+    visa_sponsorship: profile.visa_sponsorship ?? '',
     linkedin_url: profile.linkedin_url ?? '',
     github_url: profile.github_url ?? '',
     portfolio_url: profile.portfolio_url ?? '',
+    gender: profile.gender ?? '',
+    race: profile.race ?? '',
+    veteran_status: profile.veteran_status ?? '',
+    disability_status: profile.disability_status ?? '',
+    pronouns: profile.pronouns ?? '',
+    autofill_gender: profile.autofill_gender,
+    autofill_race: profile.autofill_race,
+    autofill_veteran_status: profile.autofill_veteran_status,
+    autofill_disability_status: profile.autofill_disability_status,
+    autofill_pronouns: profile.autofill_pronouns,
   };
 }
 
@@ -157,6 +173,37 @@ export const ProfileSettings: React.FC = () => {
     setFormData((prev) => (prev ? { ...prev, [key]: value } : prev));
   };
 
+  const demographicSettings: DemographicAutofillSettings = {
+    race: { value: formData?.race ?? '', autofill: formData?.autofill_race ?? false },
+    gender: { value: formData?.gender ?? '', autofill: formData?.autofill_gender ?? false },
+    veteranStatus: {
+      value: formData?.veteran_status ?? '',
+      autofill: formData?.autofill_veteran_status ?? false,
+    },
+    disabilityStatus: {
+      value: formData?.disability_status ?? '',
+      autofill: formData?.autofill_disability_status ?? false,
+    },
+    pronouns: { value: formData?.pronouns ?? '', autofill: formData?.autofill_pronouns ?? false },
+  };
+
+  const handleDemographicsChange = (settings: DemographicAutofillSettings) => {
+    if (!formData) return;
+    setFormData({
+      ...formData,
+      race: settings.race.value,
+      gender: settings.gender.value,
+      veteran_status: settings.veteranStatus.value,
+      disability_status: settings.disabilityStatus.value,
+      pronouns: settings.pronouns.value,
+      autofill_race: settings.race.autofill,
+      autofill_gender: settings.gender.autofill,
+      autofill_veteran_status: settings.veteranStatus.autofill,
+      autofill_disability_status: settings.disabilityStatus.autofill,
+      autofill_pronouns: settings.pronouns.autofill,
+    });
+  };
+
   const handleSave = useCallback(async () => {
     if (!formData) return;
     const token = getStoredAccessToken();
@@ -173,10 +220,22 @@ export const ProfileSettings: React.FC = () => {
       country: formData.country || null,
       zip_code: formData.zip_code || null,
       current_company: formData.current_company || null,
+      work_authorization: formData.work_authorization || null,
+      visa_sponsorship: formData.visa_sponsorship || null,
       linkedin_url: formData.linkedin_url || null,
       github_url: formData.github_url || null,
       portfolio_url: formData.portfolio_url || null,
       experience_sections: experiences.length > 0 ? experiences.map(mapSimpleExperienceToApi) : null,
+      race: formData.race || null,
+      gender: formData.gender || null,
+      veteran_status: formData.veteran_status || null,
+      disability_status: formData.disability_status || null,
+      pronouns: formData.pronouns || null,
+      autofill_gender: formData.autofill_gender,
+      autofill_race: formData.autofill_race,
+      autofill_veteran_status: formData.autofill_veteran_status,
+      autofill_disability_status: formData.autofill_disability_status,
+      autofill_pronouns: formData.autofill_pronouns,
     };
 
     try {
@@ -278,6 +337,32 @@ export const ProfileSettings: React.FC = () => {
                 <Input label="Country" value={formData.country} onChange={(e) => setField('country', e.target.value)} fullWidth placeholder="United States" />
                 <Input label="ZIP / Postal Code" value={formData.zip_code} onChange={(e) => setField('zip_code', e.target.value)} fullWidth />
               </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <label className="grid gap-1.5 text-sm font-medium text-foreground">
+                  <span>Authorized To Work</span>
+                  <select
+                    value={formData.work_authorization}
+                    onChange={(e) => setField('work_authorization', e.target.value)}
+                    className="h-9 w-full rounded-md border border-input bg-input-background px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]"
+                  >
+                    <option value="">Select an option</option>
+                    <option value="Yes">Yes</option>
+                    <option value="No">No</option>
+                  </select>
+                </label>
+                <label className="grid gap-1.5 text-sm font-medium text-foreground">
+                  <span>Requires Visa Sponsorship</span>
+                  <select
+                    value={formData.visa_sponsorship}
+                    onChange={(e) => setField('visa_sponsorship', e.target.value)}
+                    className="h-9 w-full rounded-md border border-input bg-input-background px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]"
+                  >
+                    <option value="">Select an option</option>
+                    <option value="Yes">Yes</option>
+                    <option value="No">No</option>
+                  </select>
+                </label>
+              </div>
             </CardContent>
           </Card>
 
@@ -299,6 +384,15 @@ export const ProfileSettings: React.FC = () => {
           <Card>
             <CardContent className="pt-6">
               <SimpleExperienceEditor experiences={experiences} onChange={setExperiences} />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="pt-6">
+              <DemographicAutofillPreferences
+                settings={demographicSettings}
+                onChange={handleDemographicsChange}
+              />
             </CardContent>
           </Card>
 

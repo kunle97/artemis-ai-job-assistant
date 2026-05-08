@@ -44,7 +44,7 @@ export const SimpleRouter: React.FC = () => {
   if (path === '/app/profile') return <ProfileSettings />;
   if (path === '/app/job-preferences') return <JobPreferencesPage />;
   if (path === '/app/resumes') return <ResumeLibrary />;
-  if (path === '/app/preferences') return <MyAccountPage />;
+  if (path === '/app/account') return <MyAccountPage />;
 
   // Internal routes
   if (path === '/internal/diagnostics') return <DiagnosticsWorkbench />;

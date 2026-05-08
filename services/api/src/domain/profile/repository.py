@@ -85,6 +85,12 @@ class CandidateProfileRepository:
             profile.skills = payload.skills
         if payload.experience_sections is not None:
             profile.experience_sections = payload.experience_sections
+        if payload.current_company is not None:
+            profile.current_company = payload.current_company
+        if payload.work_authorization is not None:
+            profile.work_authorization = payload.work_authorization
+        if payload.visa_sponsorship is not None:
+            profile.visa_sponsorship = payload.visa_sponsorship
 
         self.db.add(profile)
         self.db.commit()

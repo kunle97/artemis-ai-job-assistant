@@ -8,7 +8,7 @@ export const CheckoutSuccess: React.FC = () => {
   const router = useRouter();
 
   const handleGoToBilling = () => {
-    router.push('/preferences');
+    router.push('/account');
   };
 
   const handleGoToApp = () => {

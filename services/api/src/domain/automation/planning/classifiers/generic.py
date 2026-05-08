@@ -282,6 +282,7 @@ class GenericAutomationFieldClassifier:
                 "city, country",
                 "location/timezone",
                 "where are you located",
+                "where do you plan on working from",
             ]
         )
 

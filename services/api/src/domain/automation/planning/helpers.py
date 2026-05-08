@@ -559,6 +559,53 @@ def _iter_option_texts(options: list | None) -> list[str]:
     return texts
 
 
+def _normalize_choice_text(value: str | None) -> str:
+    if not value:
+        return ""
+    return " ".join(str(value).strip().lower().replace(";", " ").replace("/", " ").split())
+
+
+def resolve_location_value(*, inspected_field: dict, profile) -> str | None:
+    city = (getattr(profile, "city", None) or "").strip()
+    state = (getattr(profile, "state", None) or "").strip()
+    country = (getattr(profile, "country", None) or "").strip()
+    profile_location = (getattr(profile, "location", None) or "").strip()
+
+    candidates: list[str] = []
+    if city and state and country:
+        candidates.append(f"{city}, {state}, {country}")
+    if city and state:
+        candidates.append(f"{city}, {state}")
+    if state and country:
+        candidates.append(f"{state}, {country}")
+    if city:
+        candidates.append(city)
+    if state:
+        candidates.append(state)
+    if country:
+        candidates.append(country)
+    if profile_location:
+        candidates.append(profile_location)
+
+    if not candidates:
+        return None
+
+    option_texts = _iter_option_texts(inspected_field.get("options"))
+    if option_texts:
+        normalized_options = [(option, _normalize_choice_text(option)) for option in option_texts if option]
+        for candidate in candidates:
+            candidate_norm = _normalize_choice_text(candidate)
+            if not candidate_norm:
+                continue
+            for option, option_norm in normalized_options:
+                if candidate_norm == option_norm:
+                    return option
+                if candidate_norm in option_norm or option_norm in candidate_norm:
+                    return option
+
+    return candidates[0]
+
+
 def _is_binary_yes_no_field(inspected_field: dict) -> bool:
     field_type = (inspected_field.get("field_type") or "").strip().lower()
     if field_type not in {"select", "select_like", "radio_group"}:
@@ -763,7 +810,7 @@ def resolve_field_value(
         return value, value is None
 
     if classified_role == FIELD_ROLE_LOCATION:
-        value = getattr(profile, "location", None)
+        value = resolve_location_value(inspected_field=inspected_field, profile=profile)
         return value, value is None
 
     if classified_role == FIELD_ROLE_CURRENT_COMPANY:

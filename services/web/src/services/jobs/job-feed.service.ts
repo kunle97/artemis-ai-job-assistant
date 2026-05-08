@@ -95,11 +95,12 @@ export async function getJobFeed(
   limit = 20,
   query?: string,
   sort: JobFeedSortOrder = 'newest',
+  sources?: string[],
 ): Promise<FeedPageResponse> {
   try {
     const response = await httpClient.get<FeedPageResponse>('/jobs/feed', {
       headers: buildAuthHeader(token),
-      params: { skip, limit, query, sort },
+      params: { skip, limit, query, sort, ...(sources?.length ? { sources: sources.join(',') } : {}) },
     });
     return response.data;
   } catch (error) {

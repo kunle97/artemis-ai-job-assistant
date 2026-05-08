@@ -28,6 +28,7 @@ from src.domain.applications.constants import (
 from src.domain.automation.planning.models import AutomationFillPlanRequest
 from src.domain.automation.schemas import ApplicationPageIntakeRequest
 from src.integrations.automation.browser import WorkerBrowserSession
+from src.integrations.automation.helpers import normalize_application_url
 
 
 logger = logging.getLogger(__name__)
@@ -171,6 +172,28 @@ class ApplicationPipelineService:
         )
         return False
 
+    def _resolve_application_url(self, job) -> str:
+        """Return the canonical application URL and persist a corrected suffix when needed."""
+        raw_url = (getattr(job, "apply_url", None) or "").strip()
+        if not raw_url:
+            raise ValueError("Job apply_url is missing.")
+
+        normalized_url = normalize_application_url(raw_url)
+        if normalized_url != raw_url:
+            logger.info(
+                "[PipelineService] Normalized apply_url for job_id=%s from %s to %s",
+                job.id,
+                raw_url,
+                normalized_url,
+            )
+            updated_job = self.job_repo.update_apply_url(job.id, normalized_url)
+            if updated_job is not None:
+                job.apply_url = updated_job.apply_url
+            else:
+                job.apply_url = normalized_url
+
+        return normalized_url
+
     def run_pipeline(self, user_id, application_id):
         """Coordinate the full inspect → plan → fill pipeline for an application.
 
@@ -190,6 +213,8 @@ class ApplicationPipelineService:
         job = self.job_repo.get_by_id(application.job_id)
         if not job:
             raise ValueError("Job not found for this application.")
+
+        application_url = self._resolve_application_url(job)
 
         try:
             application = self.application_repo.update_fields(
@@ -211,7 +236,7 @@ class ApplicationPipelineService:
                 inspection_result = self._execute_with_retries(
                     "inspect_application_page",
                     lambda: self.automation_service.inspect_application_page(
-                        ApplicationPageIntakeRequest(application_url=job.apply_url),
+                        ApplicationPageIntakeRequest(application_url=application_url),
                         browser=_browser,
                     ),
                 )
@@ -262,7 +287,7 @@ class ApplicationPipelineService:
                     lambda: self.planning_service.build_fill_plan(
                         user_id=user_id,
                         payload=AutomationFillPlanRequest(
-                            application_url=job.apply_url,
+                            application_url=application_url,
                             inspected_fields=inspected_fields,
                             page_title=page_title,
                             job_context=job_context,
@@ -288,7 +313,7 @@ class ApplicationPipelineService:
                     "fill_from_plan",
                     lambda: self.fill_service.fill_from_plan(
                         user_id=user_id,
-                        application_url=job.apply_url,
+                        application_url=application_url,
                         plan=plan,
                         application_id=application_id,
                         browser=_browser,
@@ -403,6 +428,8 @@ class ApplicationPipelineService:
         if not job:
             raise ValueError("Job not found for this application.")
 
+        application_url = self._resolve_application_url(job)
+
         try:
             # INSPECT + FILL+SUBMIT share a single browser process within this task.
             # A fresh context is created for each operation; the browser is
@@ -414,7 +441,7 @@ class ApplicationPipelineService:
                 inspection_result = self._execute_with_retries(
                     "inspect_application_page",
                     lambda: self.automation_service.inspect_application_page(
-                        ApplicationPageIntakeRequest(application_url=job.apply_url),
+                        ApplicationPageIntakeRequest(application_url=application_url),
                         browser=_browser,
                     ),
                 )
@@ -450,7 +477,7 @@ class ApplicationPipelineService:
                     lambda: self.planning_service.build_fill_plan(
                         user_id=user_id,
                         payload=AutomationFillPlanRequest(
-                            application_url=job.apply_url,
+                            application_url=application_url,
                             inspected_fields=inspected_fields,
                             page_title=page_title,
                             job_context=job_context,
@@ -463,7 +490,7 @@ class ApplicationPipelineService:
                     "fill_and_submit_from_plan",
                     lambda: self.fill_service.fill_and_submit_from_plan(
                         user_id=user_id,
-                        application_url=job.apply_url,
+                        application_url=application_url,
                         plan=plan,
                         application_id=application_id,
                         browser=_browser,

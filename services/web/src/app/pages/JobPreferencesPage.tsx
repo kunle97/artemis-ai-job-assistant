@@ -5,10 +5,6 @@ import { toast } from 'sonner';
 import { AppShell } from '../components/AppShell';
 import { Badge, Card, CardContent, CardHeader, CardTitle, Input } from '../components/ui';
 import { X, Sparkles } from 'lucide-react';
-import {
-  DemographicAutofillPreferences,
-  type DemographicAutofillSettings,
-} from '../components/profile/DemographicAutofillPreferences';
 import { getStoredAccessToken } from '../../services/auth/auth.service';
 import {
   getProfile,
@@ -38,16 +34,6 @@ type FormData = {
   skills: string[];
   target_job_titles: string[];
   target_keywords: string[];
-  gender: string;
-  race: string;
-  veteran_status: string;
-  disability_status: string;
-  pronouns: string;
-  autofill_gender: boolean;
-  autofill_race: boolean;
-  autofill_veteran_status: boolean;
-  autofill_disability_status: boolean;
-  autofill_pronouns: boolean;
   negative_keywords: string[];
   enabled_sources: string[];
   remote_only: boolean;
@@ -64,16 +50,6 @@ function toFormData(profile: CandidateProfile, jobPreferences: JobPreferences): 
     skills: profile.skills ?? [],
     target_job_titles: jobPreferences.target_titles ?? [],
     target_keywords: jobPreferences.positive_keywords ?? [],
-    gender: profile.gender ?? '',
-    race: profile.race ?? '',
-    veteran_status: profile.veteran_status ?? '',
-    disability_status: profile.disability_status ?? '',
-    pronouns: profile.pronouns ?? '',
-    autofill_gender: profile.autofill_gender,
-    autofill_race: profile.autofill_race,
-    autofill_veteran_status: profile.autofill_veteran_status,
-    autofill_disability_status: profile.autofill_disability_status,
-    autofill_pronouns: profile.autofill_pronouns,
     negative_keywords: jobPreferences.negative_keywords ?? [],
     enabled_sources: jobPreferences.enabled_sources ?? [],
     remote_only: jobPreferences.remote_only ?? false,
@@ -198,37 +174,6 @@ export const JobPreferencesPage: React.FC = () => {
     });
   };
 
-  const demographicSettings: DemographicAutofillSettings = {
-    race: { value: formData?.race ?? '', autofill: formData?.autofill_race ?? false },
-    gender: { value: formData?.gender ?? '', autofill: formData?.autofill_gender ?? false },
-    veteranStatus: {
-      value: formData?.veteran_status ?? '',
-      autofill: formData?.autofill_veteran_status ?? false,
-    },
-    disabilityStatus: {
-      value: formData?.disability_status ?? '',
-      autofill: formData?.autofill_disability_status ?? false,
-    },
-    pronouns: { value: formData?.pronouns ?? '', autofill: formData?.autofill_pronouns ?? false },
-  };
-
-  const handleDemographicsChange = (settings: DemographicAutofillSettings) => {
-    if (!formData) return;
-    setFormData({
-      ...formData,
-      race: settings.race.value,
-      gender: settings.gender.value,
-      veteran_status: settings.veteranStatus.value,
-      disability_status: settings.disabilityStatus.value,
-      pronouns: settings.pronouns.value,
-      autofill_race: settings.race.autofill,
-      autofill_gender: settings.gender.autofill,
-      autofill_veteran_status: settings.veteranStatus.autofill,
-      autofill_disability_status: settings.disabilityStatus.autofill,
-      autofill_pronouns: settings.pronouns.autofill,
-    });
-  };
-
   const handleSave = useCallback(async () => {
     if (!formData) return;
     const token = getStoredAccessToken();
@@ -245,16 +190,6 @@ export const JobPreferencesPage: React.FC = () => {
       preferred_relocation_cities: formData.preferred_relocation_cities.length > 0
         ? formData.preferred_relocation_cities
         : null,
-      race: formData.race || null,
-      gender: formData.gender || null,
-      veteran_status: formData.veteran_status || null,
-      disability_status: formData.disability_status || null,
-      pronouns: formData.pronouns || null,
-      autofill_gender: formData.autofill_gender,
-      autofill_race: formData.autofill_race,
-      autofill_veteran_status: formData.autofill_veteran_status,
-      autofill_disability_status: formData.autofill_disability_status,
-      autofill_pronouns: formData.autofill_pronouns,
     };
 
     const jobPreferencesPayload: JobPreferences = {
@@ -468,10 +403,7 @@ export const JobPreferencesPage: React.FC = () => {
           </Card>
 
           <Card>
-            <CardHeader>
-              <CardTitle>Skills</CardTitle>
-            </CardHeader>
-            <CardContent>
+            <CardContent className="pt-6">
               <Input
                 label="Skills"
                 value={skillQuery}
@@ -583,14 +515,6 @@ export const JobPreferencesPage: React.FC = () => {
             </CardContent>
           </Card>
 
-          <Card>
-            <CardContent className="pt-6">
-              <DemographicAutofillPreferences
-                settings={demographicSettings}
-                onChange={handleDemographicsChange}
-              />
-            </CardContent>
-          </Card>
         </div>
       </div>
     </AppShell>

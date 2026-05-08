@@ -47,6 +47,8 @@ export interface CandidateProfile {
   autofill_pronouns: boolean;
   auto_submit: boolean;
   current_company: string | null;
+  work_authorization: string | null;
+  visa_sponsorship: string | null;
   preferred_relocation_cities: string[] | null;
   work_arrangement: string[] | null;
   skills: string[] | null;
@@ -77,6 +79,8 @@ export interface CandidateProfileUpdateRequest {
   autofill_pronouns?: boolean | null;
   auto_submit?: boolean | null;
   current_company?: string | null;
+  work_authorization?: string | null;
+  visa_sponsorship?: string | null;
   preferred_relocation_cities?: string[] | null;
   work_arrangement?: string[] | null;
   skills?: string[] | null;

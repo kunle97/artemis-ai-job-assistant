@@ -106,7 +106,15 @@ def _build_feed_job_reads(db: Session, user_id, jobs: list[Job]) -> list[FeedJob
     for job in jobs:
         application = applications_by_job_id.get(job.id)
         score = scores_by_application_id.get(application.id) if application else None
-        preview_score = score_job_fit_preview(job, profile) if score is None else None
+        preview_score = (
+            score_job_fit_preview(job, profile)
+            if score is None
+            else {
+                "global_score": None,
+                "recommendation": None,
+                "confidence": "low",
+            }
+        )
         payload = JobRead.model_validate(job).model_dump(mode="python")
         payload.update(
             application_id=application.id if application else None,
@@ -284,6 +292,7 @@ def get_job_feed(
     limit: int = Query(default=20, ge=1, le=100),
     query: str | None = Query(default=None),
     sort: Literal["newest", "salary_high", "salary_low", "fit_high"] = Query(default="newest"),
+    sources: str | None = Query(default=None),
     current_user=Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -292,10 +301,12 @@ def get_job_feed(
 
     Filters are applied at read time against the user's current preferences:
     target_titles, positive_keywords, negative_keywords, remote_only, salary_min.
+    Optional `sources` query param (comma-separated) restricts results to the given ATS platforms.
     """
+    source_filter = {s.strip().lower() for s in (sources or "").split(",") if s.strip()}
     service = JobFeedService(user_id=current_user.id, db=db)
     if sort == "fit_high":
-        all_jobs, _ = service.get_feed(skip=0, limit=None, query=query, sort="newest")
+        all_jobs, _ = service.get_feed(skip=0, limit=None, query=query, sort="newest", sources=source_filter)
         all_feed_jobs = _build_feed_job_reads(db=db, user_id=current_user.id, jobs=all_jobs)
         all_feed_jobs.sort(
             key=lambda job: (job.fit_score if job.fit_score is not None else -1, job.created_at),
@@ -304,7 +315,7 @@ def get_job_feed(
         total = len(all_feed_jobs)
         page_jobs = all_feed_jobs[skip : skip + limit]
     else:
-        jobs, total = service.get_feed(skip=skip, limit=limit, query=query, sort=sort)
+        jobs, total = service.get_feed(skip=skip, limit=limit, query=query, sort=sort, sources=source_filter)
         page_jobs = _build_feed_job_reads(db=db, user_id=current_user.id, jobs=jobs)
 
     next_offset = skip + limit
@@ -342,3 +353,23 @@ def update_job_feed_status(
         raise HTTPException(status_code=404, detail="Job feed entry not found.")
 
     return JobFeedStatusUpdateResponse(job_id=link.job_id, status=link.status)
+
+
+@router.get("/{job_id}", response_model=FeedJobRead)
+def get_job_by_id(
+    job_id: UUID,
+    current_user=Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Return a single job record by ID, enriched with user-specific scoring data."""
+    repository = JobRepository(db)
+    job = repository.get_by_id(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found.")
+
+    feed_jobs = _build_feed_job_reads(
+        db=db,
+        user_id=current_user.id,
+        jobs=[job],
+    )
+    return feed_jobs[0]

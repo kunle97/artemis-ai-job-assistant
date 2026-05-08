@@ -12,6 +12,19 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from sqlalchemy.orm import Session
 
+from src.domain.applications.constants import (
+    APPLICATION_STATUS_AWAITING_SUBMISSION,
+    APPLICATION_STATUS_FILLED,
+    APPLICATION_STATUS_FILLING,
+    APPLICATION_STATUS_INSPECTED,
+    APPLICATION_STATUS_INSPECTING,
+    APPLICATION_STATUS_NEEDS_REVIEW,
+    APPLICATION_STATUS_PLANNED,
+    APPLICATION_STATUS_PLANNING,
+    APPLICATION_STATUS_QUEUED,
+    APPLICATION_STATUS_READY,
+)
+from src.domain.applications.repository import ApplicationRepository
 from src.domain.jobs.models import Job, JobFeedStatus
 from src.domain.jobs.repository import (
     JobPreferencesRepository,
@@ -27,6 +40,19 @@ logger = logging.getLogger(__name__)
 
 _MAX_WORKERS = 10
 
+_IN_PROGRESS_APPLICATION_STATUSES = {
+    APPLICATION_STATUS_NEEDS_REVIEW,
+    APPLICATION_STATUS_READY,
+    APPLICATION_STATUS_QUEUED,
+    APPLICATION_STATUS_INSPECTING,
+    APPLICATION_STATUS_INSPECTED,
+    APPLICATION_STATUS_PLANNING,
+    APPLICATION_STATUS_PLANNED,
+    APPLICATION_STATUS_FILLING,
+    APPLICATION_STATUS_FILLED,
+    APPLICATION_STATUS_AWAITING_SUBMISSION,
+}
+
 
 class JobFeedService:
     """Scans all registered ATS boards for a user and ingests new jobs.
@@ -38,6 +64,7 @@ class JobFeedService:
     def __init__(self, user_id, db: Session):
         self.user_id = user_id
         self.db = db
+        self._application_repo = ApplicationRepository(db)
         self._preferences_repo = JobPreferencesRepository(db)
         self._job_repo = JobRepository(db)
         self._job_source_repo = JobSourceRepository(db)
@@ -168,6 +195,7 @@ class JobFeedService:
         limit: int | None = 20,
         query: str | None = None,
         sort: str = "newest",
+        sources: set[str] | None = None,
     ) -> tuple[list, int]:
         """Return a paginated, preference-filtered view of the job pool.
 
@@ -185,7 +213,11 @@ class JobFeedService:
 
         preferences = self._preferences_repo.get_or_create_by_user_id(self.user_id)
         feed_rows = self._user_feed_repo.list_for_user(self.user_id)
+        feed_rows = self._exclude_in_progress_application_jobs(feed_rows)
         filtered = self._apply_preference_filters(feed_rows, preferences)
+
+        if sources:
+            filtered = [job for job in filtered if (job.source or "").lower() in sources]
 
         if query:
             normalized_query = query.strip().lower()
@@ -217,6 +249,20 @@ class JobFeedService:
 
         logger.info("[JobFeedService] Feed for user %s: %d total match, returning %d", self.user_id, total, len(page))
         return page, total
+
+    def _exclude_in_progress_application_jobs(self, feed_rows: list) -> list:
+        """Hide feed jobs that already have an in-progress application for this user."""
+        job_ids = [row.job_id for row in feed_rows if getattr(row, "job_id", None) is not None]
+        applications = self._application_repo.list_by_user_and_job_ids(
+            user_id=self.user_id,
+            job_ids=job_ids,
+        )
+        in_progress_job_ids = {
+            application.job_id
+            for application in applications
+            if (application.status or "").strip().lower() in _IN_PROGRESS_APPLICATION_STATUSES
+        }
+        return [row for row in feed_rows if row.job_id not in in_progress_job_ids]
 
     def _apply_preference_filters(self, jobs: list, preferences) -> list:
         """Apply user preference keyword and attribute filters to feed-linked jobs."""

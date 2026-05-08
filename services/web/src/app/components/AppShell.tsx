@@ -30,7 +30,7 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
   const secondaryNavigation = [
     { name: 'Candidate Profile', href: '/profile', icon: User },
     { name: 'Job Preferences', href: '/job-preferences', icon: SlidersHorizontal },
-    { name: 'My Account', href: '/preferences', icon: Settings },
+    { name: 'My Account', href: '/account', icon: Settings },
   ];
 
   const handleNavigate = (href: string) => {

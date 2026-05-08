@@ -18,6 +18,17 @@ class JobRepository:
     def get_by_id(self, job_id):
         return self.db.query(Job).filter(Job.id == job_id).first()
 
+    def update_apply_url(self, job_id, apply_url: str):
+        job = self.get_by_id(job_id)
+        if job is None:
+            return None
+
+        job.apply_url = apply_url
+        self.db.add(job)
+        self.db.commit()
+        self.db.refresh(job)
+        return job
+
     def get_by_source_and_source_job_id(self, source: str, source_job_id: str):
         return (
             self.db.query(Job)

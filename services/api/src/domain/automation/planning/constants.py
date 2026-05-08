@@ -126,6 +126,10 @@ WORK_AUTH_KEYWORDS = {
     "work authorization",
     "employment permit",
     "immigration permission",
+    "require sponsorship",
     "sponsorship",
     "visa",
+    "Do you, now or in the future",
+    "Do you, now or in the future, require sponsorship to work",
+    "Will you now or in the future require sponsorship to work"
 }

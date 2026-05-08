@@ -1,413 +1,609 @@
 'use client';
-import React, { useState } from 'react';
-import { useRouter } from 'next/navigation';
+
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useParams, useRouter } from 'next/navigation';
+import { toast } from 'sonner';
 import { AppShell } from '../components/AppShell';
-import { Button, Card, CardHeader, CardTitle, CardContent, Badge } from '../components/ui';
+import { Badge, Button, Card, CardContent, CardHeader, CardTitle } from '../components/ui';
 import {
-  ArrowLeft,
   AlertCircle,
+  AlertTriangle,
+  ArrowLeft,
   CheckCircle,
   Clock,
-  Play,
-  Shield,
-  Send,
-  AlertTriangle,
-  FileText,
   ExternalLink,
+  Play,
+  RefreshCw,
+  Send,
+  Shield,
 } from 'lucide-react';
-import { ScoreIndicator } from '../components/ui/ScoreIndicator';
-import type { ScoreRecommendation } from '../components/ui/ScoreIndicator';
+import { getStoredAccessToken } from '../../services/auth/auth.service';
+import {
+  authorizeApplication,
+  getApplicationById,
+  getApplicationReadiness,
+  getApplicationStatus,
+  getJobById,
+  runApplicationPipeline,
+  submitApplication,
+  type ApplicationReadinessRecord,
+  type ApplicationRecord,
+  type ApplicationStatusRecord,
+} from '../../services/applications/application-workspace.service';
 
-interface Blocker {
-  id: string;
-  field: string;
-  message: string;
-  severity: 'error' | 'warning';
+type ReadinessSeverity = 'error' | 'warning' | 'info';
+type AutomationState = 'idle' | 'queued' | 'running' | 'success' | 'failure';
+
+interface ReadinessItem {
+  key: string;
+  title: string;
+  description: string;
+  severity: ReadinessSeverity;
+  ctaLabel: string;
+  ctaPath: string;
 }
 
-interface PlannedAnswer {
-  question: string;
-  answer: string;
-  source: 'resume' | 'profile' | 'library' | 'manual';
-  confidence: number;
+function normalizeStatus(status: string | undefined): string {
+  return (status || '').trim().toLowerCase();
 }
 
-const mockBlockers: Blocker[] = [
-  {
-    id: '1',
-    field: 'Cover Letter',
-    message: 'Required field not provided',
-    severity: 'error',
-  },
-  {
-    id: '2',
-    field: 'Salary Expectations',
-    message: 'Recommended to provide',
-    severity: 'warning',
-  },
-  {
-    id: '3',
-    field: 'Start Date',
-    message: 'Required field not provided',
-    severity: 'error',
-  },
-];
+function formatMissingItem(item: string): string {
+  switch (item) {
+    case 'candidate_profile':
+      return 'Candidate profile missing';
+    case 'resume':
+      return 'Resume missing';
+    default:
+      return item.replace(/_/g, ' ');
+  }
+}
 
-const mockAnswers: PlannedAnswer[] = [
-  {
-    question: 'Why do you want to work here?',
-    answer: "I am excited about TechCorp's mission to transform how teams collaborate...",
-    source: 'library',
-    confidence: 95,
-  },
-  {
-    question: 'Describe your product management experience',
-    answer: 'Over the past 5 years, I have led cross-functional teams to ship products...',
-    source: 'resume',
-    confidence: 90,
-  },
-  {
-    question: 'What is your biggest professional achievement?',
-    answer: 'I successfully launched a SaaS platform that grew to $10M ARR in 18 months...',
-    source: 'library',
-    confidence: 88,
-  },
-];
+function buildReadinessItems(
+  readiness: ApplicationReadinessRecord,
+  status: ApplicationStatusRecord,
+): ReadinessItem[] {
+  const items: ReadinessItem[] = readiness.missing_items.map((item) => ({
+    key: item,
+    title: formatMissingItem(item),
+    description:
+      item === 'candidate_profile'
+        ? 'Complete your profile before automation can safely run.'
+        : item === 'resume'
+          ? 'Upload a resume so Artemis can resolve application fields.'
+          : 'This required data is missing for automation.',
+    severity: 'error',
+    ctaLabel: item === 'candidate_profile' ? 'Open Profile' : item === 'resume' ? 'Open Resume Library' : 'Review',
+    ctaPath: item === 'candidate_profile' ? '/profile' : item === 'resume' ? '/resumes' : '/applications',
+  }));
+
+  const normalizedStatus = (status.status || '').trim().toLowerCase();
+  const reviewActionableStatuses = new Set([
+    'filled',
+    'awaiting_submission',
+    'ready_to_submit',
+    'needs_review',
+    'ready',
+  ]);
+
+  if (status.manual_review_required && reviewActionableStatuses.has(normalizedStatus)) {
+    items.push({
+      key: 'manual_review_required',
+      title: 'Manual review required',
+      description: 'Automation output must be reviewed before authorization.',
+      severity: 'warning',
+      ctaLabel: 'Review Fields',
+      ctaPath: `/applications/${status.application_id}/review`,
+    });
+  }
+
+  return items;
+}
 
 export const ApplicationDetailWorkspace: React.FC = () => {
   const router = useRouter();
-  const [automationStatus, setAutomationStatus] = useState<'not-started' | 'running' | 'complete' | 'failed'>('not-started');
-  const [authorized, setAuthorized] = useState(false);
+  const params = useParams<{ id: string }>();
+  const applicationId = String(params?.id || '');
+  const token = getStoredAccessToken();
+
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const [application, setApplication] = useState<ApplicationRecord | null>(null);
+  const [status, setStatus] = useState<ApplicationStatusRecord | null>(null);
+  const [readiness, setReadiness] = useState<ApplicationReadinessRecord | null>(null);
+  const [jobTitle, setJobTitle] = useState<string>('Application');
+  const [companyName, setCompanyName] = useState<string>('Unknown company');
+  const [locationLabel, setLocationLabel] = useState<string>('Unknown location');
+  const [workModeLabel, setWorkModeLabel] = useState<string>('Unknown work mode');
+  const [jobUrl, setJobUrl] = useState<string | null>(null);
+
+  const [automationState, setAutomationState] = useState<AutomationState>('idle');
+  const [runTaskId, setRunTaskId] = useState<string | null>(null);
+  const [runError, setRunError] = useState<string | null>(null);
+
+  const [running, setRunning] = useState(false);
+  const [authorizing, setAuthorizing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [confirmSubmit, setConfirmSubmit] = useState(false);
 
-  /**
-   * TODO: replace with real data from POST /applications/{id}/score
-   * Stub values mirror the mock data on the dashboard for visual consistency.
-   */
-  const fitScore: number | null = 4.6;
-  const fitRecommendation: ScoreRecommendation = 'apply_immediately';
-  const skillsGapSummary = 'Potential gaps (from JD keywords not found in profile): Kubernetes, Figma.';
+  const loadWorkspace = useCallback(async () => {
+    if (!token || !applicationId) {
+      setError('Please sign in and choose a valid application.');
+      setLoading(false);
+      return;
+    }
 
-  const hasBlockers = mockBlockers.filter((b) => b.severity === 'error').length > 0;
-  const isReadyForAutomation = !hasBlockers;
-  const isReadyForSubmission = authorized && automationStatus === 'complete';
+    setLoading(true);
+    setError(null);
 
-  const handleBack = () => {
-    router.push('/applications');
+    try {
+      const [applicationRecord, statusRecord, readinessRecord] = await Promise.all([
+        getApplicationById(token, applicationId),
+        getApplicationStatus(token, applicationId),
+        getApplicationReadiness(token, applicationId),
+      ]);
+
+      const job = await getJobById(token, applicationRecord.job_id);
+
+      setApplication(applicationRecord);
+      setStatus(statusRecord);
+      setReadiness(readinessRecord);
+
+      if (job) {
+        setJobTitle(job.title || 'Application');
+        setCompanyName(job.company_name || 'Unknown company');
+        setLocationLabel(job.location || 'Unknown location');
+        setWorkModeLabel(job.workplace_type || 'Unknown work mode');
+        setJobUrl(job.apply_url || null);
+      } else {
+        setJobTitle('Application');
+        setCompanyName('Unknown company');
+        setLocationLabel('Unknown location');
+        setWorkModeLabel('Unknown work mode');
+        setJobUrl(null);
+      }
+
+      const normalizedStatus = normalizeStatus(statusRecord.status);
+      if (normalizedStatus === 'failed' || statusRecord.failure_reason) {
+        setAutomationState('failure');
+      } else if (
+        ['running', 'queued', 'in_progress', 'inspecting', 'inspected', 'planning', 'planned', 'filling'].includes(normalizedStatus)
+      ) {
+        setAutomationState('running');
+      } else if (
+        normalizedStatus === 'filled'
+        || normalizedStatus === 'authorized'
+        || normalizedStatus === 'submitted'
+        || normalizedStatus === 'ready_to_submit'
+      ) {
+        setAutomationState('success');
+      } else {
+        setAutomationState('idle');
+      }
+    } catch (loadError) {
+      const message = loadError instanceof Error ? loadError.message : 'Failed to load application workspace.';
+      setError(message);
+    } finally {
+      setLoading(false);
+    }
+  }, [applicationId, token]);
+
+  useEffect(() => {
+    void loadWorkspace();
+  }, [loadWorkspace]);
+
+  const readinessItems = useMemo(() => {
+    if (!readiness || !status) return [];
+    return buildReadinessItems(readiness, status);
+  }, [readiness, status]);
+
+  const errorBlockers = readinessItems.filter((item) => item.severity === 'error');
+  const warningBlockers = readinessItems.filter((item) => item.severity === 'warning');
+  const infoBlockers = readinessItems.filter((item) => item.severity === 'info');
+
+  const normalizedStatus = normalizeStatus(status?.status);
+  const submitted = normalizedStatus === 'submitted';
+  const isFormFillingStage = normalizedStatus === 'filling';
+  const authorized = Boolean(status?.is_authorized_to_submit);
+  const hasBlockingReadiness = errorBlockers.length > 0;
+  const automationComplete = automationState === 'success';
+  const automationRunning = automationState === 'running' || automationState === 'queued';
+  const automationFailed = automationState === 'failure';
+
+  const automationNeedsReview = automationComplete && (
+    (status?.manual_review_required ?? false) ||
+    warningBlockers.length > 0 ||
+    infoBlockers.length > 0
+  );
+
+  const canRunAutomation = !loading && !hasBlockingReadiness && !automationRunning && !submitted;
+  const canAuthorize = automationComplete && !authorized && !submitted;
+  const canSubmit = automationComplete && authorized && !hasBlockingReadiness && !submitted;
+
+  const readinessVerdict: 'ready' | 'blocked' | 'needs review' = hasBlockingReadiness
+    ? 'blocked'
+    : warningBlockers.length > 0 || infoBlockers.length > 0
+      ? 'needs review'
+      : 'ready';
+
+  const workflowNextAction = submitted
+    ? 'Application submitted.'
+    : hasBlockingReadiness
+      ? 'Resolve readiness blockers first.'
+      : automationRunning
+        ? 'Wait for automation to finish.'
+        : !automationComplete
+          ? 'Run automation.'
+          : !authorized
+            ? 'Authorize submission.'
+            : 'Submit application.';
+
+  const handleRunAutomation = async () => {
+    if (!token || !applicationId) return;
+    setRunning(true);
+    setRunError(null);
+    setAutomationState('queued');
+
+    try {
+      const dispatch = await runApplicationPipeline(token, applicationId);
+      setRunTaskId(dispatch.task_id);
+      setAutomationState(dispatch.status === 'queued' ? 'queued' : 'running');
+      toast.success('Automation queued', {
+        description: 'The automation pipeline has been dispatched.',
+      });
+      await loadWorkspace();
+    } catch (runPipelineError) {
+      const message = runPipelineError instanceof Error ? runPipelineError.message : 'Automation dispatch failed.';
+      setRunError(message);
+      setAutomationState('failure');
+      toast.error('Automation failed', { description: message });
+    } finally {
+      setRunning(false);
+    }
   };
 
-  const handleRunAutomation = () => {
-    setAutomationStatus('running');
-    setTimeout(() => {
-      setAutomationStatus('complete');
-    }, 3000);
+  const handleAuthorize = async () => {
+    if (!token || !applicationId) return;
+    setAuthorizing(true);
+    try {
+      const updated = await authorizeApplication(token, applicationId);
+      setApplication(updated);
+      toast.success('Submission authorized', {
+        description: 'Authorization is separate from final submission.',
+      });
+      await loadWorkspace();
+    } catch (authorizeError) {
+      const message = authorizeError instanceof Error ? authorizeError.message : 'Failed to authorize submission.';
+      toast.error('Authorization failed', { description: message });
+    } finally {
+      setAuthorizing(false);
+    }
   };
 
-  const handleAuthorize = () => {
-    setAuthorized(true);
-  };
-
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
+    if (!token || !applicationId) return;
     setSubmitting(true);
-    setTimeout(() => {
+    try {
+      const updated = await submitApplication(token, applicationId);
+      setApplication(updated);
+      setConfirmSubmit(false);
+      toast.success('Application submitted', {
+        description: 'Submission has been completed successfully.',
+      });
+      await loadWorkspace();
+    } catch (submitError) {
+      const message = submitError instanceof Error ? submitError.message : 'Failed to submit application.';
+      toast.error('Submission failed', { description: message });
+    } finally {
       setSubmitting(false);
-      router.push('/applications');
-    }, 2000);
+    }
   };
 
-  const handleReviewManually = () => {
-    router.push('/applications/1/review');
-  };
+  if (loading) {
+    return (
+      <AppShell>
+        <div className="max-w-7xl mx-auto space-y-6 animate-pulse">
+          <div className="h-20 rounded-lg bg-muted" />
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="lg:col-span-2 h-96 rounded-lg bg-muted" />
+            <div className="h-96 rounded-lg bg-muted" />
+          </div>
+        </div>
+      </AppShell>
+    );
+  }
+
+  if (error || !application || !status || !readiness) {
+    return (
+      <AppShell>
+        <div className="max-w-4xl mx-auto space-y-4">
+          <Button variant="outline" onClick={() => router.push('/applications')}>
+            <ArrowLeft className="h-4 w-4" />
+            Back to Applications
+          </Button>
+          <Card className="border-destructive/30 bg-destructive/5">
+            <CardContent className="pt-6 space-y-4">
+              <p className="text-sm text-destructive">{error || 'Unable to load application workspace.'}</p>
+              <Button variant="outline" onClick={() => void loadWorkspace()}>
+                <RefreshCw className="h-4 w-4" />
+                Retry
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      </AppShell>
+    );
+  }
 
   return (
     <AppShell>
-      <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="mb-6">
-          <button onClick={handleBack} className="flex items-center gap-2 text-muted-foreground hover:text-foreground mb-4">
-            <ArrowLeft className="h-4 w-4" />
-            Back to Applications
-          </button>
-          <div className="flex items-start justify-between">
-            <div>
-              <h1 className="text-3xl font-semibold text-foreground">Senior Product Manager</h1>
-              <p className="mt-1 text-lg text-muted-foreground">TechCorp Inc.</p>
-            </div>
-            <Badge variant={isReadyForSubmission ? 'ready' : hasBlockers ? 'blocked' : 'in-progress'}>
-              {isReadyForSubmission ? 'Ready to Submit' : hasBlockers ? 'Blocked' : 'In Progress'}
-            </Badge>
+      <div className="max-w-7xl mx-auto space-y-6">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <button
+              onClick={() => router.push('/applications')}
+              className="mb-3 flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Back to Applications
+            </button>
+            <h1 className="text-3xl font-semibold text-foreground">{jobTitle}</h1>
+            <p className="text-lg text-muted-foreground mt-1">{companyName}</p>
           </div>
+          <Badge variant={submitted ? 'success' : hasBlockingReadiness ? 'blocked' : 'in-progress'} size="lg">
+            {submitted ? 'Submitted' : hasBlockingReadiness ? 'Blocked' : 'In Progress'}
+          </Badge>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Main Content */}
-          <div className="lg:col-span-2 space-y-6">
-            {/* Application Summary */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Application Details</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Position</span>
-                    <span className="font-medium text-foreground">Senior Product Manager</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Company</span>
-                    <span className="font-medium text-foreground">TechCorp Inc.</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Location</span>
-                    <span className="font-medium text-foreground">San Francisco, CA</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Work Mode</span>
-                    <span className="font-medium text-foreground">Hybrid</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Salary Range</span>
-                    <span className="font-medium text-foreground">$150k - $200k</span>
-                  </div>
-                  <div className="pt-3 border-t border-border">
-                    <a
-                      href="#"
-                      className="flex items-center gap-2 text-brand hover:underline"
-                    >
-                      View Job Posting
-                      <ExternalLink className="h-4 w-4" />
-                    </a>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 text-sm">
+              <p className="text-muted-foreground">
+                Application ID:
+                <span className="ml-2 text-foreground font-medium">{application.id}</span>
+              </p>
+              <p className="text-muted-foreground">
+                Location:
+                <span className="ml-2 text-foreground font-medium">{locationLabel}</span>
+              </p>
+              <p className="text-muted-foreground">
+                Work Mode:
+                <span className="ml-2 text-foreground font-medium">{workModeLabel}</span>
+              </p>
+              <p className="text-muted-foreground">
+                Last Updated:
+                <span className="ml-2 text-foreground font-medium">{new Date(application.updated_at).toLocaleString()}</span>
+              </p>
+              <p className="text-muted-foreground">
+                Lifecycle Status:
+                <span className="ml-2 text-foreground font-medium">{status.status}</span>
+              </p>
+              {jobUrl ? (
+                <a href={jobUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-brand hover:underline">
+                  View Job Posting
+                  <ExternalLink className="h-4 w-4" />
+                </a>
+              ) : (
+                <p className="text-muted-foreground">Job posting URL unavailable</p>
+              )}
+            </div>
+          </CardContent>
+        </Card>
 
-            {/* Readiness Blockers */}
-            {hasBlockers && (
-              <Card>
-                <CardHeader>
-                  <div className="flex items-center gap-2">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2 space-y-6">
+            <Card className={readinessVerdict === 'blocked' ? 'border-destructive/30' : readinessVerdict === 'needs review' ? 'border-warning/30' : 'border-success/30'}>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  {readinessVerdict === 'blocked' ? (
                     <AlertCircle className="h-5 w-5 text-destructive" />
-                    <CardTitle>Readiness Blockers</CardTitle>
-                  </div>
-                </CardHeader>
-                <CardContent>
+                  ) : readinessVerdict === 'needs review' ? (
+                    <AlertTriangle className="h-5 w-5 text-warning" />
+                  ) : (
+                    <CheckCircle className="h-5 w-5 text-success" />
+                  )}
+                  Readiness: {readinessVerdict}
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <p className="text-sm text-muted-foreground">{workflowNextAction}</p>
+
+                {readinessItems.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No blockers detected.</p>
+                ) : (
                   <div className="space-y-3">
-                    {mockBlockers.map((blocker) => (
+                    {readinessItems.map((item) => (
                       <div
-                        key={blocker.id}
-                        className={`flex items-start gap-3 p-3 rounded-lg border ${
-                          blocker.severity === 'error'
-                            ? 'bg-destructive/5 border-destructive/20'
-                            : 'bg-warning/5 border-warning/20'
+                        key={item.key}
+                        className={`rounded-lg border p-3 flex items-start justify-between gap-3 ${
+                          item.severity === 'error'
+                            ? 'border-destructive/30 bg-destructive/5'
+                            : item.severity === 'warning'
+                              ? 'border-warning/30 bg-warning/5'
+                              : 'border-info/30 bg-info/5'
                         }`}
                       >
-                        {blocker.severity === 'error' ? (
-                          <AlertCircle className="h-5 w-5 text-destructive flex-shrink-0" />
-                        ) : (
-                          <AlertTriangle className="h-5 w-5 text-warning flex-shrink-0" />
-                        )}
-                        <div className="flex-1">
-                          <p className="font-medium text-foreground">{blocker.field}</p>
-                          <p className="text-sm text-muted-foreground">{blocker.message}</p>
+                        <div>
+                          <p className="font-medium text-foreground">{item.title}</p>
+                          <p className="text-sm text-muted-foreground">{item.description}</p>
                         </div>
-                        <Button variant="outline" size="sm">
-                          Resolve
+                        <Button variant="outline" size="sm" onClick={() => router.push(item.ctaPath)}>
+                          {item.ctaLabel}
                         </Button>
                       </div>
                     ))}
                   </div>
-                  <div className="mt-4 pt-4 border-t border-border">
-                    <Button variant="primary" fullWidth onClick={handleReviewManually}>
-                      <FileText className="h-4 w-4" />
-                      Review All Fields
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Planned Answers */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Planned Answers ({mockAnswers.length})</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {mockAnswers.map((answer, index) => (
-                    <div key={index} className="border border-border rounded-lg p-4">
-                      <div className="flex items-start justify-between gap-4 mb-2">
-                        <p className="font-medium text-foreground">{answer.question}</p>
-                        <Badge variant="default" size="sm">
-                          {answer.source}
-                        </Badge>
-                      </div>
-                      <p className="text-sm text-muted-foreground line-clamp-2 mb-2">{answer.answer}</p>
-                      <div className="flex items-center gap-2">
-                        <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
-                          <div
-                            className="h-full bg-success"
-                            style={{ width: `${answer.confidence}%` }}
-                          />
-                        </div>
-                        <span className="text-xs text-muted-foreground">{answer.confidence}%</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                )}
               </CardContent>
             </Card>
+
           </div>
 
-          {/* Sidebar - Actions */}
-          <div className="space-y-6">
-            {/* Status Timeline */}
+          <div className="space-y-6 lg:sticky lg:top-20 h-fit">
             <Card>
               <CardHeader>
-                <CardTitle>Application Workflow</CardTitle>
+                <CardTitle>Workflow Timeline</CardTitle>
               </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {/* Step 1: Readiness */}
-                  <div className="flex items-start gap-3">
-                    {hasBlockers ? (
-                      <AlertCircle className="h-5 w-5 text-destructive flex-shrink-0 mt-0.5" />
-                    ) : (
-                      <CheckCircle className="h-5 w-5 text-success flex-shrink-0 mt-0.5" />
-                    )}
-                    <div className="flex-1">
-                      <p className="font-medium text-foreground">Readiness Check</p>
-                      <p className="text-sm text-muted-foreground">
-                        {hasBlockers ? `${mockBlockers.filter((b) => b.severity === 'error').length} blockers remaining` : 'All checks passed'}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Step 2: Automation */}
-                  <div className="flex items-start gap-3">
-                    {automationStatus === 'complete' ? (
-                      <CheckCircle className="h-5 w-5 text-success flex-shrink-0 mt-0.5" />
-                    ) : automationStatus === 'running' ? (
-                      <Clock className="h-5 w-5 text-in-progress flex-shrink-0 mt-0.5 animate-spin" />
-                    ) : automationStatus === 'failed' ? (
-                      <AlertCircle className="h-5 w-5 text-destructive flex-shrink-0 mt-0.5" />
-                    ) : (
-                      <Clock className="h-5 w-5 text-muted-foreground flex-shrink-0 mt-0.5" />
-                    )}
-                    <div className="flex-1">
-                      <p className="font-medium text-foreground">Run Automation</p>
-                      <p className="text-sm text-muted-foreground">
-                        {automationStatus === 'complete' ? 'Form filled successfully' :
-                         automationStatus === 'running' ? 'Filling application form...' :
-                         automationStatus === 'failed' ? 'Automation failed' :
-                         'Not started'}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Step 3: Authorization */}
-                  <div className="flex items-start gap-3">
-                    {authorized ? (
-                      <CheckCircle className="h-5 w-5 text-success flex-shrink-0 mt-0.5" />
-                    ) : (
-                      <Shield className="h-5 w-5 text-muted-foreground flex-shrink-0 mt-0.5" />
-                    )}
-                    <div className="flex-1">
-                      <p className="font-medium text-foreground">Authorize Submission</p>
-                      <p className="text-sm text-muted-foreground">
-                        {authorized ? 'Authorized' : 'Manual review required'}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Step 4: Submit */}
-                  <div className="flex items-start gap-3">
-                    <Send className="h-5 w-5 text-muted-foreground flex-shrink-0 mt-0.5" />
-                    <div className="flex-1">
-                      <p className="font-medium text-foreground">Submit Application</p>
-                      <p className="text-sm text-muted-foreground">Final step</p>
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Action Buttons */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Actions</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <Button
-                  variant="primary"
-                  fullWidth
-                  onClick={handleRunAutomation}
-                  disabled={!isReadyForAutomation || automationStatus === 'running' || automationStatus === 'complete'}
-                  loading={automationStatus === 'running'}
-                >
-                  <Play className="h-4 w-4" />
-                  {automationStatus === 'complete' ? 'Automation Complete' : 'Run Automation'}
-                </Button>
-
-                {automationStatus === 'complete' && !authorized && (
-                  <div className="p-4 rounded-lg bg-warning/10 border border-warning/20">
-                    <div className="flex items-start gap-2 mb-3">
-                      <Shield className="h-5 w-5 text-warning flex-shrink-0" />
-                      <div>
-                        <p className="text-sm font-medium text-foreground">Authorization Required</p>
-                        <p className="text-xs text-muted-foreground mt-1">
-                          Review the filled application and authorize submission
-                        </p>
-                      </div>
-                    </div>
-                    <Button variant="primary" fullWidth onClick={handleAuthorize}>
-                      <Shield className="h-4 w-4" />
-                      I Authorize Submission
-                    </Button>
-                  </div>
-                )}
-
-                {authorized && (
-                  <div className="p-4 rounded-lg bg-success/10 border border-success/20">
-                    <div className="flex items-center gap-2 mb-3">
-                      <CheckCircle className="h-5 w-5 text-success" />
-                      <p className="text-sm font-medium text-foreground">Ready to Submit</p>
-                    </div>
-                    <Button variant="primary" fullWidth onClick={handleSubmit} loading={submitting}>
-                      <Send className="h-4 w-4" />
-                      Submit Application
-                    </Button>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* Fit Score */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Fit Score</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <ScoreIndicator score={fitScore} recommendation={fitRecommendation} />
-                {skillsGapSummary && (
-                  <p className="text-xs text-muted-foreground">{skillsGapSummary}</p>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* Safety Notice */}
-            <Card variant="outlined" className="bg-brand/5 border-brand/20">
-              <CardContent className="pt-6">
-                <div className="flex gap-3">
-                  <Shield className="h-5 w-5 text-brand flex-shrink-0" />
+              <CardContent className="space-y-4">
+                <div className="flex items-start gap-3">
+                  {hasBlockingReadiness ? (
+                    <AlertCircle className="h-5 w-5 text-destructive mt-0.5" />
+                  ) : (
+                    <CheckCircle className="h-5 w-5 text-success mt-0.5" />
+                  )}
                   <div>
-                    <p className="text-sm font-medium text-foreground mb-1">You're in control</p>
-                    <p className="text-xs text-muted-foreground">
-                      Artemis never submits applications without your explicit authorization.
-                      Review everything before you approve.
+                    <p className="font-medium text-foreground">Readiness</p>
+                    <p className="text-sm text-muted-foreground">
+                      {hasBlockingReadiness ? 'Blocked by missing prerequisites.' : 'Ready for automation.'}
                     </p>
                   </div>
                 </div>
+
+                <div className="flex items-start gap-3">
+                  {automationRunning ? (
+                    <Clock className="h-5 w-5 text-info mt-0.5 animate-spin" />
+                  ) : automationFailed ? (
+                    <AlertCircle className="h-5 w-5 text-destructive mt-0.5" />
+                  ) : automationNeedsReview ? (
+                    <AlertTriangle className="h-5 w-5 text-warning mt-0.5" />
+                  ) : automationComplete ? (
+                    <CheckCircle className="h-5 w-5 text-success mt-0.5" />
+                  ) : (
+                    <Clock className="h-5 w-5 text-muted-foreground mt-0.5" />
+                  )}
+                  <div>
+                    <p className="font-medium text-foreground">Automation</p>
+                    <p className="text-sm text-muted-foreground">
+                      {automationRunning
+                        ? `Queued/running${runTaskId ? ` - task ${runTaskId}` : ''}`
+                        : automationFailed
+                          ? `Failed${status.failure_reason ? ` - ${status.failure_reason}` : ''}`
+                          : automationNeedsReview
+                            ? 'Completed — needs review'
+                            : automationComplete
+                              ? 'Completed'
+                              : 'Not started'}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-3">
+                  {authorized ? (
+                    <CheckCircle className="h-5 w-5 text-success mt-0.5" />
+                  ) : (
+                    <Shield className="h-5 w-5 text-muted-foreground mt-0.5" />
+                  )}
+                  <div>
+                    <p className="font-medium text-foreground">Authorization</p>
+                    <p className="text-sm text-muted-foreground">
+                      {authorized ? 'Authorized for final submission.' : 'Manual authorization required.'}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-3">
+                  {submitted ? (
+                    <CheckCircle className="h-5 w-5 text-success mt-0.5" />
+                  ) : canSubmit ? (
+                    <Clock className="h-5 w-5 text-info mt-0.5" />
+                  ) : (
+                    <Send className="h-5 w-5 text-muted-foreground mt-0.5" />
+                  )}
+                  <div>
+                    <p className="font-medium text-foreground">Submission</p>
+                    <p className="text-sm text-muted-foreground">
+                      {submitted ? 'Submitted.' : canSubmit ? 'Ready to submit.' : 'Blocked until prerequisites are met.'}
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Run Automation</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <p className="text-xs text-muted-foreground">Runs form-fill automation only. This does not authorize or submit.</p>
+                {automationRunning ? (
+                  <div className="rounded-lg border border-info/30 bg-info/5 px-3 py-2">
+                    <p className="text-xs text-info inline-flex items-center gap-2">
+                      <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                      {isFormFillingStage
+                        ? 'Automation is actively filling the external form right now.'
+                        : 'Automation is in progress. Please wait for completion before running again.'}
+                    </p>
+                  </div>
+                ) : null}
+                <Button
+                  variant="primary"
+                  fullWidth
+                  disabled={!canRunAutomation || running}
+                  loading={running}
+                  onClick={handleRunAutomation}
+                >
+                  {automationRunning ? (
+                    <RefreshCw className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Play className="h-4 w-4" />
+                  )}
+                  {automationRunning
+                    ? (isFormFillingStage ? 'Filling Form...' : 'Automation Running...')
+                    : (automationComplete ? 'Run Again' : 'Run Automation')}
+                </Button>
+                {runError ? <p className="text-xs text-destructive">{runError}</p> : null}
+              </CardContent>
+            </Card>
+
+            <Card className="border-warning/30 bg-warning/5">
+              <CardHeader>
+                <CardTitle>Authorization</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <p className="text-xs text-muted-foreground">Authorization confirms you reviewed the automation output. It is not submission.</p>
+                <Button
+                  variant="outline"
+                  fullWidth
+                  disabled={!canAuthorize || authorizing}
+                  loading={authorizing}
+                  onClick={handleAuthorize}
+                >
+                  <Shield className="h-4 w-4" />
+                  {authorized ? 'Already Authorized' : 'Authorize Submission'}
+                </Button>
+              </CardContent>
+            </Card>
+
+            <Card className="border-brand/30 bg-brand/5">
+              <CardHeader>
+                <CardTitle>Final Submission</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <p className="text-xs text-muted-foreground">Final and user-controlled step. Artemis will not submit without your explicit action.</p>
+                {!confirmSubmit ? (
+                  <Button
+                    variant="primary"
+                    fullWidth
+                    disabled={!canSubmit || submitting}
+                    onClick={() => setConfirmSubmit(true)}
+                  >
+                    <Send className="h-4 w-4" />
+                    Submit Application
+                  </Button>
+                ) : (
+                  <div className="space-y-2">
+                    <p className="text-xs text-muted-foreground">Confirm submission to the external apply flow.</p>
+                    <Button variant="primary" fullWidth loading={submitting} onClick={handleSubmit}>
+                      Confirm Submit
+                    </Button>
+                    <Button variant="outline" fullWidth onClick={() => setConfirmSubmit(false)}>
+                      Cancel
+                    </Button>
+                  </div>
+                )}
+                {!canSubmit && !submitted ? (
+                  <p className="text-xs text-muted-foreground">Submission is disabled until readiness, automation, and authorization are complete.</p>
+                ) : null}
               </CardContent>
             </Card>
           </div>

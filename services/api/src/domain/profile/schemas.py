@@ -37,6 +37,8 @@ class CandidateProfileUpsertRequest(BaseModel):
     auto_submit: bool | None = None
 
     current_company: str | None = None
+    work_authorization: str | None = None
+    visa_sponsorship: str | None = None
 
     preferred_relocation_cities: list[str] | None = None
     work_arrangement: list[str] | None = None
@@ -81,6 +83,8 @@ class CandidateProfileResponse(BaseModel):
     auto_submit: bool = False
 
     current_company: str | None = None
+    work_authorization: str | None = None
+    visa_sponsorship: str | None = None
 
     preferred_relocation_cities: list[str] | None = None
     work_arrangement: list[str] | None = None

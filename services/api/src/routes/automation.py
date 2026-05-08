@@ -14,12 +14,13 @@ from src.domain.automation.schemas import (
 )
 from src.domain.automation.service import AutomationService
 from src.infrastructure.db.session import get_db
+from src.integrations.automation.page_inspector import ApplicationPageInspector
 
 router = APIRouter(prefix="/automation", tags=["automation"])
 
 
 def _build_service(db: Session) -> AutomationService:
-    return AutomationService()
+    return AutomationService(page_inspector=ApplicationPageInspector())
 
 
 @router.post("/inspect", response_model=ApplicationPageIntakeResult)

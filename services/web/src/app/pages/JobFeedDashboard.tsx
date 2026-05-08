@@ -15,6 +15,7 @@ import {
   Loader2,
   Link,
   Plus,
+  Zap,
 } from 'lucide-react';
 import {
   getJobFeed,
@@ -24,6 +25,10 @@ import {
   type JobFeedSortOrder,
   type JobItem,
 } from '../../services/jobs/job-feed.service';
+import {
+  createApplication,
+  runApplicationPipeline,
+} from '../../services/applications/application-workspace.service';
 import { getStoredAccessToken } from '../../services/auth/auth.service';
 
 export const JobFeedDashboard: React.FC = () => {
@@ -45,10 +50,13 @@ export const JobFeedDashboard: React.FC = () => {
   const [keywordFilter, setKeywordFilter] = useState('');
   const [locationFilter, setLocationFilter] = useState('All Locations');
   const [workModeFilter, setWorkModeFilter] = useState('All Work Modes');
+  const [platformFilter, setPlatformFilter] = useState<Set<string>>(new Set());
   const [sortOrder, setSortOrder] = useState<JobFeedSortOrder>('newest');
   const [isKeywordSearchActive, setIsKeywordSearchActive] = useState(false);
 
   const [jobStatuses, setJobStatuses] = useState<Record<string, 'saved' | 'dismissed'>>({});
+  const [applyingJobId, setApplyingJobId] = useState<string | null>(null);
+  const [applyError, setApplyError] = useState<string | null>(null);
 
   const token = getStoredAccessToken();
 
@@ -71,7 +79,8 @@ export const JobFeedDashboard: React.FC = () => {
     setScanError(null);
 
     try {
-      const page = await getJobFeed(token, pageSkip, itemsPerPage, query, sort);
+      const activeSources = platformFilter.size > 0 ? Array.from(platformFilter) : undefined;
+      const page = await getJobFeed(token, pageSkip, itemsPerPage, query, sort, activeSources);
       hydratePageState(page, pageSkip);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to load job feed.';
@@ -85,7 +94,7 @@ export const JobFeedDashboard: React.FC = () => {
     const activeQuery = keywordFilter.trim() ? keywordFilter.trim() : undefined;
     void loadFeed(0, activeQuery, sortOrder);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [itemsPerPage, sortOrder]);
+  }, [itemsPerPage, sortOrder, platformFilter]);
 
   // Debounced keyword search
   useEffect(() => {
@@ -176,6 +185,26 @@ export const JobFeedDashboard: React.FC = () => {
     }
   };
 
+  const handleAutoApply = async (jobId: string) => {
+    if (!token) {
+      setApplyError('Please sign in to apply.');
+      return;
+    }
+
+    setApplyingJobId(jobId);
+    setApplyError(null);
+
+    try {
+      const application = await createApplication(token, { job_id: jobId });
+      await runApplicationPipeline(token, application.id);
+      router.push(`/applications/${application.id}`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to start application.';
+      setApplyError(message);
+      setApplyingJobId(null);
+    }
+  };
+
   const handleKeywordSearch = async () => {
     if (!token) {
       return;
@@ -186,7 +215,8 @@ export const JobFeedDashboard: React.FC = () => {
 
     try {
       setIsKeywordSearchActive(true);
-      const page = await getJobFeed(token, 0, itemsPerPage, keywordFilter.trim(), sortOrder);
+      const activeSources = platformFilter.size > 0 ? Array.from(platformFilter) : undefined;
+      const page = await getJobFeed(token, 0, itemsPerPage, keywordFilter.trim(), sortOrder, activeSources);
       hydratePageState(page, 0);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Search failed.';
@@ -206,7 +236,8 @@ export const JobFeedDashboard: React.FC = () => {
     if (isKeywordSearchActive) {
       setLoadingFeed(true);
       try {
-        const page = await getJobFeed(token, nextSkip, itemsPerPage, keywordFilter.trim(), sortOrder);
+        const activeSources = platformFilter.size > 0 ? Array.from(platformFilter) : undefined;
+        const page = await getJobFeed(token, nextSkip, itemsPerPage, keywordFilter.trim(), sortOrder, activeSources);
         hydratePageState(page, nextSkip);
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Pagination failed.';
@@ -217,6 +248,18 @@ export const JobFeedDashboard: React.FC = () => {
     } else {
       await loadFeed(nextSkip, undefined, sortOrder);
     }
+  };
+
+  const togglePlatform = (platform: string) => {
+    setPlatformFilter((prev) => {
+      const next = new Set(prev);
+      if (next.has(platform)) {
+        next.delete(platform);
+      } else {
+        next.add(platform);
+      }
+      return next;
+    });
   };
 
   const visibleJobs = useMemo(() => {
@@ -243,7 +286,7 @@ export const JobFeedDashboard: React.FC = () => {
   };
 
   const handleGoToPreferences = () => {
-    router.push('/preferences');
+    router.push('/account');
   };
 
   return (
@@ -274,10 +317,12 @@ export const JobFeedDashboard: React.FC = () => {
           {scanMessage && <p className="mt-2 text-sm text-brand">{scanMessage}</p>}
           {scanError && <p className="mt-2 text-sm text-destructive">{scanError}</p>}
           {statusTransitionError && <p className="mt-2 text-sm text-destructive">{statusTransitionError}</p>}
+          {applyError && <p className="mt-2 text-sm text-destructive">{applyError}</p>}
         </div>
 
         {/* Filters */}
         <Card padding="sm" variant="outlined" className="mb-6">
+          <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center">
             <div className="flex-1 flex items-center gap-2 px-3 py-2 rounded-lg bg-input-background border border-border">
               <Search className="h-5 w-5 text-muted-foreground" />
@@ -329,6 +374,30 @@ export const JobFeedDashboard: React.FC = () => {
               <option value={20}>20 per page</option>
               <option value={50}>50 per page</option>
             </select>
+          </div>
+          {/* Platform filter */}
+          <div className="flex items-center gap-6 pt-2 border-t border-border">
+            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Platform</span>
+            {(['greenhouse', 'lever', 'ashby'] as const).map((platform) => (
+              <label key={platform} className="flex items-center gap-2 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={platformFilter.has(platform)}
+                  onChange={() => togglePlatform(platform)}
+                  className="h-4 w-4 rounded border-border accent-brand cursor-pointer"
+                />
+                <span className="text-sm text-foreground capitalize">{platform}</span>
+              </label>
+            ))}
+            {platformFilter.size > 0 && (
+              <button
+                onClick={() => setPlatformFilter(new Set())}
+                className="ml-auto text-xs text-muted-foreground hover:text-foreground"
+              >
+                Clear
+              </button>
+            )}
+          </div>
           </div>
         </Card>
 
@@ -402,9 +471,19 @@ export const JobFeedDashboard: React.FC = () => {
                   <Button
                     variant="primary"
                     size="sm"
+                    onClick={() => void handleAutoApply(job.id)}
+                    loading={applyingJobId === job.id}
+                    disabled={!!applyingJobId}
+                  >
+                    <Zap className="h-4 w-4" />
+                    Auto-Apply
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
                     onClick={() => void handleSaveJob(job.id)}
                     loading={jobUpdatingId === job.id && jobStatuses[job.id] !== 'dismissed'}
-                    disabled={jobStatuses[job.id] === 'saved'}
+                    disabled={jobStatuses[job.id] === 'saved' || !!applyingJobId}
                   >
                     <Heart className="h-4 w-4" />
                     {jobStatuses[job.id] === 'saved' ? 'Saved' : 'Save'}
@@ -414,6 +493,7 @@ export const JobFeedDashboard: React.FC = () => {
                     size="sm"
                     onClick={() => void handleDismissJob(job.id)}
                     loading={jobUpdatingId === job.id && jobStatuses[job.id] !== 'saved'}
+                    disabled={!!applyingJobId}
                   >
                     <X className="h-4 w-4" />
                     Dismiss
