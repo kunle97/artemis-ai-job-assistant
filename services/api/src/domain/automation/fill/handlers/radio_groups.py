@@ -74,10 +74,13 @@ def _find_best_radio_option(options: list[dict], target_value: str) -> tuple[dic
     for i, option in enumerate(options):
         label = option.get("label") or ""
         value = option.get("value") or ""
-        score = max(
-            score_choice_match(target_value, label),
-            score_choice_match(target_value, value),
-        )
+        # Label is the user-visible text and the only reliable discriminator
+        # on platforms where all options share the same value attribute (e.g.
+        # Ashby radios with value="on"). Score by label first; fall back to
+        # value only when the label field is absent or empty.
+        label_score = score_choice_match(target_value, label)
+        value_score = score_choice_match(target_value, value) if not label else 0
+        score = label_score if label_score > 0 else value_score
 
         if score > best_score:
             best_score = score
@@ -147,25 +150,10 @@ def _click_radio_option(
     option_value: str | None,
     option_index: int = -1,
 ) -> bool:
-    if name and option_index >= 0:
-        try:
-            radio = page.locator(f'input[type="radio"][name="{name}"]').nth(option_index)
-            if _activate_radio(page, radio):
-                return True
-        except Exception:
-            pass
-
-    # Strategy 2: unique value-based selector (works for non-Ashby platforms
-    # where each option has a distinct value attribute).
-    if name and option_value:
-        try:
-            group = page.locator(f'input[type="radio"][name="{name}"][value="{option_value}"]')
-            if group.count() == 1 and _activate_radio(page, group.first):
-                return True
-        except Exception:
-            pass
-
-    # Strategy 3: match by label text within the named radio group.
+    # Strategy 1: scan each radio in the named group, match by label text.
+    # This is the most reliable strategy on platforms (e.g. Ashby) where all
+    # radio inputs share the same value attribute, making value-based selectors
+    # useless. We look up the DOM label for each radio and compare its text.
     if name and option_label:
         try:
             radios = page.locator(f'input[type="radio"][name="{name}"]')
@@ -181,6 +169,26 @@ def _click_radio_option(
                 text = (label_locator.first.inner_text() or "").strip().lower()
                 if text == option_label.strip().lower() and _activate_radio(page, radio):
                     return True
+        except Exception:
+            pass
+
+    # Strategy 2: nth by index within the named group — reliable when DOM order
+    # matches the options list order, used as a fallback after label matching.
+    if name and option_index >= 0:
+        try:
+            radio = page.locator(f'input[type="radio"][name="{name}"]').nth(option_index)
+            if _activate_radio(page, radio):
+                return True
+        except Exception:
+            pass
+
+    # Strategy 3: unique value-based selector (works for non-Ashby platforms
+    # where each option has a distinct value attribute).
+    if name and option_value:
+        try:
+            group = page.locator(f'input[type="radio"][name="{name}"][value="{option_value}"]')
+            if group.count() == 1 and _activate_radio(page, group.first):
+                return True
         except Exception:
             pass
 
