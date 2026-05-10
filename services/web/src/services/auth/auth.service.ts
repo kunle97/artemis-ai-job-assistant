@@ -213,5 +213,5 @@ export function clearStoredTokens(): void {
 export function redirectToLandingOnSessionExpired(): void {
   if (typeof window === 'undefined') return;
   clearStoredTokens();
-  window.location.replace('/');
+  window.location.replace('/sign-in?reason=session-expired');
 }

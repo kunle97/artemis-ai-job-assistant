@@ -11,6 +11,11 @@ class ApplicationPageIntakeRequest(BaseModel):
     application_url: str
 
 
+class ApplicationFieldOption(BaseModel):
+    label: str | None = None
+    value: str | None = None
+
+
 class ApplicationFieldInventoryItem(BaseModel):
     field_type: str
     input_subtype: str | None = None
@@ -18,6 +23,7 @@ class ApplicationFieldInventoryItem(BaseModel):
     name: str | None = None
     placeholder: str | None = None
     required: bool = False
+    options: list[ApplicationFieldOption] = Field(default_factory=list)
 
 
 class ApplicationPageIntakeResult(BaseModel):

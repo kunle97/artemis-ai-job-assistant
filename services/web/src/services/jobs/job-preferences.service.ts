@@ -37,7 +37,7 @@ export async function getJobPreferences(token: string): Promise<JobPreferences> 
       const status = error.response?.status;
       if (status === 401) {
         redirectToLandingOnSessionExpired();
-        throw new Error('Session expired. Redirecting to home.');
+        throw new Error('Session expired. Redirecting to sign in.');
       }
       if (status) {
         throw new Error(`Failed to load job preferences with status ${status}.`);
@@ -62,7 +62,7 @@ export async function updateJobPreferences(
       const detail = error.response?.data?.detail?.trim();
       if (status === 401) {
         redirectToLandingOnSessionExpired();
-        throw new Error('Session expired. Redirecting to home.');
+        throw new Error('Session expired. Redirecting to sign in.');
       }
       if (status) {
         throw new Error(detail || `Failed to save job preferences with status ${status}.`);

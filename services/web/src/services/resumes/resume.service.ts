@@ -81,7 +81,7 @@ export async function getResumes(token: string): Promise<ResumeRead[]> {
 
       if (status === 401) {
         redirectToLandingOnSessionExpired();
-        throw new Error('Session expired. Redirecting to home.');
+        throw new Error('Session expired. Redirecting to sign in.');
       }
 
       if (status) {
@@ -113,7 +113,7 @@ export async function uploadResume(file: File, token: string): Promise<ResumeUpl
 
       if (status === 401) {
         redirectToLandingOnSessionExpired();
-        throw new Error('Session expired. Redirecting to home.');
+        throw new Error('Session expired. Redirecting to sign in.');
       }
 
       if (status === 400) {
@@ -143,7 +143,7 @@ export async function deleteResume(resumeId: string, token: string): Promise<voi
 
       if (status === 401) {
         redirectToLandingOnSessionExpired();
-        throw new Error('Session expired. Redirecting to home.');
+        throw new Error('Session expired. Redirecting to sign in.');
       }
 
       if (status === 404) {

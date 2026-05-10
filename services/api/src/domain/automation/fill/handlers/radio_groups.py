@@ -26,6 +26,10 @@ def fill_radio_group(page, field: dict, value: str | None) -> AutomationFillFiel
 
     best_option, best_index = _find_best_radio_option(options, value)
     if not best_option:
+        best_option = _fallback_binary_option(value)
+        best_index = -1
+
+    if not best_option:
         return _result(
             label=label,
             name=name,
@@ -46,6 +50,7 @@ def fill_radio_group(page, field: dict, value: str | None) -> AutomationFillFiel
     else:
         clicked = _click_radio_option(
             page=page,
+            field_label=label,
             name=name,
             option_label=option_label,
             option_value=option_value,
@@ -83,6 +88,15 @@ def _find_best_radio_option(options: list[dict], target_value: str) -> tuple[dic
         return None, -1
 
     return best_option, best_index
+
+
+def _fallback_binary_option(target_value: str) -> dict | None:
+    normalized = (target_value or "").strip().lower()
+    if normalized in {"yes", "y", "true"}:
+        return {"label": "Yes", "value": "yes"}
+    if normalized in {"no", "n", "false"}:
+        return {"label": "No", "value": "no"}
+    return None
 
 
 def _click_pill_option(page, *, field_label: str | None, option_label: str | None) -> bool:
@@ -127,6 +141,7 @@ def _click_pill_option(page, *, field_label: str | None, option_label: str | Non
 def _click_radio_option(
     page,
     *,
+    field_label: str | None,
     name: str | None,
     option_label: str | None,
     option_value: str | None,
@@ -135,18 +150,8 @@ def _click_radio_option(
     if name and option_index >= 0:
         try:
             radio = page.locator(f'input[type="radio"][name="{name}"]').nth(option_index)
-            # Ashby hides the real <input> and styles its <label> as the visual
-            # control. We must click the label to trigger their JS handlers.
-            radio_id = radio.get_attribute("id")
-            if radio_id:
-                lbl = page.locator(f'label[for="{radio_id}"]')
-                if lbl.count() > 0:
-                    lbl.scroll_into_view_if_needed()
-                    lbl.click()
-                    return True
-            # Fallback: dispatch a synthetic click directly on the input.
-            radio.dispatch_event("click")
-            return True
+            if _activate_radio(page, radio):
+                return True
         except Exception:
             pass
 
@@ -155,19 +160,46 @@ def _click_radio_option(
     if name and option_value:
         try:
             group = page.locator(f'input[type="radio"][name="{name}"][value="{option_value}"]')
-            if group.count() == 1:
-                radio_id = group.first.get_attribute("id")
-                if radio_id:
-                    lbl = page.locator(f'label[for="{radio_id}"]')
-                    if lbl.count() > 0:
-                        lbl.click()
-                        return True
-                group.first.dispatch_event("click")
+            if group.count() == 1 and _activate_radio(page, group.first):
                 return True
         except Exception:
             pass
 
-    # Strategy 3: page-wide label fallback — used when name is absent.
+    # Strategy 3: match by label text within the named radio group.
+    if name and option_label:
+        try:
+            radios = page.locator(f'input[type="radio"][name="{name}"]')
+            count = min(radios.count(), 8)
+            for index in range(count):
+                radio = radios.nth(index)
+                radio_id = radio.get_attribute("id")
+                if not radio_id:
+                    continue
+                label_locator = page.locator(f'label[for="{radio_id}"]')
+                if label_locator.count() == 0:
+                    continue
+                text = (label_locator.first.inner_text() or "").strip().lower()
+                if text == option_label.strip().lower() and _activate_radio(page, radio):
+                    return True
+        except Exception:
+            pass
+
+    # Strategy 4: scope by the question label text and click the matching option.
+    if field_label and option_label:
+        try:
+            scoped = page.locator(
+                f'div:has-text("{field_label}"):has(label:text-is("{option_label}"))'
+            ).last
+            if scoped.count() > 0:
+                target_label = scoped.locator(f'label:text-is("{option_label}")').first
+                if target_label.count() > 0:
+                    target_label.scroll_into_view_if_needed()
+                    target_label.click()
+                    return True
+        except Exception:
+            pass
+
+    # Strategy 5: page-wide label fallback — used when name is absent.
     if option_label:
         try:
             locator = page.get_by_label(option_label, exact=False).first
@@ -184,6 +216,44 @@ def _click_radio_option(
                 return True
         except Exception:
             pass
+
+    return False
+
+
+def _activate_radio(page, radio) -> bool:
+    try:
+        radio_id = radio.get_attribute("id")
+        if radio_id:
+            lbl = page.locator(f'label[for="{radio_id}"]')
+            if lbl.count() > 0:
+                lbl.scroll_into_view_if_needed()
+                lbl.click()
+                return True
+    except Exception:
+        pass
+
+    try:
+        parent_label = radio.locator('xpath=ancestor::label[1]').first
+        if parent_label.count() > 0:
+            parent_label.scroll_into_view_if_needed()
+            parent_label.click()
+            return True
+    except Exception:
+        pass
+
+    try:
+        radio.check(force=True)
+        return True
+    except Exception:
+        pass
+
+    try:
+        radio.dispatch_event("click")
+        radio.dispatch_event("input")
+        radio.dispatch_event("change")
+        return True
+    except Exception:
+        pass
 
     return False
 

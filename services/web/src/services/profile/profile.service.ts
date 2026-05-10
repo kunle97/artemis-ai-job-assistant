@@ -103,7 +103,7 @@ export async function getProfile(accessToken: string): Promise<CandidateProfile>
       const detail = error.response?.data?.detail?.trim();
       if (status === 401) {
         redirectToLandingOnSessionExpired();
-        throw new Error('Session expired. Redirecting to home.');
+        throw new Error('Session expired. Redirecting to sign in.');
       }
       if (status) throw new Error(detail || `Failed to load profile (status ${status}).`);
     }
@@ -126,7 +126,7 @@ export async function updateProfile(
       const detail = error.response?.data?.detail?.trim();
       if (status === 401) {
         redirectToLandingOnSessionExpired();
-        throw new Error('Session expired. Redirecting to home.');
+        throw new Error('Session expired. Redirecting to sign in.');
       }
       if (status === 422) throw new Error('Some fields have invalid values. Please review and try again.');
       if (status) throw new Error(detail || `Failed to save profile (status ${status}).`);

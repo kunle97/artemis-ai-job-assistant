@@ -123,7 +123,7 @@ function parseApiError(error: unknown, fallback: string): never {
     const detail = error.response?.data?.detail?.trim();
     if (status === 401) {
       redirectToLandingOnSessionExpired();
-      throw new Error('Session expired. Redirecting to home.');
+      throw new Error('Session expired. Redirecting to sign in.');
     }
     if (status) {
       throw new Error(detail || fallback.replace('{status}', String(status)));
