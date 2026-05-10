@@ -29,9 +29,9 @@ interface ReviewField {
   saved: boolean;
 }
 
-function toReviewField(item: AutomationPlannedFieldRecord): ReviewField {
+function toReviewField(item: AutomationPlannedFieldRecord, index: number): ReviewField {
   const questionText = item.label?.trim() || item.name?.trim() || item.placeholder?.trim() || 'Application field';
-  const stableFieldKey = [item.classified_role, item.name, item.label, item.placeholder]
+  const stableFieldKey = [item.classified_role, item.name, item.label, item.placeholder, String(index)]
     .filter((part): part is string => Boolean(part && part.trim().length > 0))
     .join('|') || 'application-field';
   return {
@@ -117,7 +117,7 @@ export const ManualReviewPanel: React.FC = () => {
       });
 
       const reviewItems = plan.fields.filter(shouldIncludeField);
-      setFields(reviewItems.map(toReviewField));
+      setFields(reviewItems.map((item, index) => toReviewField(item, index)));
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to load review data.';
       setError(message);

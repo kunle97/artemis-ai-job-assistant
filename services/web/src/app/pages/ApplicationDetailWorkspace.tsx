@@ -57,6 +57,9 @@ interface AutofillPreviewItem {
   resolvedValue: string;
   source: string;
   needsReview: boolean;
+  fieldType: string;
+  inputSubtype: string | null;
+  options: string[];
 }
 
 const AUTOFILL_PREVIEW_CACHE_PREFIX = 'autofill-preview-cache';
@@ -64,6 +67,41 @@ const AUTOFILL_PREVIEW_CACHE_PREFIX = 'autofill-preview-cache';
 interface AutofillPreviewCacheEntry {
   applicationUpdatedAt: string;
   items: AutofillPreviewItem[];
+}
+
+function extractOptionValues(rawOptions: Array<Record<string, unknown>>): string[] {
+  const values = rawOptions
+    .map((option) => {
+      const value = option.value ?? option.label ?? option.text ?? option.name;
+      return typeof value === 'string' ? value.trim() : '';
+    })
+    .filter((value) => value.length > 0);
+
+  return Array.from(new Set(values));
+}
+
+function isBinaryYesNoField(item: AutofillPreviewItem): boolean {
+  const optionList = Array.isArray(item.options) ? item.options : [];
+  const normalizedOptions = optionList.map((option) => option.trim().toLowerCase());
+  const hasYes = normalizedOptions.includes('yes');
+  const hasNo = normalizedOptions.includes('no');
+  if (hasYes && hasNo) return true;
+
+  if (item.fieldType === 'radio_group' && optionList.length === 0) {
+    return true;
+  }
+
+  if (['work_authorization', 'relocation', 'consent_question', 'compliance_question'].includes(item.source)) {
+    return true;
+  }
+
+  const loweredQuestion = item.questionText.trim().toLowerCase();
+  return (
+    loweredQuestion.startsWith('are you')
+    || loweredQuestion.startsWith('do you')
+    || loweredQuestion.startsWith('will you')
+    || loweredQuestion.startsWith('can you')
+  );
 }
 
 function normalizeStatus(status: string | undefined): string {
@@ -165,7 +203,16 @@ export const ApplicationDetailWorkspace: React.FC = () => {
       try {
         const parsed = JSON.parse(raw) as AutofillPreviewCacheEntry;
         if (parsed.applicationUpdatedAt !== applicationUpdatedAt) return null;
-        return parsed.items || [];
+        return (parsed.items || []).map((item) => ({
+          key: item.key,
+          questionText: item.questionText,
+          resolvedValue: item.resolvedValue || '',
+          source: item.source || 'unknown',
+          needsReview: Boolean(item.needsReview),
+          fieldType: item.fieldType || 'input',
+          inputSubtype: item.inputSubtype ?? null,
+          options: Array.isArray(item.options) ? item.options : [],
+        }));
       } catch {
         return null;
       }
@@ -188,8 +235,7 @@ export const ApplicationDetailWorkspace: React.FC = () => {
   const buildAutofillPreviewItems = (fields: AutomationPlannedFieldRecord[]): AutofillPreviewItem[] => {
     const previewableFields = fields.filter((field) => {
       const role = (field.classified_role || '').trim().toLowerCase();
-      if (!field.resolved_value) return false;
-      if (['ignore', 'submit_action', 'resume_upload', 'cover_letter_upload'].includes(role)) return false;
+      if (['ignore', 'submit_action'].includes(role)) return false;
       return true;
     });
 
@@ -198,9 +244,12 @@ export const ApplicationDetailWorkspace: React.FC = () => {
         .filter((part): part is string => Boolean(part && part.trim().length > 0))
         .join('|'),
       questionText: field.label?.trim() || field.name?.trim() || field.placeholder?.trim() || 'Application field',
-      resolvedValue: String(field.resolved_value),
+      resolvedValue: field.resolved_value ? String(field.resolved_value) : '',
       source: field.classified_role,
       needsReview: field.needs_review,
+      fieldType: field.field_type,
+      inputSubtype: field.input_subtype,
+      options: extractOptionValues(field.options || []),
     }));
   };
 
@@ -634,12 +683,81 @@ export const ApplicationDetailWorkspace: React.FC = () => {
                         </div>
                         {editingFieldKey === item.key ? (
                           <div className="mt-2 space-y-2">
-                            <textarea
-                              value={editingValue}
-                              onChange={(event) => setEditingValue(event.target.value)}
-                              rows={4}
-                              className="w-full px-3 py-2 rounded-lg border border-border bg-input-background focus:ring-2 focus:ring-brand focus:border-brand resize-y"
-                            />
+                            {(() => {
+                              const isChoiceField = ['select', 'select_like', 'radio_group'].includes(item.fieldType);
+                              const isDateField = item.inputSubtype === 'date' || item.source === 'desired_start_date';
+                              const isYesNoField = isBinaryYesNoField(item);
+                              const itemOptions = Array.isArray(item.options) ? item.options : [];
+
+                              if (isYesNoField) {
+                                return (
+                                  <div className="flex items-center gap-4">
+                                    {['Yes', 'No'].map((option) => (
+                                      <label key={option} className="inline-flex items-center gap-2 text-sm text-foreground">
+                                        <input
+                                          type="radio"
+                                          name={`preview-binary-${item.key}`}
+                                          value={option}
+                                          checked={editingValue.trim().toLowerCase() === option.toLowerCase()}
+                                          onChange={(event) => setEditingValue(event.target.value)}
+                                          className="h-4 w-4 border-border text-brand"
+                                        />
+                                        {option}
+                                      </label>
+                                    ))}
+                                  </div>
+                                );
+                              }
+
+                              if (isChoiceField && itemOptions.length > 0) {
+                                const selectionOptions = itemOptions.includes(editingValue)
+                                  ? itemOptions
+                                  : [editingValue, ...itemOptions].filter((option) => option.trim().length > 0);
+
+                                return (
+                                  <select
+                                    value={editingValue}
+                                    onChange={(event) => setEditingValue(event.target.value)}
+                                    className="w-full px-3 py-2 rounded-lg border border-border bg-input-background focus:ring-2 focus:ring-brand focus:border-brand"
+                                  >
+                                    {selectionOptions.map((option) => (
+                                      <option key={option} value={option}>{option}</option>
+                                    ))}
+                                  </select>
+                                );
+                              }
+
+                              if (isDateField) {
+                                return (
+                                  <input
+                                    type="date"
+                                    value={editingValue}
+                                    onChange={(event) => setEditingValue(event.target.value)}
+                                    className="w-full px-3 py-2 rounded-lg border border-border bg-input-background focus:ring-2 focus:ring-brand focus:border-brand"
+                                  />
+                                );
+                              }
+
+                              if (item.fieldType === 'textarea') {
+                                return (
+                                  <textarea
+                                    value={editingValue}
+                                    onChange={(event) => setEditingValue(event.target.value)}
+                                    rows={4}
+                                    className="w-full px-3 py-2 rounded-lg border border-border bg-input-background focus:ring-2 focus:ring-brand focus:border-brand resize-y"
+                                  />
+                                );
+                              }
+
+                              return (
+                                <input
+                                  type="text"
+                                  value={editingValue}
+                                  onChange={(event) => setEditingValue(event.target.value)}
+                                  className="w-full px-3 py-2 rounded-lg border border-border bg-input-background focus:ring-2 focus:ring-brand focus:border-brand"
+                                />
+                              );
+                            })()}
                             <div className="flex items-center gap-2">
                               <Button
                                 size="sm"
@@ -660,7 +778,9 @@ export const ApplicationDetailWorkspace: React.FC = () => {
                             </div>
                           </div>
                         ) : (
-                          <p className="mt-2 text-sm text-muted-foreground whitespace-pre-wrap">{item.resolvedValue}</p>
+                          <p className="mt-2 text-sm text-muted-foreground whitespace-pre-wrap">
+                            {item.resolvedValue || 'No autofill value yet.'}
+                          </p>
                         )}
                         <p className="mt-2 text-xs text-muted-foreground">Source: {item.source}</p>
                       </div>

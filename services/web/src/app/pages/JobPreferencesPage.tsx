@@ -112,6 +112,13 @@ export const JobPreferencesPage: React.FC = () => {
   const [negativeKeywordQuery, setNegativeKeywordQuery] = useState('');
   const [skillQuery, setSkillQuery] = useState('');
 
+  const hasPendingChipInputs = useMemo(() => (
+    targetTitleQuery.trim().length > 0
+    || targetKeywordQuery.trim().length > 0
+    || negativeKeywordQuery.trim().length > 0
+    || skillQuery.trim().length > 0
+  ), [negativeKeywordQuery, skillQuery, targetKeywordQuery, targetTitleQuery]);
+
   const isDirty = useMemo(() => {
     if (!formData || !originalData) return false;
     return !areFormDataEqual(formData, originalData);
@@ -224,42 +231,62 @@ export const JobPreferencesPage: React.FC = () => {
     const token = getStoredAccessToken();
     if (!token) return;
 
+    const pushUnique = (list: string[], value: string): string[] => {
+      const normalized = value.trim();
+      if (!normalized) return list;
+      const exists = list.some((entry) => entry.toLowerCase() === normalized.toLowerCase());
+      return exists ? list : [...list, normalized];
+    };
+
+    const persistedFormData: FormData = {
+      ...formData,
+      target_job_titles: pushUnique(formData.target_job_titles, targetTitleQuery),
+      target_keywords: pushUnique(formData.target_keywords, targetKeywordQuery),
+      negative_keywords: pushUnique(formData.negative_keywords, negativeKeywordQuery),
+      skills: pushUnique(formData.skills, skillQuery),
+    };
+
     toast.dismiss(UNSAVED_JOB_PREF_TOAST_ID);
     setSaveStatus('saving');
 
     const payload: CandidateProfileUpdateRequest = {
-      salary_target: formData.salary_target || null,
-      min_salary: formData.min_salary || null,
-      desired_start_date: formData.desired_start_date || null,
-      skills: formData.skills.length > 0 ? formData.skills : null,
-      work_arrangement: formData.work_arrangement.length > 0 ? formData.work_arrangement : null,
-      willing_to_relocate: formData.willing_to_relocate,
-      relocation_destinations: formData.preferred_relocation_cities.length > 0
-        ? formData.preferred_relocation_cities
+      salary_target: persistedFormData.salary_target || null,
+      min_salary: persistedFormData.min_salary || null,
+      desired_start_date: persistedFormData.desired_start_date || null,
+      skills: persistedFormData.skills.length > 0 ? persistedFormData.skills : null,
+      work_arrangement: persistedFormData.work_arrangement.length > 0 ? persistedFormData.work_arrangement : null,
+      willing_to_relocate: persistedFormData.willing_to_relocate,
+      relocation_destinations: persistedFormData.preferred_relocation_cities.length > 0
+        ? persistedFormData.preferred_relocation_cities
         : null,
-      preferred_relocation_cities: formData.preferred_relocation_cities.length > 0
-        ? formData.preferred_relocation_cities
+      preferred_relocation_cities: persistedFormData.preferred_relocation_cities.length > 0
+        ? persistedFormData.preferred_relocation_cities
         : null,
     };
 
     const jobPreferencesPayload: JobPreferences = {
-      target_titles: formData.target_job_titles,
-      positive_keywords: formData.target_keywords,
-      negative_keywords: formData.negative_keywords,
-      locations: formData.preferred_relocation_cities,
-      remote_only: formData.remote_only,
-      salary_min: formData.min_salary ? Number.parseInt(formData.min_salary, 10) || null : null,
-      enabled_sources: formData.enabled_sources,
+      target_titles: persistedFormData.target_job_titles,
+      positive_keywords: persistedFormData.target_keywords,
+      negative_keywords: persistedFormData.negative_keywords,
+      locations: persistedFormData.preferred_relocation_cities,
+      remote_only: persistedFormData.remote_only,
+      salary_min: persistedFormData.min_salary ? Number.parseInt(persistedFormData.min_salary, 10) || null : null,
+      enabled_sources: persistedFormData.enabled_sources,
     };
 
     await Promise.all([
       updateProfile(token, payload),
       updateJobPreferences(token, jobPreferencesPayload),
     ]);
-    setOriginalData(cloneFormData(formData));
+    setFormData(cloneFormData(persistedFormData));
+    setOriginalData(cloneFormData(persistedFormData));
+    setTargetTitleQuery('');
+    setTargetKeywordQuery('');
+    setNegativeKeywordQuery('');
+    setSkillQuery('');
     setSaveStatus('idle');
     toast.success('Preferences saved', { description: 'Your job targeting settings have been updated.' });
-  }, [formData]);
+  }, [formData, negativeKeywordQuery, skillQuery, targetKeywordQuery, targetTitleQuery]);
 
   const handleSaveWithError = useCallback(async () => {
     try {
@@ -271,7 +298,7 @@ export const JobPreferencesPage: React.FC = () => {
   }, [handleSave]);
 
   useEffect(() => {
-    if (!isDirty || saveStatus === 'saving') {
+    if ((!isDirty && !hasPendingChipInputs) || saveStatus === 'saving') {
       toast.dismiss(UNSAVED_JOB_PREF_TOAST_ID);
       return;
     }
@@ -291,7 +318,7 @@ export const JobPreferencesPage: React.FC = () => {
         onClick: handleSaveWithError,
       },
     });
-  }, [handleSaveWithError, isDirty, saveStatus]);
+  }, [handleSaveWithError, hasPendingChipInputs, isDirty, saveStatus]);
 
   if (loading || !formData) {
     return (
@@ -353,6 +380,7 @@ export const JobPreferencesPage: React.FC = () => {
                   label="Target Job Titles"
                   value={targetTitleQuery}
                   onChange={(e) => setTargetTitleQuery(e.target.value)}
+                  onBlur={() => addChipValue('target_job_titles', targetTitleQuery, () => setTargetTitleQuery(''))}
                   onKeyDown={(event) => {
                     if (event.key === 'Enter' || event.key === ',') {
                       event.preventDefault();
@@ -387,6 +415,7 @@ export const JobPreferencesPage: React.FC = () => {
                   label="Keywords to include"
                   value={targetKeywordQuery}
                   onChange={(e) => setTargetKeywordQuery(e.target.value)}
+                  onBlur={() => addChipValue('target_keywords', targetKeywordQuery, () => setTargetKeywordQuery(''))}
                   onKeyDown={(event) => {
                     if (event.key === 'Enter' || event.key === ',') {
                       event.preventDefault();
@@ -421,6 +450,7 @@ export const JobPreferencesPage: React.FC = () => {
                   label="Keywords to exclude"
                   value={negativeKeywordQuery}
                   onChange={(e) => setNegativeKeywordQuery(e.target.value)}
+                  onBlur={() => addChipValue('negative_keywords', negativeKeywordQuery, () => setNegativeKeywordQuery(''))}
                   onKeyDown={(event) => {
                     if (event.key === 'Enter' || event.key === ',') {
                       event.preventDefault();
@@ -458,6 +488,7 @@ export const JobPreferencesPage: React.FC = () => {
                 label="Skills"
                 value={skillQuery}
                 onChange={(e) => setSkillQuery(e.target.value)}
+                onBlur={() => addChipValue('skills', skillQuery, () => setSkillQuery(''))}
                 onKeyDown={(event) => {
                   if (event.key === 'Enter' || event.key === ',') {
                     event.preventDefault();
