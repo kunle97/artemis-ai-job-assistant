@@ -11,6 +11,7 @@ import {
   ArrowLeft,
   CheckCircle,
   Clock,
+  Edit3,
   ExternalLink,
   Play,
   RefreshCw,
@@ -20,12 +21,15 @@ import {
 import { getStoredAccessToken } from '../../services/auth/auth.service';
 import {
   authorizeApplication,
+  buildAutomationFillPlan,
   getApplicationById,
   getApplicationReadiness,
   getApplicationStatus,
   getJobById,
+  inspectApplicationPage,
   runApplicationPipeline,
   submitApplication,
+  type AutomationPlannedFieldRecord,
   type ApplicationReadinessRecord,
   type ApplicationRecord,
   type ApplicationStatusRecord,
@@ -41,6 +45,14 @@ interface ReadinessItem {
   severity: ReadinessSeverity;
   ctaLabel: string;
   ctaPath: string;
+}
+
+interface AutofillPreviewItem {
+  key: string;
+  questionText: string;
+  resolvedValue: string;
+  source: string;
+  needsReview: boolean;
 }
 
 function normalizeStatus(status: string | undefined): string {
@@ -116,6 +128,8 @@ export const ApplicationDetailWorkspace: React.FC = () => {
   const [locationLabel, setLocationLabel] = useState<string>('Unknown location');
   const [workModeLabel, setWorkModeLabel] = useState<string>('Unknown work mode');
   const [jobUrl, setJobUrl] = useState<string | null>(null);
+  const [autofillPreview, setAutofillPreview] = useState<AutofillPreviewItem[]>([]);
+  const [autofillPreviewLoading, setAutofillPreviewLoading] = useState(false);
 
   const [automationState, setAutomationState] = useState<AutomationState>('idle');
   const [runTaskId, setRunTaskId] = useState<string | null>(null);
@@ -125,6 +139,25 @@ export const ApplicationDetailWorkspace: React.FC = () => {
   const [authorizing, setAuthorizing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [confirmSubmit, setConfirmSubmit] = useState(false);
+
+  const buildAutofillPreviewItems = (fields: AutomationPlannedFieldRecord[]): AutofillPreviewItem[] => {
+    const previewableFields = fields.filter((field) => {
+      const role = (field.classified_role || '').trim().toLowerCase();
+      if (!field.resolved_value) return false;
+      if (['ignore', 'submit_action', 'resume_upload', 'cover_letter_upload'].includes(role)) return false;
+      return true;
+    });
+
+    return previewableFields.map((field, index) => ({
+      key: [field.classified_role, field.name, field.label, field.placeholder, String(index)]
+        .filter((part): part is string => Boolean(part && part.trim().length > 0))
+        .join('|'),
+      questionText: field.label?.trim() || field.name?.trim() || field.placeholder?.trim() || 'Application field',
+      resolvedValue: String(field.resolved_value),
+      source: field.classified_role,
+      needsReview: field.needs_review,
+    }));
+  };
 
   const loadWorkspace = useCallback(async () => {
     if (!token || !applicationId) {
@@ -155,12 +188,33 @@ export const ApplicationDetailWorkspace: React.FC = () => {
         setLocationLabel(job.location || 'Unknown location');
         setWorkModeLabel(job.workplace_type || 'Unknown work mode');
         setJobUrl(job.apply_url || null);
+
+        if (job.apply_url) {
+          setAutofillPreviewLoading(true);
+          try {
+            const inspection = await inspectApplicationPage(token, job.apply_url);
+            const plan = await buildAutomationFillPlan(token, {
+              application_url: job.apply_url,
+              inspected_fields: inspection.fields,
+              page_title: inspection.title,
+              job_context: inspection.job_context,
+            });
+            setAutofillPreview(buildAutofillPreviewItems(plan.fields));
+          } catch {
+            setAutofillPreview([]);
+          } finally {
+            setAutofillPreviewLoading(false);
+          }
+        } else {
+          setAutofillPreview([]);
+        }
       } else {
         setJobTitle('Application');
         setCompanyName('Unknown company');
         setLocationLabel('Unknown location');
         setWorkModeLabel('Unknown work mode');
         setJobUrl(null);
+        setAutofillPreview([]);
       }
 
       const normalizedStatus = normalizeStatus(statusRecord.status);
@@ -435,6 +489,48 @@ export const ApplicationDetailWorkspace: React.FC = () => {
                         <Button variant="outline" size="sm" onClick={() => router.push(item.ctaPath)}>
                           {item.ctaLabel}
                         </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Autofilled Fields Preview</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {autofillPreviewLoading ? (
+                  <p className="text-sm text-muted-foreground">Loading autofill preview...</p>
+                ) : autofillPreview.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No autofilled fields available yet. Run automation to generate a preview.</p>
+                ) : (
+                  <div className="space-y-3">
+                    {autofillPreview.map((item) => (
+                      <div key={item.key} className="rounded-lg border border-border p-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <p className="text-sm font-medium text-foreground">{item.questionText}</p>
+                          <div className="flex items-center gap-2">
+                            {item.needsReview ? (
+                              <Badge variant="warning" size="sm">Needs review</Badge>
+                            ) : (
+                              <Badge variant="success" size="sm">Autofilled</Badge>
+                            )}
+                            {!submitted ? (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => router.push(`/applications/${applicationId}/review`)}
+                              >
+                                <Edit3 className="h-3.5 w-3.5" />
+                                Edit
+                              </Button>
+                            ) : null}
+                          </div>
+                        </div>
+                        <p className="mt-2 text-sm text-muted-foreground whitespace-pre-wrap">{item.resolvedValue}</p>
+                        <p className="mt-2 text-xs text-muted-foreground">Source: {item.source}</p>
                       </div>
                     ))}
                   </div>

@@ -62,6 +62,9 @@ class CandidateProfile(Base):
     visa_sponsorship = Column(String, nullable=True)
 
     preferred_relocation_cities = Column(JSONB, nullable=True)
+    willing_to_relocate = Column(Boolean, nullable=True)
+    relocation_destinations = Column(JSONB, nullable=True)
+    desired_start_date = Column(String, nullable=True)
     work_arrangement = Column(JSONB, nullable=True)
 
     user = relationship("User", back_populates="candidate_profile")

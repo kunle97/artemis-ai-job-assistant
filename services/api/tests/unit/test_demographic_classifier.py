@@ -12,6 +12,7 @@ from src.domain.automation.planning.classifiers.greenhouse import GreenhouseAuto
 from src.domain.automation.planning.classifiers.lever import LeverAutomationFieldClassifier
 from src.domain.automation.planning.classifiers.ashby import AshbyAutomationFieldClassifier
 from src.domain.automation.planning.constants import (
+    FIELD_ROLE_DESIRED_START_DATE,
     FIELD_ROLE_DEMOGRAPHIC,
     FIELD_ROLE_OPEN_ENDED,
     FIELD_ROLE_WORK_ARRANGEMENT,
@@ -219,3 +220,33 @@ def test_generic_classifies_why_are_you_interested_textarea_as_open_ended():
         name=None,
         placeholder=None,
     ) == FIELD_ROLE_OPEN_ENDED
+
+
+def test_generic_classifies_desired_start_date_question():
+    clf = GenericAutomationFieldClassifier()
+    assert clf.classify(
+        field_type="input",
+        label="When can you start?",
+        name=None,
+        placeholder=None,
+    ) == FIELD_ROLE_DESIRED_START_DATE
+
+
+def test_ashby_classifies_desired_start_date_question():
+    clf = AshbyAutomationFieldClassifier()
+    assert clf.classify(
+        field_type="input",
+        label="Desired start date",
+        name=None,
+        placeholder=None,
+    ) == FIELD_ROLE_DESIRED_START_DATE
+
+
+def test_lever_classifies_desired_start_date_field_name():
+    clf = LeverAutomationFieldClassifier()
+    assert clf.classify(
+        field_type="input",
+        label="Availability",
+        name="available_start_date",
+        placeholder=None,
+    ) == FIELD_ROLE_DESIRED_START_DATE

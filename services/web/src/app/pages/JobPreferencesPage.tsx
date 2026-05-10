@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { AppShell } from '../components/AppShell';
 import { Badge, Card, CardContent, CardHeader, CardTitle, Input } from '../components/ui';
@@ -29,7 +29,9 @@ const WORK_ARRANGEMENT_OPTIONS = [
 type FormData = {
   salary_target: string;
   min_salary: string;
+  desired_start_date: string;
   work_arrangement: string[];
+  willing_to_relocate: boolean;
   preferred_relocation_cities: string[];
   skills: string[];
   target_job_titles: string[];
@@ -41,12 +43,54 @@ type FormData = {
 
 type ChipField = 'target_job_titles' | 'target_keywords' | 'skills' | 'negative_keywords';
 
+function cloneFormData(data: FormData): FormData {
+  return {
+    salary_target: data.salary_target,
+    min_salary: data.min_salary,
+    desired_start_date: data.desired_start_date,
+    work_arrangement: [...data.work_arrangement],
+    willing_to_relocate: data.willing_to_relocate,
+    preferred_relocation_cities: [...data.preferred_relocation_cities],
+    skills: [...data.skills],
+    target_job_titles: [...data.target_job_titles],
+    target_keywords: [...data.target_keywords],
+    negative_keywords: [...data.negative_keywords],
+    enabled_sources: [...data.enabled_sources],
+    remote_only: data.remote_only,
+  };
+}
+
+function areStringArraysEqual(left: string[], right: string[]): boolean {
+  if (left.length !== right.length) return false;
+  return left.every((value, index) => value === right[index]);
+}
+
+function areFormDataEqual(left: FormData, right: FormData): boolean {
+  return (
+    left.salary_target === right.salary_target
+    && left.min_salary === right.min_salary
+    && left.desired_start_date === right.desired_start_date
+    && left.remote_only === right.remote_only
+    && left.willing_to_relocate === right.willing_to_relocate
+    && areStringArraysEqual(left.work_arrangement, right.work_arrangement)
+    && areStringArraysEqual(left.preferred_relocation_cities, right.preferred_relocation_cities)
+    && areStringArraysEqual(left.skills, right.skills)
+    && areStringArraysEqual(left.target_job_titles, right.target_job_titles)
+    && areStringArraysEqual(left.target_keywords, right.target_keywords)
+    && areStringArraysEqual(left.negative_keywords, right.negative_keywords)
+    && areStringArraysEqual(left.enabled_sources, right.enabled_sources)
+  );
+}
+
 function toFormData(profile: CandidateProfile, jobPreferences: JobPreferences): FormData {
+  const relocationDestinations = profile.relocation_destinations ?? profile.preferred_relocation_cities ?? [];
   return {
     salary_target: profile.salary_target ?? '',
     min_salary: profile.min_salary ?? '',
+    desired_start_date: profile.desired_start_date ?? '',
     work_arrangement: profile.work_arrangement ?? [],
-    preferred_relocation_cities: profile.preferred_relocation_cities ?? [],
+    willing_to_relocate: profile.willing_to_relocate ?? relocationDestinations.length > 0,
+    preferred_relocation_cities: relocationDestinations,
     skills: profile.skills ?? [],
     target_job_titles: jobPreferences.target_titles ?? [],
     target_keywords: jobPreferences.positive_keywords ?? [],
@@ -68,10 +112,10 @@ export const JobPreferencesPage: React.FC = () => {
   const [negativeKeywordQuery, setNegativeKeywordQuery] = useState('');
   const [skillQuery, setSkillQuery] = useState('');
 
-  const isDirty =
-    formData && originalData
-      ? JSON.stringify(formData) !== JSON.stringify(originalData)
-      : false;
+  const isDirty = useMemo(() => {
+    if (!formData || !originalData) return false;
+    return !areFormDataEqual(formData, originalData);
+  }, [formData, originalData]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -92,8 +136,8 @@ export const JobPreferencesPage: React.FC = () => {
           getJobPreferences(token),
         ]);
         const fd = toFormData(profile, jobPreferences);
-        setFormData(fd);
-        setOriginalData(fd);
+        setFormData(cloneFormData(fd));
+        setOriginalData(cloneFormData(fd));
       } finally {
         setLoading(false);
       }
@@ -155,6 +199,7 @@ export const JobPreferencesPage: React.FC = () => {
       if (exists) return prev;
       return {
         ...prev,
+        willing_to_relocate: true,
         preferred_relocation_cities: [...prev.preferred_relocation_cities, city],
       };
     });
@@ -185,8 +230,13 @@ export const JobPreferencesPage: React.FC = () => {
     const payload: CandidateProfileUpdateRequest = {
       salary_target: formData.salary_target || null,
       min_salary: formData.min_salary || null,
+      desired_start_date: formData.desired_start_date || null,
       skills: formData.skills.length > 0 ? formData.skills : null,
       work_arrangement: formData.work_arrangement.length > 0 ? formData.work_arrangement : null,
+      willing_to_relocate: formData.willing_to_relocate,
+      relocation_destinations: formData.preferred_relocation_cities.length > 0
+        ? formData.preferred_relocation_cities
+        : null,
       preferred_relocation_cities: formData.preferred_relocation_cities.length > 0
         ? formData.preferred_relocation_cities
         : null,
@@ -206,7 +256,7 @@ export const JobPreferencesPage: React.FC = () => {
       updateProfile(token, payload),
       updateJobPreferences(token, jobPreferencesPayload),
     ]);
-    setOriginalData(formData);
+    setOriginalData(cloneFormData(formData));
     setSaveStatus('idle');
     toast.success('Preferences saved', { description: 'Your job targeting settings have been updated.' });
   }, [formData]);
@@ -446,6 +496,16 @@ export const JobPreferencesPage: React.FC = () => {
                 <Input label="Target Salary" value={formData.salary_target} onChange={(e) => setField('salary_target', e.target.value)} fullWidth placeholder="e.g. $120,000" />
                 <Input label="Minimum Salary" value={formData.min_salary} onChange={(e) => setField('min_salary', e.target.value)} fullWidth placeholder="e.g. $90,000" />
               </div>
+              <Input
+                label="Desired Start Date Lead Time"
+                value={formData.desired_start_date}
+                onChange={(e) => setField('desired_start_date', e.target.value)}
+                fullWidth
+                placeholder="e.g. 2 weeks"
+              />
+              <p className="-mt-2 text-xs text-muted-foreground">
+                Artemis converts this into a date for start-date pickers by adding the lead time to today.
+              </p>
               <div>
                 <p className="text-sm font-medium text-foreground mb-2">Work Arrangement</p>
                 <div className="flex flex-wrap gap-4">
@@ -481,6 +541,23 @@ export const JobPreferencesPage: React.FC = () => {
                 </div>
               </div>
               <div>
+                <div className="mb-3 flex items-start gap-3 rounded-lg border border-border p-3">
+                  <input
+                    id="willing-to-relocate"
+                    type="checkbox"
+                    checked={formData.willing_to_relocate}
+                    onChange={(e) => setField('willing_to_relocate', e.target.checked)}
+                    className="mt-0.5 h-4 w-4 rounded border-border text-brand"
+                  />
+                  <div>
+                    <label htmlFor="willing-to-relocate" className="text-sm font-medium text-foreground cursor-pointer">
+                      Willing to relocate
+                    </label>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Used for relocation yes/no application questions.
+                    </p>
+                  </div>
+                </div>
                 <Input
                   label="Preferred Relocation Cities"
                   value={relocationCityQuery}

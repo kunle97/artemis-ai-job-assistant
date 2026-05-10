@@ -79,6 +79,12 @@ class CandidateProfileRepository:
 
         if payload.preferred_relocation_cities is not None:
             profile.preferred_relocation_cities = payload.preferred_relocation_cities
+        if payload.willing_to_relocate is not None:
+            profile.willing_to_relocate = payload.willing_to_relocate
+        if payload.relocation_destinations is not None:
+            profile.relocation_destinations = payload.relocation_destinations
+        if payload.desired_start_date is not None:
+            profile.desired_start_date = payload.desired_start_date
         if payload.work_arrangement is not None:
             profile.work_arrangement = payload.work_arrangement
         if payload.skills is not None:

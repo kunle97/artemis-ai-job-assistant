@@ -11,6 +11,7 @@ from src.domain.automation.planning.constants import (
     FIELD_ROLE_COUNTRY,
     FIELD_ROLE_COVER_LETTER_UPLOAD,
     FIELD_ROLE_DEMOGRAPHIC,
+    FIELD_ROLE_DESIRED_START_DATE,
     FIELD_ROLE_EMAIL,
     FIELD_ROLE_FIRST_NAME,
     FIELD_ROLE_FULL_NAME,
@@ -100,6 +101,9 @@ class AshbyAutomationFieldClassifier(BaseAutomationFieldClassifier):
 
         if "salary" in text or "compensation" in text:
             return FIELD_ROLE_SALARY_EXPECTATION
+
+        if "desired start date" in text or "available start date" in text or "when can you start" in text or "start date" in text:
+            return FIELD_ROLE_DESIRED_START_DATE
 
         if "job search status" in text:
             return FIELD_ROLE_JOB_SEARCH_STATUS

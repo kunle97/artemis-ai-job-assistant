@@ -26,6 +26,9 @@ def test_create_profile(client, sample_user_payload):
             "state": "NY",
             "skills": ["Python", "FastAPI"],
             "work_arrangement": ["remote", "hybrid"],
+            "willing_to_relocate": True,
+            "relocation_destinations": ["Austin", "Seattle"],
+            "desired_start_date": "2 weeks",
             "min_salary": "180000",
         },
     )
@@ -36,6 +39,9 @@ def test_create_profile(client, sample_user_payload):
     assert data["location"] == "New York, NY"
     assert data["skills"] == ["Python", "FastAPI"]
     assert data["work_arrangement"] == ["remote", "hybrid"]
+    assert data["willing_to_relocate"] is True
+    assert data["relocation_destinations"] == ["Austin", "Seattle"]
+    assert data["desired_start_date"] == "2 weeks"
     assert data["min_salary"] == "180000"
 
 

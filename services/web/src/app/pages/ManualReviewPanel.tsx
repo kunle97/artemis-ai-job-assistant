@@ -49,6 +49,9 @@ function shouldIncludeField(item: AutomationPlannedFieldRecord): boolean {
   if (['ignore', 'submit_action', 'resume_upload', 'cover_letter_upload'].includes(item.classified_role)) {
     return false;
   }
+  if (item.classified_role === 'open_ended_question') {
+    return true;
+  }
   // Always surface if the system could not resolve a value — regardless of
   // whether the form marked the field as required (some ATS forms omit the
   // required attribute while still expecting an answer).

@@ -41,6 +41,9 @@ class CandidateProfileUpsertRequest(BaseModel):
     visa_sponsorship: str | None = None
 
     preferred_relocation_cities: list[str] | None = None
+    willing_to_relocate: bool | None = None
+    relocation_destinations: list[str] | None = None
+    desired_start_date: str | None = None
     work_arrangement: list[str] | None = None
     skills: list[str] | None = None
     experience_sections: list[dict[str, Any]] | None = None
@@ -87,6 +90,9 @@ class CandidateProfileResponse(BaseModel):
     visa_sponsorship: str | None = None
 
     preferred_relocation_cities: list[str] | None = None
+    willing_to_relocate: bool | None = None
+    relocation_destinations: list[str] | None = None
+    desired_start_date: str | None = None
     work_arrangement: list[str] | None = None
     skills: list[str] | None = None
     experience_sections: list[dict[str, Any]] | None = None

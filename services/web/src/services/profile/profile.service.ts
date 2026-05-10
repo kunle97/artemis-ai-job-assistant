@@ -50,6 +50,9 @@ export interface CandidateProfile {
   work_authorization: string | null;
   visa_sponsorship: string | null;
   preferred_relocation_cities: string[] | null;
+  willing_to_relocate: boolean | null;
+  relocation_destinations: string[] | null;
+  desired_start_date: string | null;
   work_arrangement: string[] | null;
   skills: string[] | null;
   experience_sections: CandidateExperienceSection[] | null;
@@ -82,6 +85,9 @@ export interface CandidateProfileUpdateRequest {
   work_authorization?: string | null;
   visa_sponsorship?: string | null;
   preferred_relocation_cities?: string[] | null;
+  willing_to_relocate?: boolean | null;
+  relocation_destinations?: string[] | null;
+  desired_start_date?: string | null;
   work_arrangement?: string[] | null;
   skills?: string[] | null;
   experience_sections?: CandidateExperienceSection[] | null;

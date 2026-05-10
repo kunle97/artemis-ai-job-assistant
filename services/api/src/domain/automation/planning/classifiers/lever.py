@@ -11,6 +11,7 @@ from src.domain.automation.planning.constants import (
     FIELD_ROLE_CONSENT,
     FIELD_ROLE_CURRENT_COMPANY,
     FIELD_ROLE_DEMOGRAPHIC,
+    FIELD_ROLE_DESIRED_START_DATE,
     FIELD_ROLE_EMAIL,
     FIELD_ROLE_FULL_NAME,
     FIELD_ROLE_GITHUB_URL,
@@ -83,6 +84,15 @@ class LeverAutomationFieldClassifier(GenericAutomationFieldClassifier):
             or "desired compensation" in text
         ):
             return FIELD_ROLE_SALARY_EXPECTATION
+
+        if (
+            field_name in {"start_date", "available_start_date", "desired_start_date"}
+            or "desired start date" in text
+            or "available start date" in text
+            or "when can you start" in text
+            or "start date" in text
+        ):
+            return FIELD_ROLE_DESIRED_START_DATE
 
         # --- Work authorization / sponsorship ---
         if "require sponsorship" in text or "sponsorship to work in the united states" in text:

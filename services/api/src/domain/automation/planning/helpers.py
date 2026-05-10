@@ -6,6 +6,7 @@ and platform detection.
 """
 
 import re
+from datetime import UTC, datetime, timedelta
 
 from src.domain.automation.planning.classifiers.ashby import AshbyAutomationFieldClassifier
 from src.domain.automation.planning.classifiers.greenhouse import GreenhouseAutomationFieldClassifier
@@ -18,6 +19,7 @@ from src.domain.automation.planning.constants import (
     FIELD_ROLE_COVER_LETTER_UPLOAD,
     FIELD_ROLE_CURRENT_COMPANY,
     FIELD_ROLE_DEMOGRAPHIC,
+    FIELD_ROLE_DESIRED_START_DATE,
     FIELD_ROLE_EMAIL,
     FIELD_ROLE_FIRST_NAME,
     FIELD_ROLE_FULL_NAME,
@@ -162,10 +164,85 @@ def resolve_relocation_value(*, inspected_field: dict, profile) -> str | None:
     Returns "Yes" or "No" so it scores well against typical Yes/No radio options
     and option-matching comboboxes.
     """
+    willing_to_relocate = getattr(profile, "willing_to_relocate", None)
+    if willing_to_relocate is not None:
+        return "Yes" if willing_to_relocate else "No"
+
+    destinations = getattr(profile, "relocation_destinations", None)
+    if destinations:
+        return "Yes"
+
     cities = getattr(profile, "preferred_relocation_cities", None)
     if cities:
         return "Yes"
     return "No"
+
+
+def _parse_start_date_offset_days(raw_value: str | None) -> int | None:
+    if not raw_value:
+        return None
+
+    normalized = " ".join(str(raw_value).strip().lower().split())
+    if not normalized:
+        return None
+
+    if normalized in {"immediately", "asap", "now", "today"}:
+        return 0
+
+    match = re.search(r"(\d+)\s*(day|days|week|weeks|month|months)", normalized)
+    if not match:
+        return None
+
+    amount = int(match.group(1))
+    unit = match.group(2)
+
+    if unit.startswith("day"):
+        return amount
+    if unit.startswith("week"):
+        return amount * 7
+    if unit.startswith("month"):
+        return amount * 30
+
+    return None
+
+
+def _is_desired_start_date_question(inspected_field: dict) -> bool:
+    label = " ".join(
+        str(part).strip().lower()
+        for part in [
+            inspected_field.get("label"),
+            inspected_field.get("name"),
+            inspected_field.get("placeholder"),
+        ]
+        if part
+    )
+    if not label:
+        return False
+
+    return any(
+        token in label
+        for token in [
+            "desired start date",
+            "available start date",
+            "earliest start date",
+            "when can you start",
+            "start date",
+        ]
+    )
+
+
+def resolve_desired_start_date_value(*, inspected_field: dict, profile) -> str | None:
+    if not _is_desired_start_date_question(inspected_field):
+        return None
+
+    desired_start_date = getattr(profile, "desired_start_date", None)
+    offset_days = _parse_start_date_offset_days(desired_start_date)
+    if offset_days is None:
+        return None
+
+    target_date = datetime.now(UTC).date() + timedelta(days=offset_days)
+    # Use ISO format so date inputs can consume it directly.
+    return target_date.isoformat()
 
 
 def resolve_work_authorization_value(*, inspected_field: dict, profile) -> str | None:
@@ -471,9 +548,15 @@ def _build_open_ended_request(*, user_id, question_text, user, profile, page_tit
         current_location = city or state
 
     preferred_relocation_cities = getattr(profile, "preferred_relocation_cities", None) or []
+    relocation_destinations = getattr(profile, "relocation_destinations", None) or []
     current_company = getattr(profile, "current_company", None)
     work_arrangement = getattr(profile, "work_arrangement", None)
     salary_target = resolve_salary_value(profile=profile)
+    willing_to_relocate = getattr(profile, "willing_to_relocate", None)
+    desired_start_date = getattr(profile, "desired_start_date", None)
+
+    if relocation_destinations and not preferred_relocation_cities:
+        preferred_relocation_cities = relocation_destinations
 
     work_arrangement_text = None
     if isinstance(work_arrangement, list):
@@ -494,6 +577,8 @@ def _build_open_ended_request(*, user_id, question_text, user, profile, page_tit
         current_company=current_company,
         work_arrangement=work_arrangement_text,
         salary_target=salary_target,
+        willing_to_relocate=willing_to_relocate,
+        desired_start_date=desired_start_date,
         page_title=page_title,
         job_context=job_context,
     )
@@ -885,6 +970,10 @@ def resolve_field_value(
         value = resolve_relocation_value(inspected_field=inspected_field, profile=profile)
         return value, value is None
 
+    if classified_role == FIELD_ROLE_DESIRED_START_DATE:
+        value = resolve_desired_start_date_value(inspected_field=inspected_field, profile=profile)
+        return value, value is None
+
     if classified_role == FIELD_ROLE_WORK_ARRANGEMENT:
         value = resolve_work_arrangement_value(
             inspected_field=inspected_field,
@@ -916,6 +1005,13 @@ def resolve_field_value(
         return None, True
 
     if classified_role == "unknown":
+        desired_start_date_value = resolve_desired_start_date_value(
+            inspected_field=inspected_field,
+            profile=profile,
+        )
+        if desired_start_date_value is not None:
+            return desired_start_date_value, False
+
         value, needs_review = _resolve_unknown_open_ended_value(
             inspected_field=inspected_field,
             user=user,

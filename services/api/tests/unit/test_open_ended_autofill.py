@@ -44,6 +44,9 @@ class _Profile:
         self.city = kwargs.get("city", None)
         self.state = kwargs.get("state", None)
         self.preferred_relocation_cities = kwargs.get("preferred_relocation_cities", None)
+        self.willing_to_relocate = kwargs.get("willing_to_relocate", None)
+        self.relocation_destinations = kwargs.get("relocation_destinations", None)
+        self.desired_start_date = kwargs.get("desired_start_date", None)
         self.work_authorization = kwargs.get("work_authorization", None)
         self.visa_sponsorship = kwargs.get("visa_sponsorship", None)
 
@@ -491,4 +494,38 @@ def test_salary_expectation_yes_no_question_uses_range_not_raw_target():
         open_ended_provider=None,
     )
     assert value == "No"
+    assert needs_review is False
+
+
+def test_relocation_yes_no_uses_willing_to_relocate_boolean():
+    value, needs_review = resolve_field_value(
+        classified_role="relocation",
+        inspected_field={
+            "field_type": "radio_group",
+            "label": "Are you willing to relocate?",
+            "options": ["Yes", "No"],
+        },
+        user=_User(),
+        profile=_Profile(willing_to_relocate=False, preferred_relocation_cities=["Austin"]),
+        open_ended_provider=None,
+    )
+    assert value == "No"
+    assert needs_review is False
+
+
+def test_desired_start_date_computes_iso_date_from_profile_window():
+    value, needs_review = resolve_field_value(
+        classified_role="desired_start_date",
+        inspected_field={
+            "field_type": "input",
+            "label": "Desired start date",
+        },
+        user=_User(),
+        profile=_Profile(desired_start_date="2 weeks"),
+        open_ended_provider=None,
+    )
+    assert value is not None
+    assert isinstance(value, str)
+    assert len(value) == 10
+    assert value.count("-") == 2
     assert needs_review is False

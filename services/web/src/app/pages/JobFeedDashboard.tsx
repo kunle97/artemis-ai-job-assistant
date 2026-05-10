@@ -32,6 +32,22 @@ import {
 } from '../../services/applications/application-workspace.service';
 import { getStoredAccessToken } from '../../services/auth/auth.service';
 
+function buildPageButtons(currentPage: number, totalPages: number): Array<number | 'ellipsis'> {
+  if (totalPages <= 7) {
+    return Array.from({ length: totalPages }, (_, index) => index + 1);
+  }
+
+  if (currentPage <= 4) {
+    return [1, 2, 3, 4, 5, 'ellipsis', totalPages];
+  }
+
+  if (currentPage >= totalPages - 3) {
+    return [1, 'ellipsis', totalPages - 4, totalPages - 3, totalPages - 2, totalPages - 1, totalPages];
+  }
+
+  return [1, 'ellipsis', currentPage - 1, currentPage, currentPage + 1, 'ellipsis', totalPages];
+}
+
 export const JobFeedDashboard: React.FC = () => {
   const router = useRouter();
   const [jobs, setJobs] = useState<JobItem[]>([]);
@@ -267,6 +283,28 @@ export const JobFeedDashboard: React.FC = () => {
     }
   };
 
+  const handlePageSelect = async (pageNumber: number) => {
+    if (!token) return;
+    const nextSkip = Math.max(0, (pageNumber - 1) * itemsPerPage);
+
+    if (isKeywordSearchActive) {
+      setLoadingFeed(true);
+      try {
+        const activeSources = platformFilter.size > 0 ? Array.from(platformFilter) : undefined;
+        const page = await getJobFeed(token, nextSkip, itemsPerPage, keywordFilter.trim(), sortOrder, activeSources);
+        hydratePageState(page, nextSkip);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Pagination failed.';
+        setScanError(message);
+      } finally {
+        setLoadingFeed(false);
+      }
+      return;
+    }
+
+    await loadFeed(nextSkip, undefined, sortOrder);
+  };
+
   const togglePlatform = (platform: string) => {
     setPlatformFilter((prev) => {
       const next = new Set(prev);
@@ -292,6 +330,10 @@ export const JobFeedDashboard: React.FC = () => {
 
     return filtered;
   }, [jobs, locationFilter, workModeFilter]);
+
+  const totalPages = Math.max(1, Math.ceil(total / itemsPerPage));
+  const currentPage = Math.floor(skip / itemsPerPage) + 1;
+  const pageButtons = useMemo(() => buildPageButtons(currentPage, totalPages), [currentPage, totalPages]);
 
   const formatSalary = (job: JobItem): string | null => {
     if (job.salary_min == null && job.salary_max == null) return null;
@@ -532,6 +574,29 @@ export const JobFeedDashboard: React.FC = () => {
               <Button variant="outline" size="sm" onClick={() => void handlePageChange('prev')} disabled={!hasPrev || scanning || loadingFeed}>
                 Previous
               </Button>
+              <div className="flex items-center gap-1">
+                {pageButtons.map((item, index) => {
+                  if (item === 'ellipsis') {
+                    return (
+                      <span key={`ellipsis-${index}`} className="px-2 text-muted-foreground">
+                        ...
+                      </span>
+                    );
+                  }
+
+                  return (
+                    <Button
+                      key={`page-${item}`}
+                      variant={item === currentPage ? 'primary' : 'outline'}
+                      size="sm"
+                      disabled={scanning || loadingFeed}
+                      onClick={() => void handlePageSelect(item)}
+                    >
+                      {item}
+                    </Button>
+                  );
+                })}
+              </div>
               <Button variant="outline" size="sm" onClick={() => void handlePageChange('next')} disabled={!hasNext || scanning || loadingFeed}>
                 Next
               </Button>

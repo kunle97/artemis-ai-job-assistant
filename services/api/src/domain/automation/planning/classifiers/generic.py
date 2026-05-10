@@ -12,6 +12,7 @@ from src.domain.automation.planning.constants import (
     FIELD_ROLE_COVER_LETTER_UPLOAD,
     FIELD_ROLE_CURRENT_COMPANY,
     FIELD_ROLE_DEMOGRAPHIC,
+    FIELD_ROLE_DESIRED_START_DATE,
     FIELD_ROLE_EMAIL,
     FIELD_ROLE_FIRST_NAME,
     FIELD_ROLE_FULL_NAME,
@@ -127,6 +128,9 @@ class GenericAutomationFieldClassifier:
 
         if self._is_salary(haystack):
             return FIELD_ROLE_SALARY_EXPECTATION
+
+        if self._is_desired_start_date(haystack):
+            return FIELD_ROLE_DESIRED_START_DATE
 
         if self._is_work_authorization(haystack):
             return FIELD_ROLE_WORK_AUTHORIZATION
@@ -332,6 +336,19 @@ class GenericAutomationFieldClassifier:
                 "what compensation",
                 "pay expectation",
                 "pay range",
+            ]
+        )
+
+    def _is_desired_start_date(self, haystack: str) -> bool:
+        return any(
+            token in haystack
+            for token in [
+                "desired start date",
+                "available start date",
+                "earliest start date",
+                "when can you start",
+                "when could you start",
+                "start date",
             ]
         )
 
