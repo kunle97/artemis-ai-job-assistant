@@ -34,6 +34,10 @@ import {
   type ApplicationRecord,
   type ApplicationStatusRecord,
 } from '../../services/applications/application-workspace.service';
+import {
+  buildApplicationAnswerQuestionKey,
+  saveApplicationAnswer,
+} from '../../services/applications/application-answers.service';
 
 type ReadinessSeverity = 'error' | 'warning' | 'info';
 type AutomationState = 'idle' | 'queued' | 'running' | 'success' | 'failure';
@@ -53,6 +57,13 @@ interface AutofillPreviewItem {
   resolvedValue: string;
   source: string;
   needsReview: boolean;
+}
+
+const AUTOFILL_PREVIEW_CACHE_PREFIX = 'autofill-preview-cache';
+
+interface AutofillPreviewCacheEntry {
+  applicationUpdatedAt: string;
+  items: AutofillPreviewItem[];
 }
 
 function normalizeStatus(status: string | undefined): string {
@@ -130,6 +141,9 @@ export const ApplicationDetailWorkspace: React.FC = () => {
   const [jobUrl, setJobUrl] = useState<string | null>(null);
   const [autofillPreview, setAutofillPreview] = useState<AutofillPreviewItem[]>([]);
   const [autofillPreviewLoading, setAutofillPreviewLoading] = useState(false);
+  const [editingFieldKey, setEditingFieldKey] = useState<string | null>(null);
+  const [editingValue, setEditingValue] = useState('');
+  const [savingFieldKey, setSavingFieldKey] = useState<string | null>(null);
 
   const [automationState, setAutomationState] = useState<AutomationState>('idle');
   const [runTaskId, setRunTaskId] = useState<string | null>(null);
@@ -139,6 +153,37 @@ export const ApplicationDetailWorkspace: React.FC = () => {
   const [authorizing, setAuthorizing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [confirmSubmit, setConfirmSubmit] = useState(false);
+
+  const getPreviewCacheKey = (id: string) => `${AUTOFILL_PREVIEW_CACHE_PREFIX}:${id}`;
+
+  const readCachedAutofillPreview = useCallback(
+    (applicationUpdatedAt: string): AutofillPreviewItem[] | null => {
+      if (typeof window === 'undefined') return null;
+      const raw = window.sessionStorage.getItem(getPreviewCacheKey(applicationId));
+      if (!raw) return null;
+
+      try {
+        const parsed = JSON.parse(raw) as AutofillPreviewCacheEntry;
+        if (parsed.applicationUpdatedAt !== applicationUpdatedAt) return null;
+        return parsed.items || [];
+      } catch {
+        return null;
+      }
+    },
+    [applicationId],
+  );
+
+  const writeCachedAutofillPreview = useCallback(
+    (applicationUpdatedAt: string, items: AutofillPreviewItem[]) => {
+      if (typeof window === 'undefined') return;
+      const cacheEntry: AutofillPreviewCacheEntry = {
+        applicationUpdatedAt,
+        items,
+      };
+      window.sessionStorage.setItem(getPreviewCacheKey(applicationId), JSON.stringify(cacheEntry));
+    },
+    [applicationId],
+  );
 
   const buildAutofillPreviewItems = (fields: AutomationPlannedFieldRecord[]): AutofillPreviewItem[] => {
     const previewableFields = fields.filter((field) => {
@@ -190,20 +235,27 @@ export const ApplicationDetailWorkspace: React.FC = () => {
         setJobUrl(job.apply_url || null);
 
         if (job.apply_url) {
-          setAutofillPreviewLoading(true);
-          try {
-            const inspection = await inspectApplicationPage(token, job.apply_url);
-            const plan = await buildAutomationFillPlan(token, {
-              application_url: job.apply_url,
-              inspected_fields: inspection.fields,
-              page_title: inspection.title,
-              job_context: inspection.job_context,
-            });
-            setAutofillPreview(buildAutofillPreviewItems(plan.fields));
-          } catch {
-            setAutofillPreview([]);
-          } finally {
-            setAutofillPreviewLoading(false);
+          const cachedPreview = readCachedAutofillPreview(applicationRecord.updated_at);
+          if (cachedPreview) {
+            setAutofillPreview(cachedPreview);
+          } else {
+            setAutofillPreviewLoading(true);
+            try {
+              const inspection = await inspectApplicationPage(token, job.apply_url);
+              const plan = await buildAutomationFillPlan(token, {
+                application_url: job.apply_url,
+                inspected_fields: inspection.fields,
+                page_title: inspection.title,
+                job_context: inspection.job_context,
+              });
+              const previewItems = buildAutofillPreviewItems(plan.fields);
+              setAutofillPreview(previewItems);
+              writeCachedAutofillPreview(applicationRecord.updated_at, previewItems);
+            } catch {
+              setAutofillPreview([]);
+            } finally {
+              setAutofillPreviewLoading(false);
+            }
           }
         } else {
           setAutofillPreview([]);
@@ -240,7 +292,58 @@ export const ApplicationDetailWorkspace: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [applicationId, token]);
+  }, [applicationId, readCachedAutofillPreview, token, writeCachedAutofillPreview]);
+
+  const handleStartInlineEdit = (item: AutofillPreviewItem) => {
+    setEditingFieldKey(item.key);
+    setEditingValue(item.resolvedValue);
+  };
+
+  const handleCancelInlineEdit = () => {
+    setEditingFieldKey(null);
+    setEditingValue('');
+  };
+
+  const handleSaveInlineEdit = async (item: AutofillPreviewItem) => {
+    const normalizedAnswer = editingValue.trim();
+    if (!token || !normalizedAnswer) return;
+
+    setSavingFieldKey(item.key);
+    try {
+      await saveApplicationAnswer(token, {
+        question_key: buildApplicationAnswerQuestionKey(item.questionText),
+        question_text: item.questionText,
+        answer_text: normalizedAnswer,
+      });
+
+      setAutofillPreview((prev) => {
+        const next = prev.map((candidate) => (
+          candidate.key === item.key
+            ? {
+              ...candidate,
+              resolvedValue: normalizedAnswer,
+              needsReview: false,
+            }
+            : candidate
+        ));
+        if (application?.updated_at) {
+          writeCachedAutofillPreview(application.updated_at, next);
+        }
+        return next;
+      });
+
+      setEditingFieldKey(null);
+      setEditingValue('');
+      toast.success('Answer updated', {
+        description: 'Your edited answer was saved to the reusable answer library.',
+      });
+    } catch (inlineEditError) {
+      const message = inlineEditError instanceof Error ? inlineEditError.message : 'Failed to save answer.';
+      toast.error('Save failed', { description: message });
+    } finally {
+      setSavingFieldKey(null);
+    }
+  };
 
   useEffect(() => {
     void loadWorkspace();
@@ -521,7 +624,7 @@ export const ApplicationDetailWorkspace: React.FC = () => {
                               <Button
                                 variant="outline"
                                 size="sm"
-                                onClick={() => router.push(`/applications/${applicationId}/review`)}
+                                onClick={() => handleStartInlineEdit(item)}
                               >
                                 <Edit3 className="h-3.5 w-3.5" />
                                 Edit
@@ -529,7 +632,36 @@ export const ApplicationDetailWorkspace: React.FC = () => {
                             ) : null}
                           </div>
                         </div>
-                        <p className="mt-2 text-sm text-muted-foreground whitespace-pre-wrap">{item.resolvedValue}</p>
+                        {editingFieldKey === item.key ? (
+                          <div className="mt-2 space-y-2">
+                            <textarea
+                              value={editingValue}
+                              onChange={(event) => setEditingValue(event.target.value)}
+                              rows={4}
+                              className="w-full px-3 py-2 rounded-lg border border-border bg-input-background focus:ring-2 focus:ring-brand focus:border-brand resize-y"
+                            />
+                            <div className="flex items-center gap-2">
+                              <Button
+                                size="sm"
+                                onClick={() => void handleSaveInlineEdit(item)}
+                                loading={savingFieldKey === item.key}
+                                disabled={editingValue.trim().length === 0}
+                              >
+                                Save
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={handleCancelInlineEdit}
+                                disabled={savingFieldKey === item.key}
+                              >
+                                Cancel
+                              </Button>
+                            </div>
+                          </div>
+                        ) : (
+                          <p className="mt-2 text-sm text-muted-foreground whitespace-pre-wrap">{item.resolvedValue}</p>
+                        )}
                         <p className="mt-2 text-xs text-muted-foreground">Source: {item.source}</p>
                       </div>
                     ))}
