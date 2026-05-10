@@ -247,16 +247,21 @@ export const ApplicationDetailWorkspace: React.FC = () => {
     try {
       const dispatch = await runApplicationPipeline(token, applicationId);
       setRunTaskId(dispatch.task_id);
-      setAutomationState(dispatch.status === 'queued' ? 'queued' : 'running');
+      const dispatchedState: AutomationState = dispatch.status === 'queued' ? 'queued' : 'running';
+      setAutomationState(dispatchedState);
       toast.success('Automation queued', {
         description: 'The automation pipeline has been dispatched.',
       });
       await loadWorkspace();
+      // Re-assert the active state if loadWorkspace() got a stale server
+      // response and reset automationState back to 'idle' before the worker
+      // has had a chance to update the status record.
+      setAutomationState((current) => (current === 'idle' ? dispatchedState : current));
     } catch (runPipelineError) {
-      const message = runPipelineError instanceof Error ? runPipelineError.message : 'Automation dispatch failed.';
-      setRunError(message);
+      const errMsg = runPipelineError instanceof Error ? runPipelineError.message : 'Automation dispatch failed.';
+      setRunError(errMsg);
       setAutomationState('failure');
-      toast.error('Automation failed', { description: message });
+      toast.error('Automation failed', { description: errMsg });
     } finally {
       setRunning(false);
     }

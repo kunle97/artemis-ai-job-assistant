@@ -104,19 +104,29 @@ class ApplicationPipelineService:
 
         while True:
             try:
+                logger.debug(f"[PipelineService] {operation_name} attempt {attempt + 1}/{max_retries + 1}")
                 return operation()
             except Exception as exc:
                 category, retryable = self._classify_failure(exc)
+                logger.error(
+                    "[PipelineService] %s operation failed: category=%s retryable=%s attempt=%d/%d "
+                    "exception_type=%s error=%s",
+                    operation_name,
+                    category,
+                    retryable,
+                    attempt + 1,
+                    max_retries + 1,
+                    type(exc).__name__,
+                    exc,
+                )
                 if retryable and attempt < max_retries:
                     delay_seconds = 2 ** attempt
                     logger.warning(
-                        "[PipelineService] %s transient failure (%s) attempt=%d/%d delay=%ss error=%s",
+                        "[PipelineService] %s will retry after %ds delay (attempt %d/%d)",
                         operation_name,
-                        category,
+                        delay_seconds,
                         attempt + 1,
                         max_retries + 1,
-                        delay_seconds,
-                        exc,
                     )
                     sleep(delay_seconds)
                     attempt += 1
@@ -124,11 +134,10 @@ class ApplicationPipelineService:
 
                 if retryable:
                     logger.error(
-                        "[PipelineService] %s retries exhausted after %d attempts category=%s error=%s",
+                        "[PipelineService] %s retries exhausted after %d attempts category=%s",
                         operation_name,
                         max_retries + 1,
                         category,
-                        exc,
                     )
                 raise
 
@@ -486,6 +495,7 @@ class ApplicationPipelineService:
                 )
 
                 # FILL+SUBMIT — reuse same browser process
+                logger.debug(f"[PipelineService] Starting fill_and_submit_from_plan for application_id={application_id}")
                 fill_result = self._execute_with_retries(
                     "fill_and_submit_from_plan",
                     lambda: self.fill_service.fill_and_submit_from_plan(
@@ -496,6 +506,7 @@ class ApplicationPipelineService:
                         browser=_browser,
                     ),
                 )
+                logger.debug(f"[PipelineService] fill_and_submit_from_plan completed: submission_confirmed={fill_result.submission_confirmed} for application_id={application_id}")
 
                 if not fill_result.submission_confirmed:
                     raise ValueError(
@@ -503,12 +514,15 @@ class ApplicationPipelineService:
                         "The application may not have been submitted successfully."
                     )
 
+                logger.debug(f"[PipelineService] Updating application status to SUBMITTED for application_id={application_id}")
                 application = self.application_repo.update_fields(
                     application_id, status=APPLICATION_STATUS_SUBMITTED
                 )
+                logger.debug(f"[PipelineService] Application status updated to SUBMITTED for application_id={application_id}")
                 logger.info(
                     f"[PipelineService] submit_application complete application_id={application_id}"
                 )
+                logger.debug(f"[PipelineService] Exiting WorkerBrowserSession context for application_id={application_id}")
 
         except Exception as exc:
             logger.error(
