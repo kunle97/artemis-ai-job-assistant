@@ -278,6 +278,25 @@ export async function submitApplication(token: string, applicationId: string): P
   }
 }
 
+export async function updateLifecycleStatus(
+  token: string,
+  applicationId: string,
+  status: string,
+): Promise<ApplicationRecord> {
+  try {
+    const response = await httpClient.patch<ApplicationRecord>(
+      `/applications/${applicationId}/lifecycle-status`,
+      { status },
+      {
+        headers: buildAuthHeader(token),
+      },
+    );
+    return response.data;
+  } catch (error) {
+    parseApiError(error, 'Failed to update lifecycle status with status {status}.');
+  }
+}
+
 export async function listApplications(token: string): Promise<ApplicationRecord[]> {
   try {
     const response = await httpClient.get<ApplicationRecord[]>('/applications', {

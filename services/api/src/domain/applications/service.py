@@ -9,6 +9,9 @@ import logging
 from src.domain.applications.constants import (
     APPLICATION_STATUS_QUEUED,
     APPLICATION_STATUS_NEEDS_REVIEW,
+    APPLICATION_STATUS_SUBMITTED,
+    POST_SUBMISSION_LIFECYCLE_STATUSES,
+    ALL_VALID_LIFECYCLE_STATUSES,
 )
 from src.domain.applications.repository import ApplicationRepository
 from src.domain.applications.schemas import ApplicationCreate
@@ -113,5 +116,44 @@ class ApplicationService:
 
         logger.info(
             f"[ApplicationService] Authorize submission complete application_id={application_id}"
+        )
+        return application
+
+    def update_lifecycle_status(self, user_id, application_id, new_status: str):
+        """Allow the user to manually set a post-submission lifecycle status.
+
+        Only statuses in POST_SUBMISSION_LIFECYCLE_STATUSES are accepted.
+        The application must already be in a submitted or post-submission state.
+        """
+        logger.info(
+            f"[ApplicationService] Update lifecycle status start "
+            f"application_id={application_id} new_status={new_status}"
+        )
+
+        if new_status not in ALL_VALID_LIFECYCLE_STATUSES:
+            valid = ", ".join(sorted(ALL_VALID_LIFECYCLE_STATUSES))
+            raise ValueError(
+                f"'{new_status}' is not a valid lifecycle status. Valid options: {valid}"
+            )
+
+        application = self.repository.get_by_id(application_id)
+        if not application:
+            raise ValueError("Application not found.")
+
+        if str(application.user_id) != str(user_id):
+            raise PermissionError("You are not allowed to update this application.")
+
+        allowed_source_statuses = POST_SUBMISSION_LIFECYCLE_STATUSES | {APPLICATION_STATUS_SUBMITTED}
+        if application.status not in allowed_source_statuses:
+            raise ValueError(
+                f"Lifecycle status can only be updated after the application has been submitted "
+                f"(current status: '{application.status}')."
+            )
+
+        application = self.repository.update_fields(application_id, status=new_status)
+
+        logger.info(
+            f"[ApplicationService] Update lifecycle status complete "
+            f"application_id={application_id} status={new_status}"
         )
         return application

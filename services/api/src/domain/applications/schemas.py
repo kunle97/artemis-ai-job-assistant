@@ -69,3 +69,9 @@ class ApplicationStatusRead(BaseModel):
     failure_reason: str | None = None
     missing_items: list[str] = Field(default_factory=list)
     available_answer_keys: list[str] = Field(default_factory=list)
+
+
+class ApplicationLifecycleStatusUpdate(BaseModel):
+    """Payload for manually updating the lifecycle status after submission."""
+
+    status: str

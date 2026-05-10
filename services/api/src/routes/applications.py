@@ -20,6 +20,7 @@ from src.domain.applications.schemas import (
     ApplicationRead,
     ApplicationRunDispatchRead,
     ApplicationStatusRead,
+    ApplicationLifecycleStatusUpdate,
 )
 from src.domain.applications.service import ApplicationService
 from src.domain.jobs.repository import JobRepository
@@ -193,6 +194,27 @@ def submit_application(
 
     try:
         return service.submit_application(user_id=current_user.id, application_id=application_id)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.patch("/{application_id}/lifecycle-status", response_model=ApplicationRead)
+def update_lifecycle_status(
+    application_id: UUID,
+    payload: ApplicationLifecycleStatusUpdate,
+    current_user=Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    service = _build_application_service(db)
+
+    try:
+        return service.update_lifecycle_status(
+            user_id=current_user.id,
+            application_id=application_id,
+            new_status=payload.status,
+        )
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc))
     except ValueError as exc:

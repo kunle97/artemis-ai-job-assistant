@@ -219,6 +219,9 @@ class ApplicationPipelineService:
         if str(application.user_id) != str(user_id):
             raise PermissionError("You are not allowed to run this application's pipeline.")
 
+        if application.status == APPLICATION_STATUS_SUBMITTED:
+            raise ValueError("Cannot run automation on an already-submitted application.")
+
         job = self.job_repo.get_by_id(application.job_id)
         if not job:
             raise ValueError("Job not found for this application.")

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ChevronDown, ChevronUp, Edit, Trash2, Plus, Briefcase } from 'lucide-react';
+import { ChevronDown, ChevronUp, Edit, Trash2, Plus, Briefcase, X } from 'lucide-react';
 import { Button, Input } from '../ui';
 
 export interface SimpleExperience {
@@ -70,8 +70,84 @@ export const SimpleExperienceEditor: React.FC<SimpleExperienceEditorProps> = ({
 
   const ExperienceCard = ({ experience }: { experience: SimpleExperience }) => {
     const [localExp, setLocalExp] = useState(experience);
+    const [activeDetailEditorIndex, setActiveDetailEditorIndex] = useState<number | null>(null);
+    const [detailDraft, setDetailDraft] = useState('');
     const isEditing = editingId === experience.id;
     const isExpanded = expandedId === experience.id;
+
+    const updateDetailAtIndex = (index: number, value: string) => {
+      setLocalExp((prev) => ({
+        ...prev,
+        details: prev.details.map((detail, detailIndex) => (
+          detailIndex === index ? value : detail
+        )),
+      }));
+    };
+
+    const addDetailBullet = () => {
+      const newDetailIndex = localExp.details.length;
+      setLocalExp((prev) => ({
+        ...prev,
+        details: [...prev.details, ''],
+      }));
+      setActiveDetailEditorIndex(newDetailIndex);
+      setDetailDraft('');
+    };
+
+    const removeDetailAtIndex = (index: number) => {
+      setLocalExp((prev) => ({
+        ...prev,
+        details: prev.details.filter((_, detailIndex) => detailIndex !== index),
+      }));
+      setActiveDetailEditorIndex((prevIndex) => {
+        if (prevIndex === null) {
+          return prevIndex;
+        }
+        if (prevIndex === index) {
+          return null;
+        }
+        if (prevIndex > index) {
+          return prevIndex - 1;
+        }
+        return prevIndex;
+      });
+    };
+
+    const startDetailEditing = (index: number) => {
+      setActiveDetailEditorIndex(index);
+      setDetailDraft(localExp.details[index] ?? '');
+    };
+
+    const cancelDetailEditing = () => {
+      setActiveDetailEditorIndex(null);
+      setDetailDraft('');
+    };
+
+    const saveDetailEditing = () => {
+      if (activeDetailEditorIndex === null) {
+        return;
+      }
+
+      const sanitizedDraft = detailDraft.trim();
+      const nextLocalExp = {
+        ...localExp,
+        details: localExp.details.map((detail, detailIndex) => (
+          detailIndex === activeDetailEditorIndex ? sanitizedDraft : detail
+        )),
+      };
+
+      setLocalExp(nextLocalExp);
+      onChange(experiences.map((exp) => (exp.id === nextLocalExp.id ? nextLocalExp : exp)));
+
+      setActiveDetailEditorIndex(null);
+      setDetailDraft('');
+    };
+
+    const sanitizeDetails = (details: string[]) => (
+      details
+        .map((detail) => detail.trim())
+        .filter((detail) => detail.length > 0)
+    );
 
     if (isEditing) {
       return (
@@ -178,11 +254,91 @@ export const SimpleExperienceEditor: React.FC<SimpleExperienceEditorProps> = ({
             </Button>
             <Button
               variant="primary"
-              onClick={() => handleSave(localExp)}
+              onClick={() => handleSave({
+                ...localExp,
+                details: sanitizeDetails(localExp.details),
+              })}
               disabled={!localExp.role || !localExp.company}
             >
               Save
             </Button>
+          </div>
+
+          <div className="space-y-3 pt-2 border-t border-border">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-medium text-foreground">Detail Bullet Points</p>
+              <Button variant="outline" size="sm" onClick={addDetailBullet}>
+                <Plus className="h-4 w-4" />
+                Add Bullet
+              </Button>
+            </div>
+
+            {localExp.details.length > 0 ? (
+              <div className="space-y-2">
+                {localExp.details.map((detail, index) => (
+                  <div key={`${experience.id}-edit-detail-${index}`} className="rounded-lg border border-border p-3 space-y-3">
+                    {activeDetailEditorIndex !== index ? (
+                      <div className="flex items-start gap-2">
+                        <p className="flex-1 text-sm text-foreground break-words">
+                          <span className="text-muted-foreground mr-2">•</span>
+                          {detail.trim() || 'Empty bullet point'}
+                        </p>
+                        <div className="flex items-center gap-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => startDetailEditing(index)}
+                            aria-label={`Edit detail bullet ${index + 1}`}
+                          >
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => removeDetailAtIndex(index)}
+                            aria-label={`Remove detail bullet ${index + 1}`}
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex justify-end">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => removeDetailAtIndex(index)}
+                          aria-label={`Remove detail bullet ${index + 1}`}
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    )}
+
+                    {activeDetailEditorIndex === index ? (
+                      <div className="space-y-2">
+                        <textarea
+                          value={detailDraft}
+                          onChange={(event) => setDetailDraft(event.target.value)}
+                          placeholder="Describe a key achievement or responsibility"
+                          className="w-full min-h-[110px] resize-y px-3 py-2 border border-border rounded-lg bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                        />
+                        <div className="flex justify-end gap-2">
+                          <Button variant="ghost" size="sm" onClick={cancelDetailEditing}>
+                            Cancel
+                          </Button>
+                          <Button variant="primary" size="sm" onClick={saveDetailEditing}>
+                            Apply
+                          </Button>
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">No bullet points yet. Add one to capture impact.</p>
+            )}
           </div>
         </div>
       );

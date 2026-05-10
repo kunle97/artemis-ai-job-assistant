@@ -3,12 +3,13 @@ Periodic worker tasks for Artemis.
 """
 
 import logging
+from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 from services.worker import API_ROOT  # noqa: F401
 from services.worker.concurrency import AutomationConcurrencyLimiter
 from src.core.config import settings
-from src.domain.applications.constants import APPLICATION_STATUS_FAILED
+from src.domain.applications.constants import APPLICATION_STATUS_FAILED, APPLICATION_STATUS_ARCHIVED, AUTO_ARCHIVE_STALE_SUBMISSION_DAYS
 from src.domain.applications.repository import ApplicationRepository
 from src.domain.applications.factory import build_pipeline_service
 from src.domain.jobs.feed_service import JobFeedService
@@ -125,3 +126,50 @@ def scan_job_feed_for_all_users() -> dict[str, int]:
         "failed_users": failed_users,
         "new_jobs_found": total_new_jobs,
     }
+
+
+@celery_app.task(name="auto_archive_stale_submitted_applications")
+def auto_archive_stale_submitted_applications() -> dict[str, int]:
+    """Archive applications that have been in 'submitted' status for too long.
+
+    Applications stuck in 'submitted' for more than AUTO_ARCHIVE_STALE_SUBMISSION_DAYS
+    days are automatically moved to 'archived'. This keeps the user's application
+    list tidy and reflects realistic hiring timelines.
+    """
+    logger.info("[Worker] Starting auto-archive of stale submitted applications")
+
+    cutoff = datetime.now(timezone.utc) - timedelta(days=AUTO_ARCHIVE_STALE_SUBMISSION_DAYS)
+    db = SessionLocal()
+    archived_count = 0
+    failed_count = 0
+
+    try:
+        repo = ApplicationRepository(db)
+        stale = repo.list_stale_submitted(submitted_before=cutoff)
+        logger.info("[Worker] Found %d stale submitted application(s) to archive", len(stale))
+
+        for application in stale:
+            try:
+                repo.update_fields(application.id, status=APPLICATION_STATUS_ARCHIVED)
+                archived_count += 1
+                logger.info(
+                    "[Worker] Auto-archived application_id=%s (submitted on %s)",
+                    application.id,
+                    application.updated_at,
+                )
+            except Exception as exc:  # noqa: BLE001
+                failed_count += 1
+                logger.exception(
+                    "[Worker] Failed to auto-archive application_id=%s: %s",
+                    application.id,
+                    exc,
+                )
+    finally:
+        db.close()
+
+    logger.info(
+        "[Worker] Auto-archive complete: archived=%d failed=%d",
+        archived_count,
+        failed_count,
+    )
+    return {"archived": archived_count, "failed": failed_count}

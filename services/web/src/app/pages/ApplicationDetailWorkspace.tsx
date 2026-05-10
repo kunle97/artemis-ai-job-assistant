@@ -29,6 +29,7 @@ import {
   inspectApplicationPage,
   runApplicationPipeline,
   submitApplication,
+  updateLifecycleStatus,
   type AutomationPlannedFieldRecord,
   type ApplicationReadinessRecord,
   type ApplicationRecord,
@@ -191,6 +192,7 @@ export const ApplicationDetailWorkspace: React.FC = () => {
   const [authorizing, setAuthorizing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [confirmSubmit, setConfirmSubmit] = useState(false);
+  const [updatingLifecycleStatus, setUpdatingLifecycleStatus] = useState(false);
 
   const getPreviewCacheKey = (id: string) => `${AUTOFILL_PREVIEW_CACHE_PREFIX}:${id}`;
 
@@ -444,8 +446,23 @@ export const ApplicationDetailWorkspace: React.FC = () => {
             ? 'Authorize submission.'
             : 'Submit application.';
 
-  const handleRunAutomation = async () => {
+  const handleUpdateLifecycleStatus = async (newStatus: string) => {
     if (!token || !applicationId) return;
+    setUpdatingLifecycleStatus(true);
+    try {
+      await updateLifecycleStatus(token, applicationId, newStatus);
+      toast.success('Status updated', { description: `Application marked as ${newStatus}.` });
+      await loadWorkspace();
+    } catch (err) {
+      toast.error('Failed to update status', {
+        description: err instanceof Error ? err.message : 'An unexpected error occurred.',
+      });
+    } finally {
+      setUpdatingLifecycleStatus(false);
+    }
+  };
+
+  const handleRunAutomation = async () => {    if (!token || !applicationId) return;
     setRunning(true);
     setRunError(null);
     setAutomationState('queued');
@@ -871,6 +888,30 @@ export const ApplicationDetailWorkspace: React.FC = () => {
                 </div>
               </CardContent>
             </Card>
+
+            {['submitted', 'interviewing', 'offer_received', 'offer_accepted', 'rejected'].includes(normalizedStatus) && (
+              <Card className="border-blue/30 bg-blue/5">
+                <CardHeader>
+                  <CardTitle>Application Status</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <p className="text-xs text-muted-foreground">Track the status of your application throughout the hiring process.</p>
+                  <select
+                    value={normalizedStatus}
+                    onChange={(e) => handleUpdateLifecycleStatus(e.target.value)}
+                    disabled={updatingLifecycleStatus}
+                    className="w-full px-3 py-2 text-sm border border-input rounded-md bg-background hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <option value="submitted">Submitted</option>
+                    <option value="interviewing">Interviewing</option>
+                    <option value="offer_received">Offer Received</option>
+                    <option value="offer_accepted">Offer Accepted</option>
+                    <option value="rejected">Rejected</option>
+                    <option value="archived">Archived</option>
+                  </select>
+                </CardContent>
+              </Card>
+            )}
 
             <Card>
               <CardHeader>

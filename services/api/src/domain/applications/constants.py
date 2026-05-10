@@ -21,12 +21,33 @@ APPLICATION_STATUS_AWAITING_SUBMISSION = "awaiting_submission"
 APPLICATION_STATUS_SUBMITTED = "submitted"
 APPLICATION_STATUS_FAILED = "failed"
 
-# Post-application lifecycle statuses (used when importing from Career-Ops tracker)
+# Post-application lifecycle statuses (used when importing from Career-Ops tracker
+# and when users manually update their status after submission)
 APPLICATION_STATUS_APPLIED = "applied"
 APPLICATION_STATUS_INTERVIEWING = "interviewing"
 APPLICATION_STATUS_OFFER_RECEIVED = "offer_received"
+APPLICATION_STATUS_OFFER_ACCEPTED = "offer_accepted"
 APPLICATION_STATUS_REJECTED = "rejected"
 APPLICATION_STATUS_ARCHIVED = "archived"
+
+# Statuses users are allowed to set manually after a successful submission.
+# These represent real-world outcomes the user tracks themselves.
+POST_SUBMISSION_LIFECYCLE_STATUSES: frozenset[str] = frozenset({
+    APPLICATION_STATUS_INTERVIEWING,
+    APPLICATION_STATUS_OFFER_RECEIVED,
+    APPLICATION_STATUS_OFFER_ACCEPTED,
+    APPLICATION_STATUS_REJECTED,
+    APPLICATION_STATUS_ARCHIVED,
+})
+
+# All valid statuses that can be manually set by users after submission.
+# Includes 'submitted' so users can correct if they selected the wrong status.
+ALL_VALID_LIFECYCLE_STATUSES: frozenset[str] = frozenset({
+    APPLICATION_STATUS_SUBMITTED,
+}) | POST_SUBMISSION_LIFECYCLE_STATUSES
+
+# Applications in SUBMITTED status older than this many days are auto-archived.
+AUTO_ARCHIVE_STALE_SUBMISSION_DAYS = 60
 
 APPLICATION_STATUSES = {
     APPLICATION_STATUS_SAVED,
@@ -45,6 +66,7 @@ APPLICATION_STATUSES = {
     APPLICATION_STATUS_APPLIED,
     APPLICATION_STATUS_INTERVIEWING,
     APPLICATION_STATUS_OFFER_RECEIVED,
+    APPLICATION_STATUS_OFFER_ACCEPTED,
     APPLICATION_STATUS_REJECTED,
     APPLICATION_STATUS_ARCHIVED,
 }

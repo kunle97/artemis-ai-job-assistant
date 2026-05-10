@@ -4,6 +4,8 @@ Application repository.
 Handles database operations for user job applications.
 """
 
+from datetime import datetime, timezone
+
 from sqlalchemy.orm import Session
 
 from src.domain.applications.models import Application
@@ -74,3 +76,14 @@ class ApplicationRepository:
         )
         self.db.commit()
         return updated_rows
+
+    def list_stale_submitted(self, submitted_before: datetime) -> list[Application]:
+        """Return applications stuck in 'submitted' with updated_at before the cutoff."""
+        return (
+            self.db.query(Application)
+            .filter(
+                Application.status == "submitted",
+                Application.updated_at < submitted_before,
+            )
+            .all()
+        )
