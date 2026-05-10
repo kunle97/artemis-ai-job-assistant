@@ -1,6 +1,7 @@
 'use client';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { toast } from 'sonner';
 import { AppShell } from '../components/AppShell';
 import { Button, Card, Badge, Input, ScoreIndicator } from '../components/ui';
 import {
@@ -197,10 +198,26 @@ export const JobFeedDashboard: React.FC = () => {
     try {
       const application = await createApplication(token, { job_id: jobId });
       await runApplicationPipeline(token, application.id);
-      router.push(`/applications/${application.id}`);
+
+      // Keep users on the feed and remove queued jobs from the visible list.
+      setJobs((prev) => prev.filter((job) => job.id !== jobId));
+      setTotal((prev) => Math.max(0, prev - 1));
+      setJobStatuses((prev) => ({ ...prev, [jobId]: 'dismissed' }));
+
+      // Best-effort persistence so the queued item stays hidden across refreshes.
+      try {
+        await updateFeedJobStatus(token, jobId, 'dismissed');
+      } catch {
+        // Non-blocking: local hide already happened.
+      }
+
+      toast.success('Application added to autofill queue', {
+        description: 'You can track progress from the applications queue.',
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to start application.';
       setApplyError(message);
+    } finally {
       setApplyingJobId(null);
     }
   };

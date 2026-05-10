@@ -35,10 +35,10 @@ export const AddJobPage: React.FC = () => {
       const created = await createJobFromUrl(token, { apply_url: jobUrl.trim() });
       setMessage(`Successfully added "${created.title}" at ${created.company_name}.`);
       setJobUrl('');
-      
+
       // Redirect back to feed after 2 seconds
       setTimeout(() => {
-        router.push('/jobs/feed');
+        router.push('/jobs');
       }, 2000);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Unable to add job.';

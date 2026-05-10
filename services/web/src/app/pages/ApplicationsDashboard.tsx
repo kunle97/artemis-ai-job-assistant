@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 import { getStoredAccessToken } from '../../services/auth/auth.service';
 import { AppShell } from '../components/AppShell';
 import { Button, Card, Badge } from '../components/ui';
-import { Plus, CheckCircle, Clock, XCircle, ArrowRight } from 'lucide-react';
+import { Plus, CheckCircle, Clock, XCircle, ArrowRight, AlertCircle } from 'lucide-react';
 import { ScoreIndicator } from '../components/ui/ScoreIndicator';
 import type { ScoreRecommendation } from '../components/ui/ScoreIndicator';
 import {

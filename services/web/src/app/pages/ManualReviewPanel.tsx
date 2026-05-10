@@ -3,7 +3,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { AppShell } from '../components/AppShell';
 import { Button, Card, Badge } from '../components/ui';
-import { ArrowLeft, Save, AlertCircle, CheckCircle, RefreshCw, Sparkles } from 'lucide-react';
+import { ArrowLeft, Save, AlertCircle, CheckCircle, RefreshCw, Sparkles, ExternalLink } from 'lucide-react';
 import { getStoredAccessToken } from '../../services/auth/auth.service';
 import {
   buildAutomationFillPlan,
@@ -11,6 +11,7 @@ import {
   getApplicationStatus,
   getJobById,
   inspectApplicationPage,
+  runApplicationPipeline,
   type AutomationPlannedFieldRecord,
 } from '../../services/applications/application-workspace.service';
 import {
@@ -68,7 +69,9 @@ export const ManualReviewPanel: React.FC = () => {
   const [manualReviewRequired, setManualReviewRequired] = useState(false);
   const [jobTitle, setJobTitle] = useState<string>('Application');
   const [companyName, setCompanyName] = useState<string>('');
+  const [jobUrl, setJobUrl] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [continuing, setContinuing] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
   const loadReviewData = useCallback(async () => {
@@ -92,6 +95,9 @@ export const ManualReviewPanel: React.FC = () => {
       if (job) {
         setJobTitle(job.title || 'Application');
         setCompanyName(job.company_name || '');
+        setJobUrl(job.apply_url || null);
+      } else {
+        setJobUrl(null);
       }
 
       if (!job?.apply_url) {
@@ -144,7 +150,7 @@ export const ManualReviewPanel: React.FC = () => {
 
     try {
       const filledFields = fields.filter((f) => f.userAnswer.trim().length > 0);
-      await Promise.all(
+      const savedAnswers = await Promise.all(
         filledFields.map((f) =>
           saveApplicationAnswer(token, {
             question_key: buildApplicationAnswerQuestionKey(f.questionText),
@@ -154,9 +160,17 @@ export const ManualReviewPanel: React.FC = () => {
         ),
       );
 
+      const allSaved = savedAnswers.every((answer) => Boolean(answer?.id));
+      if (!allSaved) {
+        throw new Error('Some reviewed fields were not saved to your question library. Please try again.');
+      }
+
       setFields((prev) =>
         prev.map((f) => (f.userAnswer.trim().length > 0 ? { ...f, saved: true } : f)),
       );
+
+      // Re-dispatch automation so newly reviewed answers are applied.
+      await runApplicationPipeline(token, applicationId);
 
       router.push(`/applications/${applicationId}`);
     } catch (err) {
@@ -164,6 +178,22 @@ export const ManualReviewPanel: React.FC = () => {
       setSaveError(message);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleContinueWithoutSaving = async () => {
+    if (!token) return;
+    setContinuing(true);
+    setSaveError(null);
+
+    try {
+      await runApplicationPipeline(token, applicationId);
+      router.push(`/applications/${applicationId}`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to re-run automation.';
+      setSaveError(message);
+    } finally {
+      setContinuing(false);
     }
   };
 
@@ -221,6 +251,17 @@ export const ManualReviewPanel: React.FC = () => {
                 <p className="mt-1 text-muted-foreground">
                   {jobTitle}{companyName ? ` at ${companyName}` : ''}
                 </p>
+              )}
+              {jobUrl && (
+                <a
+                  href={jobUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mt-2 inline-flex items-center gap-1 text-sm text-brand hover:underline"
+                >
+                  <ExternalLink className="h-3.5 w-3.5" />
+                  Open live application page
+                </a>
               )}
             </div>
             {totalFields > 0 && (
@@ -383,9 +424,11 @@ export const ManualReviewPanel: React.FC = () => {
                   <Button
                     variant="outline"
                     fullWidth
-                    onClick={() => router.push(`/applications/${applicationId}`)}
+                    onClick={() => void handleContinueWithoutSaving()}
+                    loading={continuing}
+                    disabled={saving || continuing}
                   >
-                    Back Without Saving
+                    Continue Without Saving
                   </Button>
                 </div>
               </Card>
