@@ -4,8 +4,13 @@ Applications API tests.
 Verifies authenticated creation and listing of application records.
 """
 
+import uuid
+
 from src.domain.auth.repository import UserRepository
+from src.domain.applications.repository import ApplicationRepository
+from src.domain.jobs.models import JobFeedStatus
 from src.domain.jobs.repository import JobRepository
+from src.domain.jobs.repository import JobUserFeedRepository
 from src.domain.resume.repository import ResumeRepository
 
 
@@ -224,3 +229,65 @@ def test_create_application_for_missing_job_returns_400(client, sample_user_payl
 def test_applications_requires_auth(client):
     response = client.get("/applications")
     assert response.status_code == 401
+
+
+def test_delete_unsubmitted_application_restores_job_to_feed(client, db_session, sample_user_payload):
+    token = _register_and_login(client, sample_user_payload)
+    job_id = _create_fake_job(db_session)
+    job_uuid = uuid.UUID(job_id)
+    user_id = _get_user_id(db_session, sample_user_payload["email"])
+
+    create_response = client.post(
+        "/applications",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"job_id": job_id},
+    )
+    assert create_response.status_code == 200
+    application_id = create_response.json()["id"]
+
+    job_user_feed_repository = JobUserFeedRepository(db_session)
+    link, _ = job_user_feed_repository.get_or_create(
+        user_id=user_id,
+        job_id=job_uuid,
+        status=JobFeedStatus.DISMISSED,
+    )
+    assert link is not None
+
+    delete_response = client.delete(
+        f"/applications/{application_id}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert delete_response.status_code == 204
+
+    deleted = ApplicationRepository(db_session).get_by_id(uuid.UUID(application_id))
+    assert deleted is None
+
+    db_session.expire_all()
+    refreshed_link = job_user_feed_repository.get_by_user_and_job_id(user_id=user_id, job_id=job_uuid)
+    assert refreshed_link is not None
+    assert refreshed_link.status == JobFeedStatus.NEW
+
+
+def test_delete_submitted_application_returns_400(client, db_session, sample_user_payload):
+    token = _register_and_login(client, sample_user_payload)
+    job_id = _create_fake_job(db_session)
+
+    create_response = client.post(
+        "/applications",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"job_id": job_id},
+    )
+    assert create_response.status_code == 200
+    application_id = create_response.json()["id"]
+
+    ApplicationRepository(db_session).update_fields(
+        uuid.UUID(application_id),
+        status="submitted",
+    )
+
+    delete_response = client.delete(
+        f"/applications/{application_id}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert delete_response.status_code == 400
+    assert "cannot be deleted" in delete_response.json()["detail"].lower()

@@ -1,14 +1,16 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { Sparkles, Briefcase, FileText, BookOpen, User, Settings, Search, Menu, X, SlidersHorizontal } from 'lucide-react';
 import { FollowUpDropdown } from './FollowUpDropdown';
 import {
   clearStoredTokens,
+  getCurrentSession,
   getStoredAccessToken,
   getStoredRefreshToken,
   logoutUser,
+  type SessionUser,
 } from '../../services/auth/auth.service';
 
 interface AppShellProps {
@@ -17,6 +19,7 @@ interface AppShellProps {
 
 export const AppShell: React.FC<AppShellProps> = ({ children }) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sessionUser, setSessionUser] = useState<SessionUser | null>(null);
   const pathname = usePathname();
   const router = useRouter();
 
@@ -50,6 +53,42 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
       router.push('/signin');
     }
   };
+
+  useEffect(() => {
+    const loadSessionUser = async () => {
+      const accessToken = getStoredAccessToken();
+      if (!accessToken) {
+        setSessionUser(null);
+        return;
+      }
+
+      try {
+        const user = await getCurrentSession(accessToken);
+        setSessionUser(user);
+      } catch {
+        // Non-blocking: keep shell usable even if session lookup fails.
+        setSessionUser(null);
+      }
+    };
+
+    void loadSessionUser();
+  }, []);
+
+  const fullName = [sessionUser?.first_name, sessionUser?.last_name]
+    .map((part) => (part || '').trim())
+    .filter((part) => part.length > 0)
+    .join(' ');
+
+  const displayName = fullName || sessionUser?.email || 'Account';
+  const displayEmail = sessionUser?.email || '';
+  const initials = fullName
+    ? fullName
+      .split(' ')
+      .filter((part) => part.length > 0)
+      .slice(0, 2)
+      .map((part) => part[0]?.toUpperCase() || '')
+      .join('')
+    : (sessionUser?.email?.charAt(0).toUpperCase() || 'A');
 
   return (
     <div className="min-h-screen bg-background">
@@ -126,11 +165,11 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
           <div className="border-t border-border p-4">
             <div className="flex items-center gap-3 mb-3">
               <div className="h-10 w-10 rounded-full bg-brand text-brand-foreground flex items-center justify-center font-semibold">
-                JD
+                {initials}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-foreground truncate">John Doe</p>
-                <p className="text-xs text-muted-foreground truncate">john@example.com</p>
+                <p className="text-sm font-medium text-foreground truncate">{displayName}</p>
+                <p className="text-xs text-muted-foreground truncate">{displayEmail}</p>
               </div>
             </div>
             <button

@@ -1,16 +1,29 @@
 'use client';
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { toast } from 'sonner';
 import { getStoredAccessToken } from '../../services/auth/auth.service';
 import { AppShell } from '../components/AppShell';
 import { Button, Card, Badge } from '../components/ui';
-import { Plus, CheckCircle, Clock, XCircle, ArrowRight, AlertCircle } from 'lucide-react';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '../components/ui/alert-dialog';
+import { Plus, CheckCircle, Clock, XCircle, ArrowRight, AlertCircle, Trash2 } from 'lucide-react';
 import { ScoreIndicator } from '../components/ui/ScoreIndicator';
 import type { ScoreRecommendation } from '../components/ui/ScoreIndicator';
 import {
   listApplications,
+  deleteApplication,
   getApplicationStatus,
   getJobById,
+  type ApplicationRecord,
   type ApplicationStatusRecord,
 } from '../../services/applications/application-workspace.service';
 
@@ -18,8 +31,10 @@ type ApplicationStatus = 'draft' | 'ready' | 'blocked' | 'submitted' | 'in-progr
 
 interface ApplicationDisplay {
   id: string;
+  jobId: string;
   jobTitle: string;
   company: string;
+  rawStatus: string;
   status: ApplicationStatus;
   lastUpdated: string;
   fitScore?: number | null;
@@ -64,6 +79,59 @@ export const ApplicationsDashboard: React.FC = () => {
   const [applications, setApplications] = useState<ApplicationDisplay[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [deletingApplicationId, setDeletingApplicationId] = useState<string | null>(null);
+  const [pendingDeleteApplication, setPendingDeleteApplication] = useState<ApplicationDisplay | null>(null);
+
+  const postSubmissionStatuses = new Set([
+    'submitted',
+    'applied',
+    'interviewing',
+    'offer_received',
+    'offer_accepted',
+    'rejected',
+    'archived',
+  ]);
+
+  const isUnsubmittedStatus = (status: string) => !postSubmissionStatuses.has((status || '').trim().toLowerCase());
+
+  const buildDisplayApps = async (token: string, appRecords: ApplicationRecord[]): Promise<ApplicationDisplay[]> => {
+    const displayApps: ApplicationDisplay[] = [];
+
+    for (const app of appRecords) {
+      try {
+        const [statusRecord, job] = await Promise.all([
+          getApplicationStatus(token, app.id),
+          getJobById(token, app.job_id),
+        ]);
+        displayApps.push({
+          id: app.id,
+          jobId: app.job_id,
+          jobTitle: job?.title || `Job ${app.job_id.slice(0, 8)}`,
+          company: job?.company_name || 'Unknown company',
+          rawStatus: statusRecord.status,
+          status: deriveApplicationStatus(statusRecord),
+          lastUpdated: new Date(app.updated_at).toLocaleDateString(),
+          fitScore: job?.fit_score ?? null,
+          fitRecommendation: job?.fit_recommendation ?? null,
+        });
+      } catch (statusErr) {
+        console.warn(`Failed to load status for application ${app.id}:`, statusErr);
+        displayApps.push({
+          id: app.id,
+          jobId: app.job_id,
+          jobTitle: `Job ${app.job_id.slice(0, 8)}`,
+          company: 'Unknown company',
+          rawStatus: app.status,
+          status: mapApplicationStatus(app.status),
+          lastUpdated: new Date(app.updated_at).toLocaleDateString(),
+          fitScore: null,
+          fitRecommendation: null,
+        });
+      }
+    }
+
+    return displayApps;
+  };
 
   useEffect(() => {
     const loadApplications = async () => {
@@ -77,36 +145,7 @@ export const ApplicationsDashboard: React.FC = () => {
         setIsLoading(true);
         setError(null);
         const appRecords = await listApplications(token);
-        const displayApps: ApplicationDisplay[] = [];
-
-        for (const app of appRecords) {
-          try {
-            const [statusRecord, job] = await Promise.all([
-              getApplicationStatus(token, app.id),
-              getJobById(token, app.job_id),
-            ]);
-            displayApps.push({
-              id: app.id,
-              jobTitle: job?.title || `Job ${app.job_id.slice(0, 8)}`,
-              company: job?.company_name || 'Unknown company',
-              status: deriveApplicationStatus(statusRecord),
-              lastUpdated: new Date(app.updated_at).toLocaleDateString(),
-              fitScore: job?.fit_score ?? null,
-              fitRecommendation: job?.fit_recommendation ?? null,
-            });
-          } catch (statusErr) {
-            console.warn(`Failed to load status for application ${app.id}:`, statusErr);
-            displayApps.push({
-              id: app.id,
-              jobTitle: `Job ${app.job_id.slice(0, 8)}`,
-              company: 'Unknown company',
-              status: mapApplicationStatus(app.status),
-              lastUpdated: new Date(app.updated_at).toLocaleDateString(),
-              fitScore: null,
-              fitRecommendation: null,
-            });
-          }
-        }
+        const displayApps = await buildDisplayApps(token, appRecords);
 
         setApplications(displayApps);
       } catch (err) {
@@ -140,6 +179,37 @@ export const ApplicationsDashboard: React.FC = () => {
 
   const handleCreateApplication = () => {
     router.push('/jobs');
+  };
+
+  const handleDeleteApplication = async (app: ApplicationDisplay) => {
+    if (!isUnsubmittedStatus(app.rawStatus)) {
+      return;
+    }
+
+    setPendingDeleteApplication(app);
+  };
+
+  const confirmDeleteApplication = async () => {
+    const app = pendingDeleteApplication;
+    const token = getStoredAccessToken();
+    if (!token || deletingApplicationId || !app) return;
+
+    setDeletingApplicationId(app.id);
+    try {
+      await deleteApplication(token, app.id, true);
+      setPendingDeleteApplication(null);
+      const appRecords = await listApplications(token);
+      const refreshed = await buildDisplayApps(token, appRecords);
+      setApplications(refreshed);
+      toast.success('Application deleted', {
+        description: 'The job has been restored to your feed for retesting.',
+      });
+    } catch (deleteError) {
+      const message = deleteError instanceof Error ? deleteError.message : 'Failed to delete application.';
+      toast.error('Delete failed', { description: message });
+    } finally {
+      setDeletingApplicationId(null);
+    }
   };
 
   return (
@@ -231,14 +301,28 @@ export const ApplicationsDashboard: React.FC = () => {
                         <span className="text-sm text-muted-foreground">{app.lastUpdated}</span>
                       </td>
                       <td className="px-6 py-4 text-right">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleViewApplication(app.id)}
-                        >
-                          View
-                          <ArrowRight className="h-4 w-4" />
-                        </Button>
+                        <div className="inline-flex items-center gap-1">
+                          {isUnsubmittedStatus(app.rawStatus) ? (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              disabled={deletingApplicationId === app.id}
+                              onClick={() => void handleDeleteApplication(app)}
+                              aria-label="Delete unsubmitted application"
+                              title="Delete unsubmitted application"
+                            >
+                              <Trash2 className="h-4 w-4 text-muted-foreground" />
+                            </Button>
+                          ) : null}
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleViewApplication(app.id)}
+                          >
+                            View
+                            <ArrowRight className="h-4 w-4" />
+                          </Button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -281,6 +365,36 @@ export const ApplicationsDashboard: React.FC = () => {
             </div>
           )}
         </Card>
+
+        <AlertDialog
+          open={Boolean(pendingDeleteApplication)}
+          onOpenChange={(open) => {
+            if (!open && !deletingApplicationId) {
+              setPendingDeleteApplication(null);
+            }
+          }}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete This Application?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This will delete the unsubmitted application and move the job back into your feed so you can retest.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={Boolean(deletingApplicationId)}>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                className="bg-destructive text-white hover:bg-destructive/90"
+                onClick={(event) => {
+                  event.preventDefault();
+                  void confirmDeleteApplication();
+                }}
+              >
+                {deletingApplicationId ? 'Deleting...' : 'Delete Application'}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </AppShell>
   );

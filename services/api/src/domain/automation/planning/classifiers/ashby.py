@@ -24,6 +24,7 @@ from src.domain.automation.planning.constants import (
     FIELD_ROLE_OPEN_ENDED,
     FIELD_ROLE_PHONE,
     FIELD_ROLE_PORTFOLIO,
+    FIELD_ROLE_PREFERRED_OFFICE_LOCATION,
     FIELD_ROLE_REFERRAL_SOURCE,
     FIELD_ROLE_RELOCATION,
     FIELD_ROLE_RESUME_UPLOAD,
@@ -135,6 +136,20 @@ class AshbyAutomationFieldClassifier(BaseAutomationFieldClassifier):
                 return FIELD_ROLE_LOCATION
             if "how did you hear about" in text:
                 return FIELD_ROLE_REFERRAL_SOURCE
+
+        if field_type == "checkbox_group":
+            # Detect location-preference checkbox groups via the group label.
+            # When the label is null/empty the planning service will inspect options.
+            if "location" in text or "where" in text or "office" in text or "city" in text or "prefer" in text:
+                return FIELD_ROLE_PREFERRED_OFFICE_LOCATION
+            return FIELD_ROLE_UNKNOWN
+
+        if field_type == "checkbox":
+            if "consent" in text or "agree" in text or "acknowledge" in text:
+                return FIELD_ROLE_CONSENT
+            if "privacy" in text:
+                return FIELD_ROLE_COMPLIANCE
+            return FIELD_ROLE_UNKNOWN
 
         if field_type == "radio_group":
             if "gender" in text or "ethnicity" in text or "race" in text or "veteran" in text or "disability" in text:

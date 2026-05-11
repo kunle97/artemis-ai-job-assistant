@@ -5,7 +5,7 @@ Thin HTTP endpoints for creating and listing the authenticated user's applicatio
 """
 
 from celery import Celery
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from uuid import UUID
 
@@ -23,10 +23,12 @@ from src.domain.applications.schemas import (
     ApplicationLifecycleStatusUpdate,
 )
 from src.domain.applications.analytics.repository import ApplicationPatternRepository
+from src.domain.applications.followup.repository import FollowUpRepository
 from src.domain.applications.analytics.schemas import ApplicationPatternsResponse
 from src.domain.applications.analytics.service import ApplicationPatternService
 from src.domain.applications.service import ApplicationService
 from src.domain.jobs.repository import JobRepository
+from src.domain.jobs.repository import JobUserFeedRepository
 from src.domain.jobs.scoring.repository import ApplicationScoreRepository
 from src.domain.profile.repository import CandidateProfileRepository
 from src.domain.resume.repository import ResumeRepository
@@ -44,6 +46,9 @@ def _build_application_service(db: Session) -> ApplicationService:
     return ApplicationService(
         repository=ApplicationRepository(db),
         job_repository=JobRepository(db),
+        job_user_feed_repository=JobUserFeedRepository(db),
+        follow_up_repository=FollowUpRepository(db),
+        application_score_repository=ApplicationScoreRepository(db),
         profile_repository=CandidateProfileRepository(db),
         resume_repository=ResumeRepository(db),
     )
@@ -121,6 +126,29 @@ def get_application(
         return service.get_application(user_id=current_user.id, application_id=application_id)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.delete("/{application_id}", status_code=204)
+def delete_application(
+    application_id: UUID,
+    restore_to_feed: bool = Query(default=True),
+    current_user=Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    service = _build_application_service(db)
+
+    try:
+        service.delete_unsubmitted_application(
+            user_id=current_user.id,
+            application_id=application_id,
+            restore_to_feed=restore_to_feed,
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
+    except ValueError as exc:
+        detail = str(exc)
+        status_code = 404 if detail == "Application not found." else 400
+        raise HTTPException(status_code=status_code, detail=detail)
 
 
 @router.get("/{application_id}/status", response_model=ApplicationStatusRead)

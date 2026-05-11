@@ -13,9 +13,13 @@ from src.domain.applications.constants import (
     POST_SUBMISSION_LIFECYCLE_STATUSES,
     ALL_VALID_LIFECYCLE_STATUSES,
 )
+from src.domain.applications.followup.repository import FollowUpRepository
 from src.domain.applications.repository import ApplicationRepository
 from src.domain.applications.schemas import ApplicationCreate
+from src.domain.jobs.models import JobFeedStatus
 from src.domain.jobs.repository import JobRepository
+from src.domain.jobs.repository import JobUserFeedRepository
+from src.domain.jobs.scoring.repository import ApplicationScoreRepository
 from src.domain.profile.repository import CandidateProfileRepository
 from src.domain.resume.repository import ResumeRepository
 
@@ -28,11 +32,17 @@ class ApplicationService:
         self,
         repository: ApplicationRepository,
         job_repository: JobRepository,
+        job_user_feed_repository: JobUserFeedRepository,
+        follow_up_repository: FollowUpRepository,
+        application_score_repository: ApplicationScoreRepository,
         profile_repository: CandidateProfileRepository,
         resume_repository: ResumeRepository,
     ):
         self.repository = repository
         self.job_repository = job_repository
+        self.job_user_feed_repository = job_user_feed_repository
+        self.follow_up_repository = follow_up_repository
+        self.application_score_repository = application_score_repository
         self.profile_repository = profile_repository
         self.resume_repository = resume_repository
 
@@ -101,6 +111,50 @@ class ApplicationService:
 
     def list_applications(self, user_id):
         return self.repository.list_by_user_id(user_id)
+
+    def delete_unsubmitted_application(self, user_id, application_id, restore_to_feed: bool = True) -> None:
+        logger.info(
+            "[ApplicationService] Delete application start application_id=%s restore_to_feed=%s",
+            application_id,
+            restore_to_feed,
+        )
+
+        application = self.repository.get_by_id(application_id)
+        if not application:
+            raise ValueError("Application not found.")
+
+        if str(application.user_id) != str(user_id):
+            raise PermissionError("You are not allowed to delete this application.")
+
+        if application.status == APPLICATION_STATUS_SUBMITTED or application.status in POST_SUBMISSION_LIFECYCLE_STATUSES:
+            raise ValueError("Submitted applications cannot be deleted.")
+
+        application_job_id = application.job_id
+
+        self.follow_up_repository.delete_by_application_id(application_id)
+        self.application_score_repository.delete_by_application_id(application_id)
+
+        deleted = self.repository.delete_by_id(application_id)
+        if not deleted:
+            raise ValueError("Application not found.")
+
+        if restore_to_feed:
+            feed_link, created = self.job_user_feed_repository.get_or_create(
+                user_id=user_id,
+                job_id=application_job_id,
+                status=JobFeedStatus.NEW,
+            )
+            if not created and feed_link.status != JobFeedStatus.NEW:
+                self.job_user_feed_repository.update_status(
+                    user_id=user_id,
+                    job_id=application_job_id,
+                    status=JobFeedStatus.NEW,
+                )
+
+        logger.info(
+            "[ApplicationService] Delete application complete application_id=%s",
+            application_id,
+        )
 
     def authorize_submission(self, user_id, application_id):
         logger.info(f"[ApplicationService] Authorize submission start application_id={application_id}")

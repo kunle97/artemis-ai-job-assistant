@@ -101,6 +101,15 @@ class ApplicationRepository:
         self.db.refresh(application)
         return application
 
+    def delete_by_id(self, application_id) -> bool:
+        deleted_rows = (
+            self.db.query(Application)
+            .filter(Application.id == application_id)
+            .delete()
+        )
+        self.db.commit()
+        return deleted_rows > 0
+
     def clear_resume_references(self, user_id, resume_id):
         updated_rows = (
             self.db.query(Application)

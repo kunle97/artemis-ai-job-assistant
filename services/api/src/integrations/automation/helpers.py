@@ -463,7 +463,8 @@ def extract_fields(page) -> list[dict]:
         );
     };
 
-    const getNearbyPrompt = (el) => {
+    const getNearbyPrompt = (el, options = {}) => {
+        const maxTextLength = Number(options.maxTextLength || 300);
         const container = findBestContainer(el);
         if (!container) return null;
 
@@ -494,7 +495,7 @@ def extract_fields(page) -> list[dict]:
 
             const lowered = text.toLowerCase();
             if (['yes', 'no', 'true', 'false'].includes(lowered)) continue;
-            if (text.length > 300) continue;
+            if (text.length > maxTextLength) continue;
 
             return text;
         }
@@ -505,7 +506,7 @@ def extract_fields(page) -> list[dict]:
         while (prev && hops < 3) {
         if (isVisible(prev)) {
             const text = getText(prev);
-            if (text && text.length <= 300) return text;
+            if (text && text.length <= maxTextLength) return text;
         }
         prev = prev.previousElementSibling;
         hops += 1;
@@ -605,6 +606,15 @@ def extract_fields(page) -> list[dict]:
     };
 
     const inferFieldLabel = (el) => {
+        const tag = (el.tagName || '').toLowerCase();
+        const type = (el.getAttribute?.('type') || '').toLowerCase();
+
+        // Consent/acknowledgement checkbox prompts are often long policy text.
+        // Allow a larger prompt length so those questions are not dropped.
+        if (tag === 'input' && type === 'checkbox') {
+        return getLabelFor(el) || getNearbyPrompt(el, { maxTextLength: 2000 });
+        }
+
         return getLabelFor(el) || getNearbyPrompt(el);
     };
 
@@ -936,14 +946,7 @@ def extract_fields(page) -> list[dict]:
         }
 
         if (tag === 'input' && type === 'checkbox') {
-        fields.push({
-            field_type: 'checkbox',
-            input_subtype: 'checkbox',
-            label: inferFieldLabel(el),
-            name,
-            placeholder: null,
-            required: getRequired(el),
-        });
+        // Deferred: checkboxes are grouped into checkbox_group fields below.
         continue;
         }
 
@@ -984,6 +987,94 @@ def extract_fields(page) -> list[dict]:
             placeholder,
             required: getRequired(el),
         });
+        }
+    }
+
+    // === Group checkboxes into checkbox_group (or standalone checkbox) fields ===
+    // Consecutive checkboxes sharing a common container are merged into a single
+    // checkbox_group with each checkbox as an option.  Isolated checkboxes (e.g.
+    // a single consent box) remain as individual checkbox fields.
+    {
+        const checkboxEls = allControls.filter(
+        (c) => c.tagName.toLowerCase() === 'input' &&
+                (c.getAttribute('type') || '').toLowerCase() === 'checkbox'
+        );
+        const checkboxElsSet = new Set(checkboxEls);
+        const seenCheckboxEls = new Set();
+
+        for (const cb of checkboxEls) {
+        if (seenCheckboxEls.has(cb)) continue;
+
+        // Find the smallest container that holds 2+ of our visible checkboxes.
+        let groupContainer = null;
+        let cur = cb.parentElement;
+        let d = 0;
+        while (cur && d < 8) {
+            const cbsInCur = Array.from(cur.querySelectorAll('input[type="checkbox"]'))
+            .filter((c) => checkboxElsSet.has(c));
+            if (cbsInCur.length >= 2) {
+            groupContainer = cur;
+            break;
+            }
+            cur = cur.parentElement;
+            d += 1;
+        }
+
+        if (groupContainer) {
+            const groupCbs = Array.from(groupContainer.querySelectorAll('input[type="checkbox"]'))
+            .filter((c) => checkboxElsSet.has(c) && !seenCheckboxEls.has(c));
+
+            if (groupCbs.length >= 2) {
+            // Look for a group label: preceding sibling text or nearby prompt.
+            let groupLabel = null;
+            let prevEl = groupContainer.previousElementSibling;
+            let hops = 0;
+            while (prevEl && hops < 3) {
+                if (isVisible(prevEl)) {
+                const t = getText(prevEl);
+                if (t && t.length >= 3 && t.length <= 2000) {
+                    groupLabel = t;
+                    break;
+                }
+                }
+                prevEl = prevEl.previousElementSibling;
+                hops += 1;
+            }
+            if (!groupLabel) {
+                groupLabel = getNearbyPrompt(groupCbs[0]);
+            }
+
+            const options = groupCbs.map((c) => {
+                const lbl = inferFieldLabel(c);
+                const val = (c.getAttribute('name') || lbl || '').trim();
+                return { label: lbl, value: val };
+            });
+
+            fields.push({
+                field_type: 'checkbox_group',
+                input_subtype: 'checkbox_group',
+                label: groupLabel,
+                name: null,
+                placeholder: null,
+                required: groupCbs.some((c) => getRequired(c)),
+                options,
+            });
+
+            groupCbs.forEach((c) => seenCheckboxEls.add(c));
+            continue;
+            }
+        }
+
+        // Standalone checkbox (consent, single toggle, etc.)
+        fields.push({
+            field_type: 'checkbox',
+            input_subtype: 'checkbox',
+            label: inferFieldLabel(cb),
+            name: (cb.getAttribute('name') || '').trim() || null,
+            placeholder: null,
+            required: getRequired(cb),
+        });
+        seenCheckboxEls.add(cb);
         }
     }
 

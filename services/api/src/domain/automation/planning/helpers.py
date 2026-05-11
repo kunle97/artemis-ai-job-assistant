@@ -31,6 +31,7 @@ from src.domain.automation.planning.constants import (
     FIELD_ROLE_OPEN_ENDED,
     FIELD_ROLE_PHONE,
     FIELD_ROLE_PORTFOLIO_URL,
+    FIELD_ROLE_PREFERRED_OFFICE_LOCATION,
     FIELD_ROLE_PREFERRED_PROGRAMMING_LANGUAGE,
     FIELD_ROLE_REFERRAL_SOURCE,
     FIELD_ROLE_RELOCATION,
@@ -917,6 +918,19 @@ def resolve_field_value(
     if classified_role == FIELD_ROLE_LOCATION:
         value = resolve_location_value(inspected_field=inspected_field, profile=profile)
         return value, value is None
+
+    if classified_role == FIELD_ROLE_PREFERRED_OFFICE_LOCATION:
+        # Surface the user's preferred work arrangements as a hint for the preview.
+        # The fill handler will match these against checkbox options at fill time.
+        arrangements = getattr(profile, "work_arrangement", None) or []
+        if isinstance(arrangements, str):
+            arrangements = [arrangements]
+        if arrangements:
+            return ", ".join(str(a) for a in arrangements), True  # needs_review so user can confirm
+        location = getattr(profile, "location", None) or getattr(profile, "city", None)
+        if location:
+            return location, True
+        return None, True
 
     if classified_role == FIELD_ROLE_CURRENT_COMPANY:
         value = getattr(profile, "current_company", None)

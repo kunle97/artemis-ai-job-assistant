@@ -51,3 +51,12 @@ class ApplicationScoreRepository:
         self.db.commit()
         self.db.refresh(score)
         return score
+
+    def delete_by_application_id(self, application_id) -> bool:
+        deleted_rows = (
+            self.db.query(ApplicationScore)
+            .filter(ApplicationScore.application_id == application_id)
+            .delete()
+        )
+        self.db.commit()
+        return deleted_rows > 0

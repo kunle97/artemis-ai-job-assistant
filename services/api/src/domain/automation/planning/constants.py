@@ -27,6 +27,8 @@ FIELD_ROLE_PORTFOLIO = "portfolio_url"
 
 FIELD_ROLE_LOCATION = "location"
 
+FIELD_ROLE_PREFERRED_OFFICE_LOCATION = "preferred_office_location"
+
 FIELD_ROLE_COUNTRY = "country"
 
 FIELD_ROLE_STATE_OF_RESIDENCE = "state_of_residence"

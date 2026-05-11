@@ -35,6 +35,46 @@ from src.integrations.automation.helpers import (
 logger = logging.getLogger(__name__)
 
 
+def _field_signature(field: dict) -> tuple:
+    """Build a stable signature for de-duplicating extracted fields across passes."""
+    options = field.get("options") or []
+    option_sig = tuple(
+        (
+            (opt.get("label") or "").strip().lower(),
+            (opt.get("value") or "").strip().lower(),
+        )
+        for opt in options
+        if isinstance(opt, dict)
+    )
+
+    return (
+        (field.get("field_type") or "").strip().lower(),
+        (field.get("input_subtype") or "").strip().lower(),
+        (field.get("label") or "").strip().lower(),
+        (field.get("name") or "").strip().lower(),
+        (field.get("placeholder") or "").strip().lower(),
+        bool(field.get("required", False)),
+        option_sig,
+    )
+
+
+def _merge_field_passes(first_pass: list[dict], second_pass: list[dict]) -> list[dict]:
+    """Merge extracted fields from multiple passes while preserving order."""
+    merged: list[dict] = []
+    seen_signatures: set[tuple] = set()
+
+    for field in [*first_pass, *second_pass]:
+        if not isinstance(field, dict):
+            continue
+        signature = _field_signature(field)
+        if signature in seen_signatures:
+            continue
+        seen_signatures.add(signature)
+        merged.append(field)
+
+    return merged
+
+
 def _extract_job_context(page) -> str | None:
         """Extract a compact text snapshot of the job description before the form."""
         try:
@@ -162,8 +202,15 @@ class ApplicationPageInspector:
         _trigger_lazy_form_render(page)
         page.wait_for_timeout(500)
         second_pass_fields = extract_fields(page)
-        if len(second_pass_fields) > len(fields):
-            fields = second_pass_fields
+        merged_fields = _merge_field_passes(fields, second_pass_fields)
+        if len(merged_fields) != len(fields):
+            logger.info(
+                "[PageInspector] Merged extraction passes first=%d second=%d merged=%d",
+                len(fields),
+                len(second_pass_fields),
+                len(merged_fields),
+            )
+        fields = merged_fields
 
         screenshot_path = save_screenshot(page, url=application_url)
 

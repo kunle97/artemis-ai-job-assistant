@@ -278,6 +278,21 @@ export async function submitApplication(token: string, applicationId: string): P
   }
 }
 
+export async function deleteApplication(
+  token: string,
+  applicationId: string,
+  restoreToFeed = true,
+): Promise<void> {
+  try {
+    await httpClient.delete(`/applications/${applicationId}`, {
+      headers: buildAuthHeader(token),
+      params: { restore_to_feed: restoreToFeed },
+    });
+  } catch (error) {
+    parseApiError(error, 'Failed to delete application with status {status}.');
+  }
+}
+
 export async function updateLifecycleStatus(
   token: string,
   applicationId: string,

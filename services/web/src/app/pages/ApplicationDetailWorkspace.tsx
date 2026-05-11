@@ -6,6 +6,16 @@ import { toast } from 'sonner';
 import { AppShell } from '../components/AppShell';
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle } from '../components/ui';
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '../components/ui/alert-dialog';
+import {
   AlertCircle,
   AlertTriangle,
   ArrowLeft,
@@ -17,11 +27,13 @@ import {
   RefreshCw,
   Send,
   Shield,
+  Trash2,
 } from 'lucide-react';
 import { getStoredAccessToken } from '../../services/auth/auth.service';
 import {
   authorizeApplication,
   buildAutomationFillPlan,
+  deleteApplication,
   getApplicationById,
   getApplicationReadiness,
   getApplicationStatus,
@@ -64,7 +76,7 @@ interface AutofillPreviewItem {
   options: string[];
 }
 
-const AUTOFILL_PREVIEW_CACHE_PREFIX = 'autofill-preview-cache';
+const AUTOFILL_PREVIEW_CACHE_PREFIX = 'autofill-preview-cache:v2';
 
 interface AutofillPreviewCacheEntry {
   applicationUpdatedAt: string;
@@ -74,12 +86,29 @@ interface AutofillPreviewCacheEntry {
 function extractOptionValues(rawOptions: Array<Record<string, unknown>>): string[] {
   const values = rawOptions
     .map((option) => {
-      const value = option.value ?? option.label ?? option.text ?? option.name;
+      const value = option.label ?? option.value ?? option.text ?? option.name;
       return typeof value === 'string' ? value.trim() : '';
     })
     .filter((value) => value.length > 0);
 
   return Array.from(new Set(values));
+}
+
+function parseMultiValueSelection(value: string): string[] {
+  return value
+    .split(',')
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0);
+}
+
+function toggleMultiValueSelection(currentValue: string, option: string, checked: boolean): string {
+  const selections = new Set(parseMultiValueSelection(currentValue));
+  if (checked) {
+    selections.add(option);
+  } else {
+    selections.delete(option);
+  }
+  return Array.from(selections).join(', ');
 }
 
 function isBinaryYesNoField(item: AutofillPreviewItem): boolean {
@@ -193,6 +222,8 @@ export const ApplicationDetailWorkspace: React.FC = () => {
   const [running, setRunning] = useState(false);
   const [authorizing, setAuthorizing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [confirmSubmit, setConfirmSubmit] = useState(false);
   const [updatingLifecycleStatus, setUpdatingLifecycleStatus] = useState(false);
 
@@ -451,6 +482,15 @@ export const ApplicationDetailWorkspace: React.FC = () => {
 
   const normalizedStatus = normalizeStatus(status?.status);
   const submitted = normalizedStatus === 'submitted';
+  const postSubmissionStatuses = new Set([
+    'submitted',
+    'interviewing',
+    'offer_received',
+    'offer_accepted',
+    'rejected',
+    'archived',
+  ]);
+  const canDeleteUnsubmitted = !postSubmissionStatuses.has(normalizedStatus) && !deleting;
   const isFormFillingStage = normalizedStatus === 'filling';
   const authorized = Boolean(status?.is_authorized_to_submit);
   const hasBlockingReadiness = errorBlockers.length > 0;
@@ -568,6 +608,38 @@ export const ApplicationDetailWorkspace: React.FC = () => {
     }
   };
 
+  const handleDeleteUnsubmittedApplication = async () => {
+    if (!token || !applicationId) return;
+
+    if (!canDeleteUnsubmitted) {
+      toast.error('Delete blocked', {
+        description: 'Only unsubmitted applications can be deleted.',
+      });
+      return;
+    }
+
+    setDeleteConfirmOpen(true);
+  };
+
+  const confirmDeleteUnsubmittedApplication = async () => {
+    if (!token || !applicationId) return;
+
+    setDeleting(true);
+    try {
+      await deleteApplication(token, applicationId, true);
+      setDeleteConfirmOpen(false);
+      toast.success('Application deleted', {
+        description: 'The job has been restored to your feed for retesting.',
+      });
+      router.push('/jobs');
+    } catch (deleteError) {
+      const message = deleteError instanceof Error ? deleteError.message : 'Failed to delete application.';
+      toast.error('Delete failed', { description: message });
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   if (loading) {
     return (
       <AppShell>
@@ -619,9 +691,24 @@ export const ApplicationDetailWorkspace: React.FC = () => {
             <h1 className="text-3xl font-semibold text-foreground">{jobTitle}</h1>
             <p className="text-lg text-muted-foreground mt-1">{companyName}</p>
           </div>
-          <Badge variant={submitted ? 'success' : hasBlockingReadiness ? 'blocked' : 'in-progress'} size="lg">
-            {submitted ? 'Submitted' : hasBlockingReadiness ? 'Blocked' : 'In Progress'}
-          </Badge>
+          <div className="flex items-center gap-2 self-end lg:self-start">
+            <Badge variant={submitted ? 'success' : hasBlockingReadiness ? 'blocked' : 'in-progress'} size="lg">
+              {submitted ? 'Submitted' : hasBlockingReadiness ? 'Blocked' : 'In Progress'}
+            </Badge>
+            {canDeleteUnsubmitted ? (
+              <Button
+                variant="ghost"
+                size="icon"
+                loading={deleting}
+                disabled={deleting}
+                onClick={handleDeleteUnsubmittedApplication}
+                aria-label="Delete unsubmitted application"
+                title="Delete unsubmitted application"
+              >
+                <Trash2 className="h-4 w-4 text-muted-foreground" />
+              </Button>
+            ) : null}
+          </div>
         </div>
 
         <Card>
@@ -748,6 +835,7 @@ export const ApplicationDetailWorkspace: React.FC = () => {
                           <div className="mt-2 space-y-2">
                             {(() => {
                               const isChoiceField = ['select', 'select_like', 'radio_group'].includes(item.fieldType);
+                              const isCheckboxGroupField = item.fieldType === 'checkbox_group';
                               const isDateField = item.inputSubtype === 'date' || item.source === 'desired_start_date';
                               const isYesNoField = isBinaryYesNoField(item);
                               const itemOptions = Array.isArray(item.options) ? item.options : [];
@@ -787,6 +875,31 @@ export const ApplicationDetailWorkspace: React.FC = () => {
                                       <option key={option} value={option}>{option}</option>
                                     ))}
                                   </select>
+                                );
+                              }
+
+                              if (isCheckboxGroupField && itemOptions.length > 0) {
+                                const selectedOptions = new Set(parseMultiValueSelection(editingValue));
+
+                                return (
+                                  <div className="space-y-2">
+                                    <p className="text-xs text-muted-foreground">Select all options that apply.</p>
+                                    <div className="space-y-2 rounded-lg border border-border bg-secondary/20 p-3">
+                                      {itemOptions.map((option) => (
+                                        <label key={option} className="flex items-center gap-2 text-sm text-foreground">
+                                          <input
+                                            type="checkbox"
+                                            checked={selectedOptions.has(option)}
+                                            onChange={(event) => setEditingValue(
+                                              toggleMultiValueSelection(editingValue, option, event.target.checked),
+                                            )}
+                                            className="h-4 w-4 rounded border-border text-brand"
+                                          />
+                                          <span>{option}</span>
+                                        </label>
+                                      ))}
+                                    </div>
+                                  </div>
                                 );
                               }
 
@@ -841,9 +954,34 @@ export const ApplicationDetailWorkspace: React.FC = () => {
                             </div>
                           </div>
                         ) : (
-                          <p className="mt-2 text-sm text-muted-foreground whitespace-pre-wrap">
-                            {item.resolvedValue || 'No autofill value yet.'}
-                          </p>
+                          <div className="mt-2 space-y-2">
+                            <p className="text-sm text-muted-foreground whitespace-pre-wrap">
+                              {item.resolvedValue || 'No autofill value yet.'}
+                            </p>
+                            {item.fieldType === 'checkbox_group' && item.options.length > 0 ? (
+                              <div className="rounded-lg border border-border bg-secondary/20 p-3">
+                                <p className="text-xs font-medium text-foreground">Available options</p>
+                                <div className="mt-2 flex flex-wrap gap-2">
+                                  {item.options.map((option) => {
+                                    const isSelected = parseMultiValueSelection(item.resolvedValue).includes(option);
+                                    return (
+                                      <span
+                                        key={option}
+                                        className={[
+                                          'inline-flex items-center rounded-full border px-2.5 py-1 text-xs',
+                                          isSelected
+                                            ? 'border-brand/40 bg-brand/10 text-foreground'
+                                            : 'border-border bg-background text-muted-foreground',
+                                        ].join(' ')}
+                                      >
+                                        {option}
+                                      </span>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            ) : null}
+                          </div>
                         )}
                         <p className="mt-2 text-xs text-muted-foreground">Source: {item.source}</p>
                       </div>
@@ -1046,9 +1184,32 @@ export const ApplicationDetailWorkspace: React.FC = () => {
                 ) : null}
               </CardContent>
             </Card>
+
           </div>
         </div>
       </div>
+      <AlertDialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete This Application?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will delete the unsubmitted application and move the job back into your feed so you can retest.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-white hover:bg-destructive/90"
+              onClick={(event) => {
+                event.preventDefault();
+                void confirmDeleteUnsubmittedApplication();
+              }}
+            >
+              {deleting ? 'Deleting...' : 'Delete Application'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </AppShell>
   );
 };

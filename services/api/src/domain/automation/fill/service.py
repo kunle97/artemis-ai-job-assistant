@@ -31,6 +31,7 @@ from src.domain.automation.planning.constants import (
 from src.domain.automation.planning.service import AutomationPlanningService
 from src.domain.automation.planning.models import AutomationFillPlanRequest
 from src.domain.automation.fill.handlers.radio_groups import fill_radio_group
+from src.domain.automation.fill.handlers.checkboxes import fill_checkbox_group
 from src.domain.automation.fill.handlers.greenhouse_combobox import fill_greenhouse_combobox
 from src.domain.automation.fill.handlers.select_like import fill_select_like
 from src.domain.automation.fill.handlers.text_fields import (
@@ -455,6 +456,9 @@ class AutomationFillService:
 
             if field_type == "radio_group":
                 return fill_radio_group(page, field, value)
+
+            if field_type == "checkbox_group":
+                return fill_checkbox_group(page, field, value)
 
             if field_type in {"input", "textarea"}:
                 if role == FIELD_ROLE_LOCATION and platform == PLATFORM_LEVER:

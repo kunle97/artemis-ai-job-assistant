@@ -13,6 +13,7 @@ from src.domain.automation.planning.helpers import (
     get_classifier_for_url,
     resolve_field_value,
 )
+from src.domain.automation.planning.constants import FIELD_ROLE_PREFERRED_OFFICE_LOCATION
 from src.domain.automation.planning.models import (
     AutomationFillPlan,
     AutomationFillPlanRequest,
@@ -62,6 +63,21 @@ class AutomationPlanningService:
                 name=name,
                 placeholder=placeholder,
             )
+
+            # For checkbox_group with no label, inspect option values for city/remote keywords
+            # to detect a preferred-office-location group even when the heading is absent.
+            if field_type == "checkbox_group" and classified_role == "unknown":
+                option_labels = " ".join(
+                    (opt.get("label") or opt.get("value") or "")
+                    for opt in (inspected_field.get("options") or [])
+                ).lower()
+                location_keywords = (
+                    "remote", "office", "hybrid", "on-site", "onsite", "new york", "san francisco",
+                    "boston", "los angeles", "chicago", "seattle", "austin", "denver", "cambridge",
+                    "manhattan", "brooklyn", "chelsea", "venice", "nyc", "sf ", " la ",
+                )
+                if any(kw in option_labels for kw in location_keywords):
+                    classified_role = FIELD_ROLE_PREFERRED_OFFICE_LOCATION
 
             resolved_value, needs_review = resolve_field_value(
                 classified_role=classified_role,
