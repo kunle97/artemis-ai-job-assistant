@@ -67,6 +67,31 @@ def _extract_job_context(page) -> str | None:
         return cleaned or None
 
 
+def _trigger_lazy_form_render(page) -> None:
+    """Trigger lazy-rendered form sections by scrolling through the page once."""
+    try:
+        page.evaluate(
+            """
+            () => {
+                const totalHeight = Math.max(
+                    document.body?.scrollHeight || 0,
+                    document.documentElement?.scrollHeight || 0,
+                );
+                if (!totalHeight || totalHeight < 400) return;
+
+                const steps = 8;
+                for (let i = 1; i <= steps; i += 1) {
+                    const target = Math.round((totalHeight * i) / steps);
+                    window.scrollTo({ top: target, behavior: 'instant' });
+                }
+                window.scrollTo({ top: 0, behavior: 'instant' });
+            }
+            """
+        )
+    except Exception:
+        return
+
+
 class ApplicationPageInspector:
     @staticmethod
     def _is_local_snapshot_url(application_url: str) -> bool:
@@ -131,6 +156,15 @@ class ApplicationPageInspector:
         job_context = _extract_job_context(page)
         already_applied = detect_already_applied_signal(page)
         fields = extract_fields(page)
+
+        # Some ATS forms lazily render additional sections after user scroll.
+        # Run a second extraction pass and keep the more complete field set.
+        _trigger_lazy_form_render(page)
+        page.wait_for_timeout(500)
+        second_pass_fields = extract_fields(page)
+        if len(second_pass_fields) > len(fields):
+            fields = second_pass_fields
+
         screenshot_path = save_screenshot(page, url=application_url)
 
         return {
@@ -145,5 +179,6 @@ class ApplicationPageInspector:
                 "Playwright inspection completed.",
                 "Inspector v4 adds richer radio/select/combobox extraction.",
                 "Inspection used local HTML snapshot." if local_snapshot_mode else "Inspection used live page navigation.",
+                f"Extracted fields: {len(fields)}",
             ],
         }

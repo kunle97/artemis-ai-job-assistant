@@ -9,6 +9,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { ArrowLeft } from "lucide-react";
 import {
   getApplicationPatterns,
   ApplicationPatternsResponse,
@@ -48,37 +49,51 @@ export function ApplicationPatternsPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-lg text-gray-600">Loading analytics...</div>
+      <div className="min-h-screen p-6 max-w-6xl mx-auto">
+        <BackToApplicationsButton onClick={() => router.push("/applications")} />
+        <div className="flex items-center justify-center min-h-[70vh]">
+          <div className="text-lg text-gray-600">Loading analytics...</div>
+        </div>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-4">
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-          <h2 className="text-red-800 font-semibold">Error</h2>
-          <p className="text-red-700">{error}</p>
+      <div className="min-h-screen p-6 max-w-6xl mx-auto">
+        <BackToApplicationsButton onClick={() => router.push("/applications")} />
+        <div className="flex items-center justify-center p-4 min-h-[70vh]">
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+            <h2 className="text-red-800 font-semibold">Error</h2>
+            <p className="text-red-700">{error}</p>
+          </div>
         </div>
       </div>
     );
   }
 
   if (!data) {
-    return <div className="text-center p-8">No data available</div>;
+    return (
+      <div className="min-h-screen p-6 max-w-6xl mx-auto">
+        <BackToApplicationsButton onClick={() => router.push("/applications")} />
+        <div className="text-center p-8">No data available</div>
+      </div>
+    );
   }
 
   if (data.total_applications === 0) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-4">
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 max-w-md">
-          <h2 className="text-blue-900 font-semibold mb-2">Get Started</h2>
-          <p className="text-blue-800">
-            Start applying to jobs to build your analytics dashboard. Once you
-            have applications, we'll provide insights into your job search
-            patterns.
-          </p>
+      <div className="min-h-screen p-6 max-w-6xl mx-auto">
+        <BackToApplicationsButton onClick={() => router.push("/applications")} />
+        <div className="flex items-center justify-center p-4 min-h-[70vh]">
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 max-w-md">
+            <h2 className="text-blue-900 font-semibold mb-2">Get Started</h2>
+            <p className="text-blue-800">
+              Start applying to jobs to build your analytics dashboard. Once you
+              have applications, we'll provide insights into your job search
+              patterns.
+            </p>
+          </div>
         </div>
       </div>
     );
@@ -86,16 +101,19 @@ export function ApplicationPatternsPage() {
 
   if (!data.is_sufficient_data) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-4">
-        <div className="bg-amber-50 border border-amber-200 rounded-lg p-6 max-w-md">
-          <h2 className="text-amber-900 font-semibold mb-2">More Data Needed</h2>
-          <p className="text-amber-800 mb-3">
-            {data.insufficient_data_message}
-          </p>
-          <p className="text-sm text-amber-700">
-            ({data.total_applications} of {data.minimum_threshold} applications
-            needed)
-          </p>
+      <div className="min-h-screen p-6 max-w-6xl mx-auto">
+        <BackToApplicationsButton onClick={() => router.push("/applications")} />
+        <div className="flex items-center justify-center p-4 min-h-[70vh]">
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-6 max-w-md">
+            <h2 className="text-amber-900 font-semibold mb-2">More Data Needed</h2>
+            <p className="text-amber-800 mb-3">
+              {data.insufficient_data_message}
+            </p>
+            <p className="text-sm text-amber-700">
+              ({data.total_applications} of {data.minimum_threshold} applications
+              needed)
+            </p>
+          </div>
         </div>
       </div>
     );
@@ -103,6 +121,7 @@ export function ApplicationPatternsPage() {
 
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-8">
+      <BackToApplicationsButton onClick={() => router.push("/applications")} />
       <div>
         <h1 className="text-3xl font-bold text-gray-900 mb-2">
           Application Patterns
@@ -285,5 +304,18 @@ function RecommendationCard({ recommendation }: { recommendation: Recommendation
       </div>
       <p className="text-sm opacity-80">{recommendation.reasoning}</p>
     </div>
+  );
+}
+
+function BackToApplicationsButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="inline-flex items-center gap-2 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+    >
+      <ArrowLeft className="h-4 w-4" />
+      Back to Applications
+    </button>
   );
 }

@@ -30,6 +30,7 @@ import {
   runApplicationPipeline,
   submitApplication,
   updateLifecycleStatus,
+  type AutomationInspectedField,
   type AutomationPlannedFieldRecord,
   type ApplicationReadinessRecord,
   type ApplicationRecord,
@@ -180,6 +181,7 @@ export const ApplicationDetailWorkspace: React.FC = () => {
   const [jobUrl, setJobUrl] = useState<string | null>(null);
   const [autofillPreview, setAutofillPreview] = useState<AutofillPreviewItem[]>([]);
   const [autofillPreviewLoading, setAutofillPreviewLoading] = useState(false);
+  const [autofillPreviewNote, setAutofillPreviewNote] = useState<string | null>(null);
   const [editingFieldKey, setEditingFieldKey] = useState<string | null>(null);
   const [editingValue, setEditingValue] = useState('');
   const [savingFieldKey, setSavingFieldKey] = useState<string | null>(null);
@@ -255,6 +257,21 @@ export const ApplicationDetailWorkspace: React.FC = () => {
     }));
   };
 
+  const buildPreviewFallbackFromInspection = (fields: AutomationInspectedField[]): AutofillPreviewItem[] => {
+    return fields.map((field, index) => ({
+      key: ['inspection', field.field_type, field.name, field.label, field.placeholder, String(index)]
+        .filter((part): part is string => Boolean(part && part.trim().length > 0))
+        .join('|'),
+      questionText: field.label?.trim() || field.name?.trim() || field.placeholder?.trim() || 'Application field',
+      resolvedValue: '',
+      source: 'unclassified',
+      needsReview: true,
+      fieldType: field.field_type || 'input',
+      inputSubtype: field.input_subtype ?? null,
+      options: [],
+    }));
+  };
+
   const loadWorkspace = useCallback(async () => {
     if (!token || !applicationId) {
       setError('Please sign in and choose a valid application.');
@@ -289,30 +306,49 @@ export const ApplicationDetailWorkspace: React.FC = () => {
           const cachedPreview = readCachedAutofillPreview(applicationRecord.updated_at);
           if (cachedPreview) {
             setAutofillPreview(cachedPreview);
+            setAutofillPreviewNote(null);
           } else {
-            setAutofillPreview([]);
             setAutofillPreviewLoading(true);
-            void (async () => {
+            try {
+              const inspection = await inspectApplicationPage(token, job.apply_url);
+              let previewItems: AutofillPreviewItem[] = [];
+              let previewNote: string | null = null;
+
               try {
-                const inspection = await inspectApplicationPage(token, job.apply_url);
                 const plan = await buildAutomationFillPlan(token, {
                   application_url: job.apply_url,
                   inspected_fields: inspection.fields,
                   page_title: inspection.title,
                   job_context: inspection.job_context,
                 });
-                const previewItems = buildAutofillPreviewItems(plan.fields);
-                setAutofillPreview(previewItems);
-                writeCachedAutofillPreview(applicationRecord.updated_at, previewItems);
+                previewItems = buildAutofillPreviewItems(plan.fields);
+
+                if (previewItems.length === 0 && inspection.fields.length > 0) {
+                  previewItems = buildPreviewFallbackFromInspection(inspection.fields);
+                  previewNote = `Preview fallback mode: detected ${inspection.fields.length} raw fields but planning returned none.`;
+                } else if (inspection.fields.length > previewItems.length) {
+                  previewNote = `Detected ${inspection.fields.length} raw fields; previewing ${previewItems.length} planned fields.`;
+                }
               } catch {
-                setAutofillPreview([]);
-              } finally {
-                setAutofillPreviewLoading(false);
+                previewItems = buildPreviewFallbackFromInspection(inspection.fields);
+                previewNote = inspection.fields.length > 0
+                  ? `Planning failed; showing ${inspection.fields.length} detected fields for review.`
+                  : 'Planning failed and no detectable fields were returned by inspection.';
               }
-            })();
+
+              setAutofillPreview(previewItems);
+              setAutofillPreviewNote(previewNote);
+              writeCachedAutofillPreview(applicationRecord.updated_at, previewItems);
+            } catch {
+              setAutofillPreview([]);
+              setAutofillPreviewNote('Could not inspect this form for preview. Try rerunning automation.');
+            } finally {
+              setAutofillPreviewLoading(false);
+            }
           }
         } else {
           setAutofillPreview([]);
+          setAutofillPreviewNote(null);
         }
       } else {
         setJobTitle('Application');
@@ -321,6 +357,7 @@ export const ApplicationDetailWorkspace: React.FC = () => {
         setWorkModeLabel('Unknown work mode');
         setJobUrl(null);
         setAutofillPreview([]);
+        setAutofillPreviewNote(null);
       }
 
       const normalizedStatus = normalizeStatus(statusRecord.status);
@@ -360,7 +397,7 @@ export const ApplicationDetailWorkspace: React.FC = () => {
 
   const handleSaveInlineEdit = async (item: AutofillPreviewItem) => {
     const normalizedAnswer = editingValue.trim();
-    if (!token) return;
+    if (!token || !normalizedAnswer) return;
 
     setSavingFieldKey(item.key);
     try {
@@ -414,15 +451,6 @@ export const ApplicationDetailWorkspace: React.FC = () => {
 
   const normalizedStatus = normalizeStatus(status?.status);
   const submitted = normalizedStatus === 'submitted';
-  const postSubmissionStatuses = new Set([
-    'submitted',
-    'interviewing',
-    'offer_received',
-    'offer_accepted',
-    'rejected',
-    'archived',
-  ]);
-  const isPostSubmissionStatus = postSubmissionStatuses.has(normalizedStatus);
   const isFormFillingStage = normalizedStatus === 'filling';
   const authorized = Boolean(status?.is_authorized_to_submit);
   const hasBlockingReadiness = errorBlockers.length > 0;
@@ -430,14 +458,15 @@ export const ApplicationDetailWorkspace: React.FC = () => {
   const automationRunning = automationState === 'running' || automationState === 'queued';
   const automationFailed = automationState === 'failure';
 
-  const automationNeedsReview = !isPostSubmissionStatus && !authorized && automationComplete
-    && (warningBlockers.length > 0 || infoBlockers.length > 0);
+  const automationNeedsReview = automationComplete && (
+    (status?.manual_review_required ?? false) ||
+    warningBlockers.length > 0 ||
+    infoBlockers.length > 0
+  );
 
   const canRunAutomation = !loading && !hasBlockingReadiness && !automationRunning && !submitted;
-  const canAuthorize = !authorized
-    && !submitted
-    && (automationComplete || normalizedStatus === 'filled' || normalizedStatus === 'ready_to_submit');
-  const canSubmit = authorized && !submitted;
+  const canAuthorize = false; // authorization is now implicit on submit
+  const canSubmit = automationComplete && !hasBlockingReadiness && !submitted;
 
   const readinessVerdict: 'ready' | 'blocked' | 'needs review' = hasBlockingReadiness
     ? 'blocked'
@@ -453,9 +482,7 @@ export const ApplicationDetailWorkspace: React.FC = () => {
         ? 'Wait for automation to finish.'
         : !automationComplete
           ? 'Run automation.'
-          : !authorized
-            ? 'Authorize submission.'
-            : 'Submit application.';
+          : 'Submit application.';
 
   const handleUpdateLifecycleStatus = async (newStatus: string) => {
     if (!token || !applicationId) return;
@@ -523,6 +550,9 @@ export const ApplicationDetailWorkspace: React.FC = () => {
     if (!token || !applicationId) return;
     setSubmitting(true);
     try {
+      if (!authorized) {
+        await authorizeApplication(token, applicationId);
+      }
       const updated = await submitApplication(token, applicationId);
       setApplication(updated);
       setConfirmSubmit(false);
@@ -681,6 +711,11 @@ export const ApplicationDetailWorkspace: React.FC = () => {
                 <CardTitle>Autofilled Fields Preview</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
+                {autofillPreviewNote ? (
+                  <div className="rounded-lg border border-warning/30 bg-warning/5 px-3 py-2">
+                    <p className="text-xs text-warning">{autofillPreviewNote}</p>
+                  </div>
+                ) : null}
                 {autofillPreviewLoading ? (
                   <p className="text-sm text-muted-foreground">Loading autofill preview...</p>
                 ) : autofillPreview.length === 0 ? (
@@ -791,6 +826,7 @@ export const ApplicationDetailWorkspace: React.FC = () => {
                                 size="sm"
                                 onClick={() => void handleSaveInlineEdit(item)}
                                 loading={savingFieldKey === item.key}
+                                disabled={editingValue.trim().length === 0}
                               >
                                 Save
                               </Button>
