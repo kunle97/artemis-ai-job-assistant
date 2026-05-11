@@ -6,10 +6,12 @@ import logging
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
+from celery.exceptions import Retry
+
 from services.worker import API_ROOT  # noqa: F401
 from services.worker.concurrency import AutomationConcurrencyLimiter
 from src.core.config import settings
-from src.domain.applications.constants import APPLICATION_STATUS_FAILED, APPLICATION_STATUS_ARCHIVED, AUTO_ARCHIVE_STALE_SUBMISSION_DAYS
+from src.domain.applications.constants import APPLICATION_STATUS_ARCHIVED, AUTO_ARCHIVE_STALE_SUBMISSION_DAYS
 from src.domain.applications.repository import ApplicationRepository
 from src.domain.applications.factory import build_pipeline_service
 from src.domain.jobs.feed_service import JobFeedService
@@ -21,8 +23,8 @@ from services.worker.celery_app import celery_app
 logger = logging.getLogger(__name__)
 
 
-@celery_app.task(name="run_application_pipeline_async")
-def run_application_pipeline_async(user_id: str, application_id: str) -> dict[str, str]:
+@celery_app.task(name="run_application_pipeline_async", bind=True, max_retries=None)
+def run_application_pipeline_async(self, user_id: str, application_id: str) -> dict[str, str]:
     """Run a single application pipeline in the worker and return final status."""
     logger.info(
         "[Worker] Starting async application pipeline user_id=%s application_id=%s",
@@ -39,23 +41,17 @@ def run_application_pipeline_async(user_id: str, application_id: str) -> dict[st
     )
     acquired, reason = limiter.acquire(user_id=user_id)
     if not acquired:
-        failure_reason = f"concurrency_limit (transient): RuntimeError: {reason}"
         logger.warning(
-            "[Worker] Concurrency guard blocked pipeline user_id=%s application_id=%s reason=%s",
+            "[Worker] Concurrency guard blocked pipeline user_id=%s application_id=%s reason=%s; re-queueing",
             user_id,
             application_id,
             reason,
         )
-        try:
-            application_repo = ApplicationRepository(db)
-            application_repo.update_fields(
-                UUID(str(application_id)),
-                status=APPLICATION_STATUS_FAILED,
-                failure_reason=failure_reason,
-            )
-        finally:
-            db.close()
-        raise RuntimeError(reason)
+        db.close()
+        raise self.retry(
+            exc=RuntimeError(reason),
+            countdown=settings.automation_concurrency_retry_delay_seconds,
+        )
 
     try:
         pipeline_service = build_pipeline_service(db)
@@ -72,6 +68,8 @@ def run_application_pipeline_async(user_id: str, application_id: str) -> dict[st
             "application_id": str(application_id),
             "status": str(application.status),
         }
+    except Retry:
+        raise
     except Exception as exc:  # noqa: BLE001
         logger.exception(
             "[Worker] Async pipeline failed application_id=%s error=%s",

@@ -55,6 +55,7 @@ def _build_service(db: Session) -> AutomationFillService:
     planning_service = AutomationPlanningService(
         user_repo=UserRepository(db),
         profile_repo=profile_repo,
+        answer_resolver=resolver,
         open_ended_provider=open_ended_provider,
     )
     return AutomationFillService(

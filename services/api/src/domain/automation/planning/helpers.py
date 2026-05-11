@@ -851,10 +851,30 @@ def resolve_field_value(
     inspected_field: dict,
     user,
     profile,
+    answer_resolver=None,
     open_ended_provider=None,
     page_title=None,
     job_context=None,
 ) -> tuple[str | None, bool]:
+    question_text = (
+        inspected_field.get("label")
+        or inspected_field.get("placeholder")
+        or inspected_field.get("name")
+        or ""
+    ).strip()
+
+    def _resolve_saved_answer() -> tuple[str | None, bool]:
+        if answer_resolver is None:
+            return None, True
+        user_id = getattr(user, "id", None)
+        if not user_id or not question_text:
+            return None, True
+
+        resolved = answer_resolver.resolve(user_id=user_id, question_text=question_text)
+        if resolved.resolved_answer:
+            return resolved.resolved_answer, bool(resolved.needs_review)
+        return None, True
+
     if classified_role in {FIELD_ROLE_IGNORE, FIELD_ROLE_SUBMIT, FIELD_ROLE_COVER_LETTER_UPLOAD}:
         return None, False
 
@@ -928,7 +948,10 @@ def resolve_field_value(
         return value, value is None
 
     if classified_role == FIELD_ROLE_REFERRAL_SOURCE:
-        return None, True
+        value, needs_review = _resolve_saved_answer()
+        if value:
+            return value, needs_review
+        return "Job Board", False
 
     if classified_role == FIELD_ROLE_STATE_OF_RESIDENCE:
         value = getattr(profile, "state", None)
@@ -1005,6 +1028,10 @@ def resolve_field_value(
         return None, True
 
     if classified_role == "unknown":
+        value, needs_review = _resolve_saved_answer()
+        if value:
+            return value, needs_review
+
         desired_start_date_value = resolve_desired_start_date_value(
             inspected_field=inspected_field,
             profile=profile,

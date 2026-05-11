@@ -279,12 +279,10 @@ export const ManualReviewPanel: React.FC = () => {
           <Card>
             <div className="p-6 space-y-2">
               <p className="text-sm font-medium text-foreground">
-                {manualReviewRequired ? 'No review fields are available yet' : 'No fields need manual review'}
+                No fields need manual review
               </p>
               <p className="text-sm text-muted-foreground">
-                {manualReviewRequired
-                  ? 'No unresolved fields were found from the latest form inspection. Re-run automation if the external form changed.'
-                  : 'All fields were filled with high confidence. You can proceed to authorization.'}
+                All fields were filled with high confidence. You can return to the application workspace and proceed to authorization.
               </p>
               <Button
                 variant="outline"

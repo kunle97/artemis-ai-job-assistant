@@ -53,6 +53,7 @@ def build_pipeline_service(db: Session) -> ApplicationPipelineService:
     planning_service = AutomationPlanningService(
         user_repo=UserRepository(db),
         profile_repo=profile_repo,
+        answer_resolver=resolver,
         open_ended_provider=open_ended_provider,
     )
     fill_service = AutomationFillService(

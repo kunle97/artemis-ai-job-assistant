@@ -9,6 +9,7 @@ Application.status through each step.
 
 import logging
 import re
+from contextlib import nullcontext
 from time import sleep
 from typing import Callable, TypeVar
 
@@ -27,12 +28,19 @@ from src.domain.applications.constants import (
 )
 from src.domain.automation.planning.models import AutomationFillPlanRequest
 from src.domain.automation.schemas import ApplicationPageIntakeRequest
-from src.integrations.automation.browser import WorkerBrowserSession
-from src.integrations.automation.helpers import normalize_application_url
+from src.integrations.automation.browser import WorkerBrowserSession, create_fresh_context
+from src.integrations.automation.helpers import normalize_application_url, prepare_application_page
+from src.integrations.automation.snapshot_store import AutomationSnapshotStore
 
 
 logger = logging.getLogger(__name__)
 _T = TypeVar("_T")
+
+
+def _should_use_run_snapshots() -> bool:
+    if settings.automation_use_snapshots_for_run is not None:
+        return settings.automation_use_snapshots_for_run
+    return settings.app_env == "development"
 
 
 class ApplicationPipelineService:
@@ -57,12 +65,14 @@ class ApplicationPipelineService:
         automation_service,
         planning_service,
         fill_service,
+        snapshot_store: AutomationSnapshotStore | None = None,
     ):
         self.application_repo = application_repo
         self.job_repo = job_repo
         self.automation_service = automation_service
         self.planning_service = planning_service
         self.fill_service = fill_service
+        self.snapshot_store = snapshot_store or AutomationSnapshotStore()
 
     def _classify_failure(self, exc: Exception) -> tuple[str, bool]:
         """Classify failures into retryable transient or terminal permanent buckets."""
@@ -203,6 +213,50 @@ class ApplicationPipelineService:
 
         return normalized_url
 
+    def _capture_snapshot(self, *, browser, application_url: str) -> str:
+        """Capture one live page snapshot and return its stored path."""
+        context, page = create_fresh_context(browser)
+        try:
+            page.goto(application_url, wait_until="domcontentloaded", timeout=45000)
+            page.wait_for_timeout(2000)
+            prepare_application_page(page, application_url)
+            page.wait_for_timeout(1000)
+            stored_path = self.snapshot_store.save_html(page.content())
+        finally:
+            context.close()
+
+        logger.info(
+            "[PipelineService] Captured snapshot for application_url=%s stored_path=%s",
+            application_url,
+            stored_path,
+        )
+        return stored_path
+
+    def _delete_snapshot_if_present(self, *, application_id, stored_path: str | None, reason: str) -> None:
+        """Delete a stored snapshot and clear the DB reference when deletion succeeds."""
+        if not stored_path:
+            return
+
+        try:
+            self.snapshot_store.delete(stored_path)
+        except Exception as exc:
+            logger.warning(
+                "[PipelineService] Failed to delete snapshot application_id=%s reason=%s stored_path=%s error=%s",
+                application_id,
+                reason,
+                stored_path,
+                exc,
+            )
+            return
+
+        self.application_repo.update_fields(application_id, automation_snapshot_path=None)
+        logger.info(
+            "[PipelineService] Deleted snapshot application_id=%s reason=%s stored_path=%s",
+            application_id,
+            reason,
+            stored_path,
+        )
+
     def run_pipeline(self, user_id, application_id):
         """Coordinate the full inspect → plan → fill pipeline for an application.
 
@@ -227,6 +281,9 @@ class ApplicationPipelineService:
             raise ValueError("Job not found for this application.")
 
         application_url = self._resolve_application_url(job)
+        use_snapshots = _should_use_run_snapshots()
+
+        previous_snapshot_path = getattr(application, "automation_snapshot_path", None)
 
         try:
             application = self.application_repo.update_fields(
@@ -238,107 +295,150 @@ class ApplicationPipelineService:
             # never shared across users or ATS domains.
             with WorkerBrowserSession() as browser_session:
                 _browser = browser_session.browser
-
-                # INSPECT
-                logger.info(f"[PipelineService] Inspecting application_id={application_id}")
-                application = self.application_repo.update_fields(
-                    application_id, status=APPLICATION_STATUS_INSPECTING
-                )
-
-                inspection_result = self._execute_with_retries(
-                    "inspect_application_page",
-                    lambda: self.automation_service.inspect_application_page(
-                        ApplicationPageIntakeRequest(application_url=application_url),
-                        browser=_browser,
-                    ),
-                )
-
-                if self._inspection_has_already_applied(inspection_result):
+                if use_snapshots:
+                    stored_snapshot_path = self._execute_with_retries(
+                        "capture_snapshot",
+                        lambda: self._capture_snapshot(
+                            browser=_browser,
+                            application_url=application_url,
+                        ),
+                    )
                     application = self.application_repo.update_fields(
                         application_id,
-                        status=APPLICATION_STATUS_SUBMITTED,
+                        automation_snapshot_path=stored_snapshot_path,
+                    )
+                    if previous_snapshot_path and previous_snapshot_path != stored_snapshot_path:
+                        self._delete_snapshot_if_present(
+                            application_id=application_id,
+                            stored_path=previous_snapshot_path,
+                            reason="replaced_by_new_run",
+                        )
+                    logger.info(
+                        "[PipelineService] Run automation snapshot mode enabled; inspect/fill will use stored_snapshot_path=%s live_application_url=%s",
+                        stored_snapshot_path,
+                        application_url,
+                    )
+                else:
+                    stored_snapshot_path = None
+                    logger.info(
+                        "[PipelineService] Run automation snapshot mode disabled; inspect/fill will use live_application_url=%s",
+                        application_url,
+                    )
+
+                snapshot_url_context = (
+                    self.snapshot_store.materialize_runtime_url(stored_snapshot_path)
+                    if stored_snapshot_path
+                    else nullcontext(application_url)
+                )
+
+                with snapshot_url_context as snapshot_url:
+
+                    # INSPECT
+                    logger.info(f"[PipelineService] Inspecting application_id={application_id}")
+                    application = self.application_repo.update_fields(
+                        application_id, status=APPLICATION_STATUS_INSPECTING
+                    )
+
+                    inspection_result = self._execute_with_retries(
+                        "inspect_application_page",
+                        lambda: self.automation_service.inspect_application_page(
+                            ApplicationPageIntakeRequest(application_url=snapshot_url),
+                            browser=_browser,
+                        ),
+                    )
+
+                    if self._inspection_has_already_applied(inspection_result):
+                        application = self.application_repo.update_fields(
+                            application_id,
+                            status=APPLICATION_STATUS_SUBMITTED,
+                        )
+                        self._delete_snapshot_if_present(
+                            application_id=application_id,
+                            stored_path=getattr(application, "automation_snapshot_path", None),
+                            reason="already_applied_during_run",
+                        )
+                        logger.info(
+                            "[PipelineService] ATS already-applied signal detected during inspection; "
+                            "marking application_id=%s as submitted",
+                            application_id,
+                        )
+                        return application
+
+                    # inspection_result is a plain dict from ApplicationPageInspector
+                    if isinstance(inspection_result, dict):
+                        raw_fields = inspection_result.get("fields", [])
+                        page_title = inspection_result.get("title")
+                        job_context = inspection_result.get("job_context")
+                    else:
+                        raw_fields = inspection_result.fields
+                        page_title = inspection_result.title
+                        job_context = inspection_result.job_context
+
+                    inspected_fields = [
+                        f.model_dump() if hasattr(f, "model_dump") else (f if isinstance(f, dict) else dict(f))
+                        for f in raw_fields
+                    ]
+
+                    application = self.application_repo.update_fields(
+                        application_id, status=APPLICATION_STATUS_INSPECTED
                     )
                     logger.info(
-                        "[PipelineService] ATS already-applied signal detected during inspection; "
-                        "marking application_id=%s as submitted",
-                        application_id,
+                        f"[PipelineService] Inspection complete: {len(inspected_fields)} fields "
+                        f"application_id={application_id}"
                     )
-                    return application
 
-                # inspection_result is a plain dict from ApplicationPageInspector
-                if isinstance(inspection_result, dict):
-                    raw_fields = inspection_result.get("fields", [])
-                    page_title = inspection_result.get("title")
-                    job_context = inspection_result.get("job_context")
-                else:
-                    raw_fields = inspection_result.fields
-                    page_title = inspection_result.title
-                    job_context = inspection_result.job_context
+                    # PLAN (no browser needed)
+                    logger.info(f"[PipelineService] Planning application_id={application_id}")
+                    application = self.application_repo.update_fields(
+                        application_id, status=APPLICATION_STATUS_PLANNING
+                    )
 
-                inspected_fields = [
-                    f.model_dump() if hasattr(f, "model_dump") else (f if isinstance(f, dict) else dict(f))
-                    for f in raw_fields
-                ]
-
-                application = self.application_repo.update_fields(
-                    application_id, status=APPLICATION_STATUS_INSPECTED
-                )
-                logger.info(
-                    f"[PipelineService] Inspection complete: {len(inspected_fields)} fields "
-                    f"application_id={application_id}"
-                )
-
-                # PLAN (no browser needed)
-                logger.info(f"[PipelineService] Planning application_id={application_id}")
-                application = self.application_repo.update_fields(
-                    application_id, status=APPLICATION_STATUS_PLANNING
-                )
-
-                plan = self._execute_with_retries(
-                    "build_fill_plan",
-                    lambda: self.planning_service.build_fill_plan(
-                        user_id=user_id,
-                        payload=AutomationFillPlanRequest(
-                            application_url=application_url,
-                            inspected_fields=inspected_fields,
-                            page_title=page_title,
-                            job_context=job_context,
+                    plan = self._execute_with_retries(
+                        "build_fill_plan",
+                        lambda: self.planning_service.build_fill_plan(
+                            user_id=user_id,
+                            payload=AutomationFillPlanRequest(
+                                application_url=application_url,
+                                inspected_fields=inspected_fields,
+                                page_title=page_title,
+                                job_context=job_context,
+                            ),
                         ),
-                    ),
-                )
+                    )
 
-                application = self.application_repo.update_fields(
-                    application_id, status=APPLICATION_STATUS_PLANNED
-                )
-                logger.info(
-                    f"[PipelineService] Planning complete: {len(plan.fields)} fields planned "
-                    f"application_id={application_id}"
-                )
+                    application = self.application_repo.update_fields(
+                        application_id, status=APPLICATION_STATUS_PLANNED
+                    )
+                    logger.info(
+                        f"[PipelineService] Planning complete: {len(plan.fields)} fields planned "
+                        f"application_id={application_id}"
+                    )
 
-                # FILL — reuse same browser process
-                logger.info(f"[PipelineService] Filling application_id={application_id}")
-                application = self.application_repo.update_fields(
-                    application_id, status=APPLICATION_STATUS_FILLING
-                )
+                    # FILL — reuse same browser process
+                    logger.info(f"[PipelineService] Filling application_id={application_id}")
+                    application = self.application_repo.update_fields(
+                        application_id, status=APPLICATION_STATUS_FILLING
+                    )
 
-                fill_result = self._execute_with_retries(
-                    "fill_from_plan",
-                    lambda: self.fill_service.fill_from_plan(
-                        user_id=user_id,
-                        application_url=application_url,
-                        plan=plan,
-                        application_id=application_id,
-                        browser=_browser,
-                    ),
-                )
+                    fill_result = self._execute_with_retries(
+                        "fill_from_plan",
+                        lambda: self.fill_service.fill_from_plan(
+                            user_id=user_id,
+                            application_url=application_url,
+                            navigation_url=snapshot_url,
+                            plan=plan,
+                            application_id=application_id,
+                            browser=_browser,
+                        ),
+                    )
 
-                application = self.application_repo.update_fields(
-                    application_id, status=APPLICATION_STATUS_FILLED
-                )
-                logger.info(
-                    f"[PipelineService] Fill complete: filled={fill_result.filled_count}, "
-                    f"skipped={fill_result.skipped_count} application_id={application_id}"
-                )
+                    application = self.application_repo.update_fields(
+                        application_id, status=APPLICATION_STATUS_FILLED
+                    )
+                    logger.info(
+                        f"[PipelineService] Fill complete: filled={fill_result.filled_count}, "
+                        f"skipped={fill_result.skipped_count} application_id={application_id}"
+                    )
 
             # GATE CHECK — advance to awaiting_submission if cleared
             application = self.application_repo.get_by_id(application_id)
@@ -463,6 +563,11 @@ class ApplicationPipelineService:
                         application_id,
                         status=APPLICATION_STATUS_SUBMITTED,
                     )
+                    self._delete_snapshot_if_present(
+                        application_id=application_id,
+                        stored_path=getattr(application, "automation_snapshot_path", None),
+                        reason="already_applied_before_submit",
+                    )
                     logger.info(
                         "[PipelineService] ATS already-applied signal detected before submit; "
                         "marking application_id=%s as submitted",
@@ -520,6 +625,11 @@ class ApplicationPipelineService:
                 logger.debug(f"[PipelineService] Updating application status to SUBMITTED for application_id={application_id}")
                 application = self.application_repo.update_fields(
                     application_id, status=APPLICATION_STATUS_SUBMITTED
+                )
+                self._delete_snapshot_if_present(
+                    application_id=application_id,
+                    stored_path=getattr(application, "automation_snapshot_path", None),
+                    reason="submission_confirmed",
                 )
                 logger.debug(f"[PipelineService] Application status updated to SUBMITTED for application_id={application_id}")
                 logger.info(

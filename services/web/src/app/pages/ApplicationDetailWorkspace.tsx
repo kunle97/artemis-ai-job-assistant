@@ -290,23 +290,26 @@ export const ApplicationDetailWorkspace: React.FC = () => {
           if (cachedPreview) {
             setAutofillPreview(cachedPreview);
           } else {
+            setAutofillPreview([]);
             setAutofillPreviewLoading(true);
-            try {
-              const inspection = await inspectApplicationPage(token, job.apply_url);
-              const plan = await buildAutomationFillPlan(token, {
-                application_url: job.apply_url,
-                inspected_fields: inspection.fields,
-                page_title: inspection.title,
-                job_context: inspection.job_context,
-              });
-              const previewItems = buildAutofillPreviewItems(plan.fields);
-              setAutofillPreview(previewItems);
-              writeCachedAutofillPreview(applicationRecord.updated_at, previewItems);
-            } catch {
-              setAutofillPreview([]);
-            } finally {
-              setAutofillPreviewLoading(false);
-            }
+            void (async () => {
+              try {
+                const inspection = await inspectApplicationPage(token, job.apply_url);
+                const plan = await buildAutomationFillPlan(token, {
+                  application_url: job.apply_url,
+                  inspected_fields: inspection.fields,
+                  page_title: inspection.title,
+                  job_context: inspection.job_context,
+                });
+                const previewItems = buildAutofillPreviewItems(plan.fields);
+                setAutofillPreview(previewItems);
+                writeCachedAutofillPreview(applicationRecord.updated_at, previewItems);
+              } catch {
+                setAutofillPreview([]);
+              } finally {
+                setAutofillPreviewLoading(false);
+              }
+            })();
           }
         } else {
           setAutofillPreview([]);
@@ -411,6 +414,15 @@ export const ApplicationDetailWorkspace: React.FC = () => {
 
   const normalizedStatus = normalizeStatus(status?.status);
   const submitted = normalizedStatus === 'submitted';
+  const postSubmissionStatuses = new Set([
+    'submitted',
+    'interviewing',
+    'offer_received',
+    'offer_accepted',
+    'rejected',
+    'archived',
+  ]);
+  const isPostSubmissionStatus = postSubmissionStatuses.has(normalizedStatus);
   const isFormFillingStage = normalizedStatus === 'filling';
   const authorized = Boolean(status?.is_authorized_to_submit);
   const hasBlockingReadiness = errorBlockers.length > 0;
@@ -418,15 +430,14 @@ export const ApplicationDetailWorkspace: React.FC = () => {
   const automationRunning = automationState === 'running' || automationState === 'queued';
   const automationFailed = automationState === 'failure';
 
-  const automationNeedsReview = automationComplete && (
-    (status?.manual_review_required ?? false) ||
-    warningBlockers.length > 0 ||
-    infoBlockers.length > 0
-  );
+  const automationNeedsReview = !isPostSubmissionStatus && !authorized && automationComplete
+    && (warningBlockers.length > 0 || infoBlockers.length > 0);
 
   const canRunAutomation = !loading && !hasBlockingReadiness && !automationRunning && !submitted;
-  const canAuthorize = automationComplete && !authorized && !submitted;
-  const canSubmit = automationComplete && authorized && !hasBlockingReadiness && !submitted;
+  const canAuthorize = !authorized
+    && !submitted
+    && (automationComplete || normalizedStatus === 'filled' || normalizedStatus === 'ready_to_submit');
+  const canSubmit = authorized && !submitted;
 
   const readinessVerdict: 'ready' | 'blocked' | 'needs review' = hasBlockingReadiness
     ? 'blocked'

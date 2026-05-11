@@ -30,6 +30,7 @@ class Application(Base):
 
     notes = Column(Text, nullable=True)
     failure_reason = Column(Text, nullable=True)
+    automation_snapshot_path = Column(Text, nullable=True)
 
     created_at = Column(DateTime, default=lambda: datetime.now(UTC))
     updated_at = Column(DateTime, default=lambda: datetime.now(UTC))

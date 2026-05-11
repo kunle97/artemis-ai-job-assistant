@@ -27,10 +27,12 @@ class AutomationPlanningService:
         self,
         user_repo,
         profile_repo,
+        answer_resolver=None,
         open_ended_provider=None,
     ):
         self.user_repo = user_repo
         self.profile_repo = profile_repo
+        self.answer_resolver = answer_resolver
         self.open_ended_provider = open_ended_provider
 
     def build_fill_plan(
@@ -66,6 +68,7 @@ class AutomationPlanningService:
                 inspected_field=inspected_field,
                 user=user,
                 profile=profile,
+                answer_resolver=self.answer_resolver,
                 open_ended_provider=self.open_ended_provider,
                 page_title=payload.page_title,
                 job_context=payload.job_context,

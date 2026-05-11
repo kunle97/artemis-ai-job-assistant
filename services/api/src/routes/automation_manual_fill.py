@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from src.deps.auth import get_current_user
 from src.domain.application_answers.intents.repository import ApplicationAnswerIntentRepository
 from src.domain.application_answers.repository import ApplicationAnswerRepository
+from src.domain.application_answers.resolution import ApplicationAnswerResolver
 from src.domain.auth.repository import UserRepository
 from src.domain.applications.repository import ApplicationRepository
 from src.domain.automation.fill.service import AutomationFillService
@@ -20,9 +21,18 @@ router = APIRouter(prefix="/automation-manual-fill", tags=["automation-manual-fi
 
 
 def _build_planning_service(db: Session) -> AutomationPlanningService:
+    profile_repo = CandidateProfileRepository(db)
+    answer_repo = ApplicationAnswerRepository(db)
+    intent_repo = ApplicationAnswerIntentRepository(db)
+    resolver = ApplicationAnswerResolver(
+        answer_repository=answer_repo,
+        intent_repository=intent_repo,
+        profile_repository=profile_repo,
+    )
     return AutomationPlanningService(
         user_repo=UserRepository(db),
-        profile_repo=CandidateProfileRepository(db),
+        profile_repo=profile_repo,
+        answer_resolver=resolver,
     )
 
 

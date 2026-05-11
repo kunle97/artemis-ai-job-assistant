@@ -61,10 +61,18 @@ def _build_open_ended_provider(db, profile_repo):
 
 def _build_services(db):
     profile_repo = CandidateProfileRepository(db)
+    answer_repo = ApplicationAnswerRepository(db)
+    intent_repo = ApplicationAnswerIntentRepository(db)
+    resolver = ApplicationAnswerResolver(
+        answer_repository=answer_repo,
+        intent_repository=intent_repo,
+        profile_repository=profile_repo,
+    )
     open_ended_provider = _build_open_ended_provider(db, profile_repo)
     planning_service = AutomationPlanningService(
         user_repo=UserRepository(db),
         profile_repo=profile_repo,
+        answer_resolver=resolver,
         open_ended_provider=open_ended_provider,
     )
     fill_service = AutomationFillService(

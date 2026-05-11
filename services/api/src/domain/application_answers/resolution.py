@@ -57,6 +57,7 @@ class ApplicationAnswerResolver:
 
     def resolve(self, *, user_id, question_text: str) -> ResolvedApplicationAnswer:
         normalized_question = self._normalize_text(question_text)
+        normalized_question_key = self._build_question_key(question_text)
         if not normalized_question:
             return ResolvedApplicationAnswer(
                 resolved_answer=None,
@@ -67,6 +68,15 @@ class ApplicationAnswerResolver:
 
         detected_intent = self.intent_detector.detect(question_text)
         saved_answers = self.answer_repository.list_by_user_id(user_id)
+
+        key_match = self._find_question_key_match(saved_answers, normalized_question_key)
+        if key_match:
+            return ResolvedApplicationAnswer(
+                resolved_answer=key_match.answer_text,
+                source=SOURCE_SAVED_ANSWER_EXACT,
+                needs_review=False,
+                intent_key=detected_intent,
+            )
 
         exact_match = self._find_exact_saved_match(saved_answers, normalized_question)
         if exact_match:
@@ -114,6 +124,16 @@ class ApplicationAnswerResolver:
             needs_review=True,
             intent_key=detected_intent,
         )
+
+    def _find_question_key_match(self, saved_answers, normalized_question_key: str):
+        if not normalized_question_key:
+            return None
+
+        for answer in saved_answers:
+            candidate_key = self._normalize_key(getattr(answer, "question_key", None))
+            if candidate_key == normalized_question_key:
+                return answer
+        return None
 
     def _find_exact_saved_match(self, saved_answers, normalized_question: str):
         for answer in saved_answers:
@@ -196,3 +216,20 @@ class ApplicationAnswerResolver:
         normalized = re.sub(NON_ALPHANUMERIC_PATTERN, " ", normalized)
         normalized = re.sub(WHITESPACE_PATTERN, " ", normalized).strip()
         return normalized
+
+    def _normalize_key(self, key: str | None) -> str:
+        if not key:
+            return ""
+        normalized = str(key).strip().lower()
+        normalized = re.sub(r"[^a-z0-9_]+", "_", normalized)
+        normalized = re.sub(r"_+", "_", normalized)
+        return normalized.strip("_")
+
+    def _build_question_key(self, text: str | None) -> str:
+        if not text:
+            return ""
+        normalized = str(text).lower().strip()
+        normalized = re.sub(r"\s+", "_", normalized)
+        normalized = re.sub(r"[^a-z0-9_]", "", normalized)
+        normalized = re.sub(r"_+", "_", normalized)
+        return normalized.strip("_")[:80]

@@ -7,6 +7,7 @@ import sys
 from uuid import uuid4
 from unittest.mock import MagicMock, patch
 
+from celery.exceptions import Retry
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
@@ -129,13 +130,13 @@ def test_run_application_pipeline_async_closes_session_on_failure(
     session.close.assert_called_once()
 
 
-@patch("services.worker.tasks.ApplicationRepository")
 @patch("services.worker.tasks.AutomationConcurrencyLimiter")
 @patch("services.worker.tasks.SessionLocal")
-def test_run_application_pipeline_async_marks_failed_when_limit_reached(
+@patch.object(run_application_pipeline_async, "retry")
+def test_run_application_pipeline_async_requeues_when_limit_reached(
+    mock_retry,
     mock_session_local,
     mock_concurrency_limiter,
-    mock_application_repository,
 ):
     session = MagicMock()
     mock_session_local.return_value = session
@@ -143,13 +144,14 @@ def test_run_application_pipeline_async_marks_failed_when_limit_reached(
     limiter = MagicMock()
     limiter.acquire.return_value = (False, "user limit reached")
     mock_concurrency_limiter.return_value = limiter
+    mock_retry.side_effect = Retry()
 
-    with pytest.raises(RuntimeError, match="user limit reached"):
+    with pytest.raises(Retry):
         run_application_pipeline_async(
             user_id="f47ac10b-58cc-4372-a567-0e02b2c3d479",
             application_id="123e4567-e89b-12d3-a456-426614174000",
         )
 
-    mock_application_repository.return_value.update_fields.assert_called_once()
+    mock_retry.assert_called_once()
     limiter.release.assert_not_called()
     session.close.assert_called_once()

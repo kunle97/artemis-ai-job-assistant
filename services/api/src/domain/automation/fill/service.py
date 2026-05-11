@@ -10,6 +10,7 @@ import logging
 import random
 import uuid
 from pathlib import Path
+from urllib.parse import urlparse
 
 from contextlib import ExitStack
 
@@ -20,6 +21,7 @@ from src.domain.automation.planning.constants import (
     FIELD_ROLE_COVER_LETTER_UPLOAD,
     FIELD_ROLE_IGNORE,
     FIELD_ROLE_LOCATION,
+    FIELD_ROLE_REFERRAL_SOURCE,
     FIELD_ROLE_RESUME_UPLOAD,
     FIELD_ROLE_SUBMIT,
     PLATFORM_LEVER,
@@ -92,7 +94,9 @@ class AutomationFillService:
 
         profile = self.planning_service.profile_repo.get_by_user_id(user_id)
         return self._execute_fill(
+            user_id=user_id,
             application_url=application_url,
+            navigation_url=None,
             plan=plan,
             resume_file_path=resume_file_path,
             profile=profile,
@@ -105,6 +109,7 @@ class AutomationFillService:
         plan,
         application_id=None,
         resume_file_path: str | None = None,
+        navigation_url: str | None = None,
         browser: Browser | None = None,
     ) -> AutomationFillResult:
         """Execute the fill phase using a pre-built plan.
@@ -125,7 +130,9 @@ class AutomationFillService:
 
         profile = self.planning_service.profile_repo.get_by_user_id(user_id)
         return self._execute_fill(
+            user_id=user_id,
             application_url=application_url,
+            navigation_url=navigation_url,
             plan=plan,
             resume_file_path=resume_file_path,
             profile=profile,
@@ -159,7 +166,9 @@ class AutomationFillService:
 
         profile = self.planning_service.profile_repo.get_by_user_id(user_id)
         return self._execute_fill(
+            user_id=user_id,
             application_url=application_url,
+            navigation_url=None,
             plan=plan,
             resume_file_path=resume_file_path,
             profile=profile,
@@ -169,7 +178,9 @@ class AutomationFillService:
 
     def _execute_fill(
         self,
+        user_id,
         application_url: str,
+        navigation_url: str | None,
         plan,
         resume_file_path: str | None,
         profile,
@@ -185,6 +196,8 @@ class AutomationFillService:
         fill_results: list[AutomationFillFieldResult] = []
         screenshot_path: str | None = None
         submission_confirmed: bool = False
+        runtime_url = normalize_application_url(navigation_url or application_url)
+        using_local_snapshot = urlparse(runtime_url).scheme == "file"
         platform = _detect_platform(application_url)
         has_explicit_race_field = any(_is_race_label(getattr(field, "label", None)) for field in plan.fields)
         race_followup_attempted = False
@@ -199,12 +212,30 @@ class AutomationFillService:
                 stack.callback(context.close)
                 stack.callback(_browser.close)
 
-            page.goto(application_url, wait_until="domcontentloaded", timeout=30000)
+            if using_local_snapshot:
+                logger.info(
+                    "[AutomationFill] Using local snapshot navigation_url=%s live_application_url=%s should_submit=%s",
+                    runtime_url,
+                    application_url,
+                    should_submit,
+                )
+            else:
+                logger.info(
+                    "[AutomationFill] Using live navigation_url=%s should_submit=%s",
+                    runtime_url,
+                    should_submit,
+                )
+
+            page.goto(runtime_url, wait_until="domcontentloaded", timeout=30000)
             # Random pause — mimics human reading time, reduces bot signal
             page.wait_for_timeout(random.randint(1800, 3200))
 
-            prepare_application_page(page, application_url)
-            page.wait_for_timeout(800)
+            if using_local_snapshot:
+                logger.info("[AutomationFill] Snapshot mode active; skipping navigation-heavy page preparation")
+                page.wait_for_timeout(800)
+            else:
+                prepare_application_page(page, runtime_url)
+                page.wait_for_timeout(800)
 
             # Simulate human presence before touching any fields
             simulate_mouse_movement(page)
@@ -214,6 +245,7 @@ class AutomationFillService:
 
                 result = self._fill_planned_field(
                     page=page,
+                    user_id=user_id,
                     field=field_dict,
                     resume_file_path=resume_file_path,
                     platform=platform,
@@ -351,6 +383,7 @@ class AutomationFillService:
         self,
         *,
         page: Page,
+        user_id,
         field: dict,
         resume_file_path: str | None,
         platform: str | None = None,
@@ -358,6 +391,27 @@ class AutomationFillService:
         role = field.get("classified_role")
         value = field.get("resolved_value")
         field_type = field.get("field_type")
+
+        # Late-bind saved answers for text questions that planning may still miss.
+        # This keeps fill reliable even when a stale plan marks these as review/no-value.
+        if field_type in {"input", "textarea"} and role in {"unknown", FIELD_ROLE_REFERRAL_SOURCE}:
+            question_text = (
+                field.get("label")
+                or field.get("placeholder")
+                or field.get("name")
+                or ""
+            ).strip()
+            resolver = getattr(self.planning_service, "answer_resolver", None)
+            if resolver is not None and question_text:
+                resolved = resolver.resolve(user_id=user_id, question_text=question_text)
+                if resolved.resolved_answer:
+                    value = resolved.resolved_answer
+                    field["resolved_value"] = value
+                    field["needs_review"] = bool(resolved.needs_review)
+            if not value and role == FIELD_ROLE_REFERRAL_SOURCE:
+                value = "Job Board"
+                field["resolved_value"] = value
+                field["needs_review"] = False
 
         if role in {FIELD_ROLE_IGNORE, FIELD_ROLE_SUBMIT}:
             return self._build_result(

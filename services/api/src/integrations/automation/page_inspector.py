@@ -13,8 +13,10 @@ Current goals:
 
 from __future__ import annotations
 
+import logging
 import uuid
 from pathlib import Path
+from urllib.parse import unquote, urlparse
 
 import random
 
@@ -28,6 +30,9 @@ from src.integrations.automation.helpers import (
     prepare_application_page,
     save_screenshot,
 )
+
+
+logger = logging.getLogger(__name__)
 
 
 def _extract_job_context(page) -> str | None:
@@ -64,6 +69,25 @@ def _extract_job_context(page) -> str | None:
 
 class ApplicationPageInspector:
     @staticmethod
+    def _is_local_snapshot_url(application_url: str) -> bool:
+        parsed = urlparse((application_url or "").strip())
+        return parsed.scheme == "file"
+
+    @staticmethod
+    def _load_local_snapshot(page, application_url: str) -> None:
+        parsed = urlparse((application_url or "").strip())
+        if parsed.scheme != "file":
+            raise ValueError("Local snapshot URL must use the file:// scheme")
+
+        snapshot_path = Path(unquote(parsed.path or "")).expanduser().resolve()
+        if not snapshot_path.exists() or not snapshot_path.is_file():
+            raise ValueError(f"Local snapshot file does not exist: {snapshot_path}")
+
+        logger.info("[PageInspector] Loading local snapshot for inspect: %s", snapshot_path)
+        html = snapshot_path.read_text(encoding="utf-8")
+        page.set_content(html, wait_until="domcontentloaded")
+
+    @staticmethod
     def inspect(application_url: str, browser: Browser | None = None) -> dict:
         """Inspect a job application page and return structured field data.
 
@@ -89,11 +113,19 @@ class ApplicationPageInspector:
     @staticmethod
     def _do_inspect(page, application_url: str) -> dict:
         normalized_application_url = normalize_application_url(application_url)
-        page.goto(normalized_application_url, wait_until="domcontentloaded", timeout=30000)
-        page.wait_for_timeout(random.randint(1800, 3200))
+        local_snapshot_mode = ApplicationPageInspector._is_local_snapshot_url(normalized_application_url)
 
-        prepare_application_page(page, application_url)
-        page.wait_for_timeout(1000)
+        if local_snapshot_mode:
+            logger.info("[PageInspector] Inspect mode=local_snapshot url=%s", normalized_application_url)
+            ApplicationPageInspector._load_local_snapshot(page, normalized_application_url)
+            page.wait_for_timeout(400)
+        else:
+            logger.info("[PageInspector] Inspect mode=live_navigation url=%s", normalized_application_url)
+            page.goto(normalized_application_url, wait_until="domcontentloaded", timeout=30000)
+            page.wait_for_timeout(random.randint(1800, 3200))
+
+            prepare_application_page(page, application_url)
+            page.wait_for_timeout(1000)
 
         title = page.title()
         job_context = _extract_job_context(page)
@@ -112,5 +144,6 @@ class ApplicationPageInspector:
             "notes": [
                 "Playwright inspection completed.",
                 "Inspector v4 adds richer radio/select/combobox extraction.",
+                "Inspection used local HTML snapshot." if local_snapshot_mode else "Inspection used live page navigation.",
             ],
         }

@@ -5,10 +5,16 @@ Handles database operations for user job applications.
 """
 
 from datetime import datetime, timezone
+import logging
 
 from sqlalchemy.orm import Session
 
 from src.domain.applications.models import Application
+
+
+logger = logging.getLogger(__name__)
+
+_JOB_ID_IN_CLAUSE_CHUNK_SIZE = 1000
 
 
 class ApplicationRepository:
@@ -48,11 +54,41 @@ class ApplicationRepository:
         if not job_ids:
             return []
 
-        return (
-            self.db.query(Application)
-            .filter(Application.user_id == user_id, Application.job_id.in_(job_ids))
-            .order_by(Application.created_at.desc())
-            .all()
+        # Deduplicate first to avoid oversized SQL parameter lists.
+        normalized_job_ids = []
+        seen_job_ids = set()
+        for job_id in job_ids:
+            if job_id is None or job_id in seen_job_ids:
+                continue
+            seen_job_ids.add(job_id)
+            normalized_job_ids.append(job_id)
+
+        if not normalized_job_ids:
+            return []
+
+        if len(normalized_job_ids) > _JOB_ID_IN_CLAUSE_CHUNK_SIZE:
+            logger.info(
+                "[ApplicationRepository] list_by_user_and_job_ids chunking user_id=%s job_ids=%d chunk_size=%d",
+                user_id,
+                len(normalized_job_ids),
+                _JOB_ID_IN_CLAUSE_CHUNK_SIZE,
+            )
+
+        matched_applications = []
+        for idx in range(0, len(normalized_job_ids), _JOB_ID_IN_CLAUSE_CHUNK_SIZE):
+            chunk = normalized_job_ids[idx : idx + _JOB_ID_IN_CLAUSE_CHUNK_SIZE]
+            matched_applications.extend(
+                self.db.query(Application)
+                .filter(Application.user_id == user_id, Application.job_id.in_(chunk))
+                .all()
+            )
+
+        # Preserve previous API contract: newest first.
+        return sorted(
+            matched_applications,
+            key=lambda application: application.created_at
+            or datetime.min.replace(tzinfo=timezone.utc),
+            reverse=True,
         )
 
     def update_fields(self, application_id, **fields):

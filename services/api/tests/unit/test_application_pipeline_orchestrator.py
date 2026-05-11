@@ -26,6 +26,12 @@ from src.domain.applications.pipeline_service import ApplicationPipelineService
 from src.domain.automation.planning.models import AutomationFillPlan
 
 
+@pytest.fixture(autouse=True)
+def disable_run_snapshots():
+    with patch("src.domain.applications.pipeline_service._should_use_run_snapshots", return_value=False):
+        yield
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -37,6 +43,7 @@ def _make_application(
     status="saved",
     manual_review_required=True,
     is_authorized_to_submit=False,
+    automation_snapshot_path=None,
 ):
     app = MagicMock()
     app.id = uuid.uuid4()
@@ -45,6 +52,7 @@ def _make_application(
     app.status = status
     app.manual_review_required = manual_review_required
     app.is_authorized_to_submit = is_authorized_to_submit
+    app.automation_snapshot_path = automation_snapshot_path
     return app
 
 
@@ -124,11 +132,6 @@ def test_run_pipeline_advances_through_all_stages():
 
     service.run_pipeline(app.user_id, app.id)
 
-    status_calls = [c.kwargs.get("status") or c.args[1] if c.args else None for c in app_repo.update_fields.call_args_list]
-    status_calls_cleaned = [
-        c.kwargs["status"] if c.kwargs.get("status") else None
-        for c in app_repo.update_fields.call_args_list
-    ]
     # Verify key stages were set
     statuses_set = {
         kw["status"]
@@ -216,6 +219,33 @@ def test_run_pipeline_marks_submitted_when_already_applied_detected_on_inspectio
     assert APPLICATION_STATUS_SUBMITTED in statuses_set
     planning_svc.build_fill_plan.assert_not_called()
     fill_svc.fill_from_plan.assert_not_called()
+
+
+def test_submit_application_deletes_snapshot_after_confirmed_submission():
+    app = _make_application(
+        status=APPLICATION_STATUS_AWAITING_SUBMISSION,
+        manual_review_required=False,
+        automation_snapshot_path="/tmp/automation-snapshot.html",
+    )
+    app.is_ready_for_automation = True
+    job = _make_job()
+    inspection = _make_inspection_result()
+    plan = _make_plan()
+    fill_result = MagicMock()
+    fill_result.submission_confirmed = True
+
+    service, app_repo, automation_svc, planning_svc, fill_svc = _build_service(
+        app, job, inspection, plan, fill_result
+    )
+    service.snapshot_store = MagicMock()
+
+    service.submit_application(app.user_id, app.id)
+
+    service.snapshot_store.delete.assert_called_once_with("/tmp/automation-snapshot.html")
+    assert any(
+        call.kwargs.get("automation_snapshot_path") is None
+        for call in app_repo.update_fields.call_args_list
+    )
 
 
 # ---------------------------------------------------------------------------
