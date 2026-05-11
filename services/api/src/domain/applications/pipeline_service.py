@@ -9,6 +9,7 @@ Application.status through each step.
 
 import logging
 import re
+import time
 from contextlib import nullcontext
 from time import sleep
 from typing import Callable, TypeVar
@@ -31,6 +32,7 @@ from src.domain.automation.schemas import ApplicationPageIntakeRequest
 from src.integrations.automation.browser import WorkerBrowserSession, create_fresh_context
 from src.integrations.automation.helpers import normalize_application_url, prepare_application_page
 from src.integrations.automation.snapshot_store import AutomationSnapshotStore
+from src.domain.applications.pipeline_events import PipelineEvent, emit_pipeline_event
 
 
 logger = logging.getLogger(__name__)
@@ -285,6 +287,7 @@ class ApplicationPipelineService:
 
         previous_snapshot_path = getattr(application, "automation_snapshot_path", None)
 
+        pipeline_start = time.monotonic()
         try:
             application = self.application_repo.update_fields(
                 application_id, status=APPLICATION_STATUS_QUEUED
@@ -296,6 +299,12 @@ class ApplicationPipelineService:
             with WorkerBrowserSession() as browser_session:
                 _browser = browser_session.browser
                 if use_snapshots:
+                    _snap_start = time.monotonic()
+                    emit_pipeline_event(PipelineEvent(
+                        application_id=application_id,
+                        stage="snapshot_capture",
+                        outcome="started",
+                    ))
                     stored_snapshot_path = self._execute_with_retries(
                         "capture_snapshot",
                         lambda: self._capture_snapshot(
@@ -303,6 +312,12 @@ class ApplicationPipelineService:
                             application_url=application_url,
                         ),
                     )
+                    emit_pipeline_event(PipelineEvent(
+                        application_id=application_id,
+                        stage="snapshot_capture",
+                        outcome="completed",
+                        duration_ms=round((time.monotonic() - _snap_start) * 1000, 1),
+                    ))
                     application = self.application_repo.update_fields(
                         application_id,
                         automation_snapshot_path=stored_snapshot_path,
@@ -334,6 +349,12 @@ class ApplicationPipelineService:
                 with snapshot_url_context as snapshot_url:
 
                     # INSPECT
+                    _inspect_start = time.monotonic()
+                    emit_pipeline_event(PipelineEvent(
+                        application_id=application_id,
+                        stage="inspect",
+                        outcome="started",
+                    ))
                     logger.info(f"[PipelineService] Inspecting application_id={application_id}")
                     application = self.application_repo.update_fields(
                         application_id, status=APPLICATION_STATUS_INSPECTING
@@ -382,12 +403,25 @@ class ApplicationPipelineService:
                     application = self.application_repo.update_fields(
                         application_id, status=APPLICATION_STATUS_INSPECTED
                     )
+                    emit_pipeline_event(PipelineEvent(
+                        application_id=application_id,
+                        stage="inspect",
+                        outcome="completed",
+                        field_count=len(inspected_fields),
+                        duration_ms=round((time.monotonic() - _inspect_start) * 1000, 1),
+                    ))
                     logger.info(
                         f"[PipelineService] Inspection complete: {len(inspected_fields)} fields "
                         f"application_id={application_id}"
                     )
 
                     # PLAN (no browser needed)
+                    _plan_start = time.monotonic()
+                    emit_pipeline_event(PipelineEvent(
+                        application_id=application_id,
+                        stage="plan",
+                        outcome="started",
+                    ))
                     logger.info(f"[PipelineService] Planning application_id={application_id}")
                     application = self.application_repo.update_fields(
                         application_id, status=APPLICATION_STATUS_PLANNING
@@ -409,12 +443,25 @@ class ApplicationPipelineService:
                     application = self.application_repo.update_fields(
                         application_id, status=APPLICATION_STATUS_PLANNED
                     )
+                    emit_pipeline_event(PipelineEvent(
+                        application_id=application_id,
+                        stage="plan",
+                        outcome="completed",
+                        field_count=len(plan.fields),
+                        duration_ms=round((time.monotonic() - _plan_start) * 1000, 1),
+                    ))
                     logger.info(
                         f"[PipelineService] Planning complete: {len(plan.fields)} fields planned "
                         f"application_id={application_id}"
                     )
 
                     # FILL — reuse same browser process
+                    _fill_start = time.monotonic()
+                    emit_pipeline_event(PipelineEvent(
+                        application_id=application_id,
+                        stage="fill",
+                        outcome="started",
+                    ))
                     logger.info(f"[PipelineService] Filling application_id={application_id}")
                     application = self.application_repo.update_fields(
                         application_id, status=APPLICATION_STATUS_FILLING
@@ -435,6 +482,13 @@ class ApplicationPipelineService:
                     application = self.application_repo.update_fields(
                         application_id, status=APPLICATION_STATUS_FILLED
                     )
+                    emit_pipeline_event(PipelineEvent(
+                        application_id=application_id,
+                        stage="fill",
+                        outcome="completed",
+                        field_count=fill_result.filled_count,
+                        duration_ms=round((time.monotonic() - _fill_start) * 1000, 1),
+                    ))
                     logger.info(
                         f"[PipelineService] Fill complete: filled={fill_result.filled_count}, "
                         f"skipped={fill_result.skipped_count} application_id={application_id}"
@@ -451,6 +505,14 @@ class ApplicationPipelineService:
                 )
 
         except Exception as exc:
+            error_type, _ = self._classify_failure(exc)
+            emit_pipeline_event(PipelineEvent(
+                application_id=application_id,
+                stage="pipeline",
+                outcome="failed",
+                error_type=error_type,
+                duration_ms=round((time.monotonic() - pipeline_start) * 1000, 1),
+            ))
             logger.error(
                 f"[PipelineService] Pipeline failed application_id={application_id}: {exc}"
             )
@@ -461,6 +523,12 @@ class ApplicationPipelineService:
             )
             raise
 
+        emit_pipeline_event(PipelineEvent(
+            application_id=application_id,
+            stage="pipeline",
+            outcome="completed",
+            duration_ms=round((time.monotonic() - pipeline_start) * 1000, 1),
+        ))
         logger.info(
             f"[PipelineService] run_pipeline complete application_id={application_id} "
             f"status={application.status}"
@@ -523,6 +591,12 @@ class ApplicationPipelineService:
         On success the Application.status advances to 'submitted'.
         On failure it is set to 'failed'.
         """
+        _submit_start = time.monotonic()
+        emit_pipeline_event(PipelineEvent(
+            application_id=application_id,
+            stage="submit",
+            outcome="started",
+        ))
         logger.info(
             f"[PipelineService] submit_application start application_id={application_id}"
         )
@@ -632,12 +706,27 @@ class ApplicationPipelineService:
                     reason="submission_confirmed",
                 )
                 logger.debug(f"[PipelineService] Application status updated to SUBMITTED for application_id={application_id}")
+                emit_pipeline_event(PipelineEvent(
+                    application_id=application_id,
+                    stage="submit",
+                    outcome="completed",
+                    field_count=fill_result.filled_count,
+                    duration_ms=round((time.monotonic() - _submit_start) * 1000, 1),
+                ))
                 logger.info(
                     f"[PipelineService] submit_application complete application_id={application_id}"
                 )
                 logger.debug(f"[PipelineService] Exiting WorkerBrowserSession context for application_id={application_id}")
 
         except Exception as exc:
+            error_type, _ = self._classify_failure(exc)
+            emit_pipeline_event(PipelineEvent(
+                application_id=application_id,
+                stage="submit",
+                outcome="failed",
+                error_type=error_type,
+                duration_ms=round((time.monotonic() - _submit_start) * 1000, 1),
+            ))
             logger.error(
                 f"[PipelineService] submit_application failed application_id={application_id}: {exc}"
             )

@@ -360,7 +360,7 @@ export const ApplicationDetailWorkspace: React.FC = () => {
 
   const handleSaveInlineEdit = async (item: AutofillPreviewItem) => {
     const normalizedAnswer = editingValue.trim();
-    if (!token || !normalizedAnswer) return;
+    if (!token) return;
 
     setSavingFieldKey(item.key);
     try {
@@ -791,7 +791,6 @@ export const ApplicationDetailWorkspace: React.FC = () => {
                                 size="sm"
                                 onClick={() => void handleSaveInlineEdit(item)}
                                 loading={savingFieldKey === item.key}
-                                disabled={editingValue.trim().length === 0}
                               >
                                 Save
                               </Button>
