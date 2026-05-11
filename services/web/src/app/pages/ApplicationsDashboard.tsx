@@ -152,10 +152,15 @@ export const ApplicationsDashboard: React.FC = () => {
               <h1 className="text-3xl font-semibold text-foreground">Applications</h1>
               <p className="mt-2 text-muted-foreground">Track and manage all your job applications</p>
             </div>
-            <Button variant="primary" onClick={handleCreateApplication}>
-              <Plus className="h-4 w-4" />
-              New Application
-            </Button>
+            <div className="flex gap-2">
+              <Button variant="secondary" onClick={() => router.push('/applications/patterns')}>
+                View Patterns
+              </Button>
+              <Button variant="primary" onClick={handleCreateApplication}>
+                <Plus className="h-4 w-4" />
+                New Application
+              </Button>
+            </div>
           </div>
         </div>
 

@@ -22,8 +22,12 @@ from src.domain.applications.schemas import (
     ApplicationStatusRead,
     ApplicationLifecycleStatusUpdate,
 )
+from src.domain.applications.analytics.repository import ApplicationPatternRepository
+from src.domain.applications.analytics.schemas import ApplicationPatternsResponse
+from src.domain.applications.analytics.service import ApplicationPatternService
 from src.domain.applications.service import ApplicationService
 from src.domain.jobs.repository import JobRepository
+from src.domain.jobs.scoring.repository import ApplicationScoreRepository
 from src.domain.profile.repository import CandidateProfileRepository
 from src.domain.resume.repository import ResumeRepository
 from src.infrastructure.db.session import get_db
@@ -79,6 +83,30 @@ def list_applications(
 ):
     service = _build_application_service(db)
     return service.list_applications(current_user.id)
+
+
+@router.get("/patterns", response_model=ApplicationPatternsResponse)
+def get_application_patterns(
+    current_user=Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Return per-user application pattern analytics.
+
+    Scoped exclusively to the authenticated user — no user_id query parameter
+    is accepted. Returns an ``is_sufficient_data=False`` response when the
+    user has fewer than the minimum threshold of meaningful applications.
+    """
+    pattern_repository = ApplicationPatternRepository(
+        db=db,
+        score_repository=ApplicationScoreRepository(db),
+    )
+    service = ApplicationPatternService(repository=pattern_repository)
+
+    try:
+        return service.compute_patterns(user_id=current_user.id)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
 
 
 @router.get("/{application_id}", response_model=ApplicationRead)
@@ -219,3 +247,4 @@ def update_lifecycle_status(
         raise HTTPException(status_code=403, detail=str(exc))
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+
