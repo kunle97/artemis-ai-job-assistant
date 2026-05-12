@@ -6,16 +6,6 @@ import { toast } from 'sonner';
 import { AppShell } from '../components/AppShell';
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle } from '../components/ui';
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '../components/ui/alert-dialog';
-import {
   AlertCircle,
   AlertTriangle,
   ArrowLeft,
@@ -27,13 +17,11 @@ import {
   RefreshCw,
   Send,
   Shield,
-  Trash2,
 } from 'lucide-react';
 import { getStoredAccessToken } from '../../services/auth/auth.service';
 import {
   authorizeApplication,
   buildAutomationFillPlan,
-  deleteApplication,
   getApplicationById,
   getApplicationReadiness,
   getApplicationStatus,
@@ -76,7 +64,8 @@ interface AutofillPreviewItem {
   options: string[];
 }
 
-const AUTOFILL_PREVIEW_CACHE_PREFIX = 'autofill-preview-cache:v2';
+// Bump this when preview extraction changes so stale sessionStorage entries do not hide new fields.
+const AUTOFILL_PREVIEW_CACHE_PREFIX = 'autofill-preview-cache:v3';
 
 interface AutofillPreviewCacheEntry {
   applicationUpdatedAt: string;
@@ -86,7 +75,7 @@ interface AutofillPreviewCacheEntry {
 function extractOptionValues(rawOptions: Array<Record<string, unknown>>): string[] {
   const values = rawOptions
     .map((option) => {
-      const value = option.label ?? option.value ?? option.text ?? option.name;
+      const value = option.value ?? option.label ?? option.text ?? option.name;
       return typeof value === 'string' ? value.trim() : '';
     })
     .filter((value) => value.length > 0);
@@ -214,6 +203,7 @@ export const ApplicationDetailWorkspace: React.FC = () => {
   const [editingFieldKey, setEditingFieldKey] = useState<string | null>(null);
   const [editingValue, setEditingValue] = useState('');
   const [savingFieldKey, setSavingFieldKey] = useState<string | null>(null);
+  const [textareaOverrideKey, setTextareaOverrideKey] = useState<string | null>(null);
 
   const [automationState, setAutomationState] = useState<AutomationState>('idle');
   const [runTaskId, setRunTaskId] = useState<string | null>(null);
@@ -222,8 +212,6 @@ export const ApplicationDetailWorkspace: React.FC = () => {
   const [running, setRunning] = useState(false);
   const [authorizing, setAuthorizing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [confirmSubmit, setConfirmSubmit] = useState(false);
   const [updatingLifecycleStatus, setUpdatingLifecycleStatus] = useState(false);
 
@@ -418,12 +406,19 @@ export const ApplicationDetailWorkspace: React.FC = () => {
 
   const handleStartInlineEdit = (item: AutofillPreviewItem) => {
     setEditingFieldKey(item.key);
+    setTextareaOverrideKey(null);
+    if (item.fieldType === 'checkbox_group') {
+      setEditingValue('');
+      return;
+    }
+
     setEditingValue(item.resolvedValue);
   };
 
   const handleCancelInlineEdit = () => {
     setEditingFieldKey(null);
     setEditingValue('');
+    setTextareaOverrideKey(null);
   };
 
   const handleSaveInlineEdit = async (item: AutofillPreviewItem) => {
@@ -482,15 +477,6 @@ export const ApplicationDetailWorkspace: React.FC = () => {
 
   const normalizedStatus = normalizeStatus(status?.status);
   const submitted = normalizedStatus === 'submitted';
-  const postSubmissionStatuses = new Set([
-    'submitted',
-    'interviewing',
-    'offer_received',
-    'offer_accepted',
-    'rejected',
-    'archived',
-  ]);
-  const canDeleteUnsubmitted = !postSubmissionStatuses.has(normalizedStatus) && !deleting;
   const isFormFillingStage = normalizedStatus === 'filling';
   const authorized = Boolean(status?.is_authorized_to_submit);
   const hasBlockingReadiness = errorBlockers.length > 0;
@@ -505,8 +491,8 @@ export const ApplicationDetailWorkspace: React.FC = () => {
   );
 
   const canRunAutomation = !loading && !hasBlockingReadiness && !automationRunning && !submitted;
-  const canAuthorize = false; // authorization is now implicit on submit
-  const canSubmit = automationComplete && !hasBlockingReadiness && !submitted;
+  const canAuthorize = automationComplete && !authorized && !submitted;
+  const canSubmit = automationComplete && authorized && !hasBlockingReadiness && !submitted;
 
   const readinessVerdict: 'ready' | 'blocked' | 'needs review' = hasBlockingReadiness
     ? 'blocked'
@@ -522,7 +508,9 @@ export const ApplicationDetailWorkspace: React.FC = () => {
         ? 'Wait for automation to finish.'
         : !automationComplete
           ? 'Run automation.'
-          : 'Submit application.';
+          : !authorized
+            ? 'Authorize submission.'
+            : 'Submit application.';
 
   const handleUpdateLifecycleStatus = async (newStatus: string) => {
     if (!token || !applicationId) return;
@@ -590,9 +578,6 @@ export const ApplicationDetailWorkspace: React.FC = () => {
     if (!token || !applicationId) return;
     setSubmitting(true);
     try {
-      if (!authorized) {
-        await authorizeApplication(token, applicationId);
-      }
       const updated = await submitApplication(token, applicationId);
       setApplication(updated);
       setConfirmSubmit(false);
@@ -605,38 +590,6 @@ export const ApplicationDetailWorkspace: React.FC = () => {
       toast.error('Submission failed', { description: message });
     } finally {
       setSubmitting(false);
-    }
-  };
-
-  const handleDeleteUnsubmittedApplication = async () => {
-    if (!token || !applicationId) return;
-
-    if (!canDeleteUnsubmitted) {
-      toast.error('Delete blocked', {
-        description: 'Only unsubmitted applications can be deleted.',
-      });
-      return;
-    }
-
-    setDeleteConfirmOpen(true);
-  };
-
-  const confirmDeleteUnsubmittedApplication = async () => {
-    if (!token || !applicationId) return;
-
-    setDeleting(true);
-    try {
-      await deleteApplication(token, applicationId, true);
-      setDeleteConfirmOpen(false);
-      toast.success('Application deleted', {
-        description: 'The job has been restored to your feed for retesting.',
-      });
-      router.push('/jobs');
-    } catch (deleteError) {
-      const message = deleteError instanceof Error ? deleteError.message : 'Failed to delete application.';
-      toast.error('Delete failed', { description: message });
-    } finally {
-      setDeleting(false);
     }
   };
 
@@ -691,24 +644,9 @@ export const ApplicationDetailWorkspace: React.FC = () => {
             <h1 className="text-3xl font-semibold text-foreground">{jobTitle}</h1>
             <p className="text-lg text-muted-foreground mt-1">{companyName}</p>
           </div>
-          <div className="flex items-center gap-2 self-end lg:self-start">
-            <Badge variant={submitted ? 'success' : hasBlockingReadiness ? 'blocked' : 'in-progress'} size="lg">
-              {submitted ? 'Submitted' : hasBlockingReadiness ? 'Blocked' : 'In Progress'}
-            </Badge>
-            {canDeleteUnsubmitted ? (
-              <Button
-                variant="ghost"
-                size="icon"
-                loading={deleting}
-                disabled={deleting}
-                onClick={handleDeleteUnsubmittedApplication}
-                aria-label="Delete unsubmitted application"
-                title="Delete unsubmitted application"
-              >
-                <Trash2 className="h-4 w-4 text-muted-foreground" />
-              </Button>
-            ) : null}
-          </div>
+          <Badge variant={submitted ? 'success' : hasBlockingReadiness ? 'blocked' : 'in-progress'} size="lg">
+            {submitted ? 'Submitted' : hasBlockingReadiness ? 'Blocked' : 'In Progress'}
+          </Badge>
         </div>
 
         <Card>
@@ -839,24 +777,37 @@ export const ApplicationDetailWorkspace: React.FC = () => {
                               const isDateField = item.inputSubtype === 'date' || item.source === 'desired_start_date';
                               const isYesNoField = isBinaryYesNoField(item);
                               const itemOptions = Array.isArray(item.options) ? item.options : [];
+                              const isTextareaMode = item.fieldType === 'textarea' || textareaOverrideKey === item.key;
 
                               if (isYesNoField) {
                                 return (
-                                  <div className="flex items-center gap-4">
-                                    {['Yes', 'No'].map((option) => (
-                                      <label key={option} className="inline-flex items-center gap-2 text-sm text-foreground">
-                                        <input
-                                          type="radio"
-                                          name={`preview-binary-${item.key}`}
-                                          value={option}
-                                          checked={editingValue.trim().toLowerCase() === option.toLowerCase()}
-                                          onChange={(event) => setEditingValue(event.target.value)}
-                                          className="h-4 w-4 border-border text-brand"
-                                        />
-                                        {option}
-                                      </label>
-                                    ))}
-                                  </div>
+                                  <>
+                                    {!isTextareaMode ? (
+                                      <div className="flex items-center gap-4">
+                                        {['Yes', 'No'].map((option) => (
+                                          <label key={option} className="inline-flex items-center gap-2 text-sm text-foreground">
+                                            <input
+                                              type="radio"
+                                              name={`preview-binary-${item.key}`}
+                                              value={option}
+                                              checked={editingValue.trim().toLowerCase() === option.toLowerCase()}
+                                              onChange={(event) => setEditingValue(event.target.value)}
+                                              className="h-4 w-4 border-border text-brand"
+                                            />
+                                            {option}
+                                          </label>
+                                        ))}
+                                      </div>
+                                    ) : (
+                                      <textarea
+                                        value={editingValue}
+                                        onChange={(event) => setEditingValue(event.target.value)}
+                                        rows={4}
+                                        className="w-full px-3 py-2 rounded-lg border border-border bg-input-background focus:ring-2 focus:ring-brand focus:border-brand resize-y"
+                                        placeholder="Type your custom response here..."
+                                      />
+                                    )}
+                                  </>
                                 );
                               }
 
@@ -935,6 +886,17 @@ export const ApplicationDetailWorkspace: React.FC = () => {
                               );
                             })()}
                             <div className="flex items-center gap-2">
+                              {isBinaryYesNoField(item) ? (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => {
+                                    setTextareaOverrideKey((current) => (current === item.key ? null : item.key));
+                                  }}
+                                >
+                                  {textareaOverrideKey === item.key ? 'Use Yes/No' : 'Switch to textarea'}
+                                </Button>
+                              ) : null}
                               <Button
                                 size="sm"
                                 onClick={() => void handleSaveInlineEdit(item)}
@@ -1174,9 +1136,14 @@ export const ApplicationDetailWorkspace: React.FC = () => {
                     <Button variant="primary" fullWidth loading={submitting} onClick={handleSubmit}>
                       Confirm Submit
                     </Button>
-                    <Button variant="outline" fullWidth onClick={() => setConfirmSubmit(false)}>
-                      Cancel
-                    </Button>
+                    <div className="flex items-center gap-2">
+                      <Button variant="outline" fullWidth onClick={() => setConfirmSubmit(false)}>
+                        Cancel
+                      </Button>
+                      <Button variant="outline" fullWidth onClick={() => router.push('/applications')}>
+                        Back
+                      </Button>
+                    </div>
                   </div>
                 )}
                 {!canSubmit && !submitted ? (
@@ -1184,32 +1151,9 @@ export const ApplicationDetailWorkspace: React.FC = () => {
                 ) : null}
               </CardContent>
             </Card>
-
           </div>
         </div>
       </div>
-      <AlertDialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete This Application?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will delete the unsubmitted application and move the job back into your feed so you can retest.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-destructive text-white hover:bg-destructive/90"
-              onClick={(event) => {
-                event.preventDefault();
-                void confirmDeleteUnsubmittedApplication();
-              }}
-            >
-              {deleting ? 'Deleting...' : 'Delete Application'}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </AppShell>
   );
 };

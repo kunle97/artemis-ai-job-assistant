@@ -818,7 +818,7 @@ def extract_fields(page) -> list[dict]:
         if (!t) continue;
         const lower = t.toLowerCase().trim();
         if (['yes', 'no', 'true', 'false'].includes(lower)) continue;
-        if (t.length < 4 || t.length > 300) continue;
+        if (t.length < 4 || t.length > 2000) continue;
         questionLabel = t;
         break;
         }
@@ -830,7 +830,7 @@ def extract_fields(page) -> list[dict]:
         while (prev && hops < 3) {
             if (isVisible(prev)) {
             const t = getText(prev);
-            if (t && t.length >= 4 && t.length <= 300) {
+            if (t && t.length >= 4 && t.length <= 2000) {
                 questionLabel = t;
                 break;
             }
@@ -838,6 +838,11 @@ def extract_fields(page) -> list[dict]:
             prev = prev.previousElementSibling;
             hops += 1;
         }
+        }
+
+        // 3. Fall back to generic nearby prompt lookup with a larger text budget.
+        if (!questionLabel) {
+        questionLabel = getNearbyPrompt(yesBtn, { maxTextLength: 2000 });
         }
 
         // Only emit if we found a meaningful question label.
