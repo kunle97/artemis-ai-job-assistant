@@ -32,6 +32,9 @@ from src.domain.jobs.repository import JobUserFeedRepository
 from src.domain.jobs.scoring.repository import ApplicationScoreRepository
 from src.domain.profile.repository import CandidateProfileRepository
 from src.domain.resume.repository import ResumeRepository
+from src.domain.resume.tailoring.repository import ResumeTailoringRepository
+from src.domain.resume.tailoring.schemas import TailorResumeRequest, TailoredResumeResult
+from src.domain.resume.tailoring.service import ResumeTailoringService
 from src.infrastructure.db.session import get_db
 
 router = APIRouter(prefix="/applications", tags=["applications"])
@@ -64,6 +67,27 @@ def _build_readiness_service(db: Session) -> ApplicationReadinessService:
         profile_repository=CandidateProfileRepository(db),
         resume_repository=ResumeRepository(db),
         application_answer_repository=ApplicationAnswerRepository(db),
+    )
+
+
+def _build_resume_tailoring_service(db: Session) -> ResumeTailoringService:
+    llm_client = None
+    if settings.groq_api_key:
+        from src.integrations.groq.client import GroqClient
+
+        llm_client = GroqClient(
+            api_key=settings.groq_api_key,
+            model=settings.groq_model,
+        )
+
+    return ResumeTailoringService(
+        repository=ResumeTailoringRepository(
+            application_repository=ApplicationRepository(db),
+            resume_repository=ResumeRepository(db),
+            profile_repository=CandidateProfileRepository(db),
+            job_repository=JobRepository(db),
+        ),
+        llm_client=llm_client,
     )
 
 
@@ -254,6 +278,29 @@ def submit_application(
         raise HTTPException(status_code=403, detail=str(exc))
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.post("/{application_id}/tailor-resume", response_model=TailoredResumeResult)
+def tailor_resume_for_application(
+    application_id: UUID,
+    payload: TailorResumeRequest,
+    current_user=Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    service = _build_resume_tailoring_service(db)
+
+    try:
+        return service.tailor_resume(
+            user_id=current_user.id,
+            application_id=application_id,
+            resume_id=payload.resume_id,
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
+    except ValueError as exc:
+        detail = str(exc)
+        status_code = 404 if detail in {"Application not found.", "Job not found.", "Resume not found."} else 400
+        raise HTTPException(status_code=status_code, detail=detail)
 
 
 @router.patch("/{application_id}/lifecycle-status", response_model=ApplicationRead)

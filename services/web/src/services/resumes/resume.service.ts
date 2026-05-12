@@ -158,3 +158,35 @@ export async function deleteResume(resumeId: string, token: string): Promise<voi
     throw new Error('Unable to delete resume right now. Please try again.');
   }
 }
+
+export async function setPrimaryResume(resumeId: string, token: string): Promise<ResumeRead> {
+  try {
+    const response = await httpClient.patch<ResumeRead>(`/resumes/${resumeId}/primary`, undefined, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    return response.data;
+  } catch (error) {
+    if (axios.isAxiosError<ApiErrorBody>(error)) {
+      const status = error.response?.status;
+      const detail = error.response?.data?.detail?.trim();
+
+      if (status === 401) {
+        redirectToLandingOnSessionExpired();
+        throw new Error('Session expired. Redirecting to sign in.');
+      }
+
+      if (status === 404) {
+        throw new Error(detail || 'Resume not found.');
+      }
+
+      if (status) {
+        throw new Error(detail || `Unable to update default resume (status ${status}).`);
+      }
+    }
+
+    throw new Error('Unable to update the default resume right now. Please try again.');
+  }
+}

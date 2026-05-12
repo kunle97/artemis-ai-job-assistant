@@ -105,6 +105,24 @@ export interface AutomationFillPlanRecord {
   notes: string[];
 }
 
+export interface TailoringRecommendationRecord {
+  section: string;
+  current_text: string;
+  proposed_text: string;
+  reason: string;
+  matched_keywords: string[];
+  missing_keywords: string[];
+}
+
+export interface TailoredResumeResultRecord {
+  application_id: string;
+  resume_id: string | null;
+  generated_at: string;
+  is_fallback: boolean;
+  message: string | null;
+  suggestions: TailoringRecommendationRecord[];
+}
+
 export interface ApplicationCreatePayload {
   job_id: string;
   resume_id?: string | null;
@@ -121,12 +139,26 @@ function parseApiError(error: unknown, fallback: string): never {
   if (axios.isAxiosError<ApiErrorBody>(error)) {
     const status = error.response?.status;
     const detail = error.response?.data?.detail?.trim();
+    const code = error.code?.trim();
     if (status === 401) {
       redirectToLandingOnSessionExpired();
       throw new Error('Session expired. Redirecting to sign in.');
     }
     if (status) {
       throw new Error(detail || fallback.replace('{status}', String(status)));
+    }
+
+    // Axios received no HTTP response (network/CORS/offline/backend down).
+    if (error.request) {
+      throw new Error(
+        code
+          ? `Request failed before a response was received (${code}). Check API connectivity and try again.`
+          : 'Request failed before a response was received. Check API connectivity and try again.',
+      );
+    }
+
+    if (error.message) {
+      throw new Error(error.message);
     }
   }
   throw new Error(fallback.replace(' with status {status}', ''));
@@ -309,6 +341,27 @@ export async function updateLifecycleStatus(
     return response.data;
   } catch (error) {
     parseApiError(error, 'Failed to update lifecycle status with status {status}.');
+  }
+}
+
+export async function tailorResumeForApplication(
+  token: string,
+  applicationId: string,
+  payload: {
+    resume_id?: string | null;
+  },
+): Promise<TailoredResumeResultRecord> {
+  try {
+    const response = await httpClient.post<TailoredResumeResultRecord>(
+      `/applications/${applicationId}/tailor-resume`,
+      payload,
+      {
+        headers: buildAuthHeader(token),
+      },
+    );
+    return response.data;
+  } catch (error) {
+    parseApiError(error, 'Failed to tailor resume with status {status}.');
   }
 }
 

@@ -958,6 +958,23 @@ export const ApplicationDetailWorkspace: React.FC = () => {
           <div className="space-y-6 lg:sticky lg:top-20 h-fit">
             <Card>
               <CardHeader>
+                <CardTitle>Tailor Resume</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <p className="text-sm text-muted-foreground">
+                  Tailor Resume compares your resume against this job and generates focused rewrite suggestions on a dedicated review page.
+                </p>
+
+                <Button
+                  onClick={() => router.push(`/applications/${applicationId}/tailor-resume`)}
+                >
+                  Open Tailor Resume
+                </Button>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
                 <CardTitle>Workflow Timeline</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">

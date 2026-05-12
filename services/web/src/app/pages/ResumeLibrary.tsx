@@ -9,6 +9,7 @@ import { getStoredAccessToken } from '../../services/auth/auth.service';
 import {
   deleteResume,
   getResumes,
+  setPrimaryResume,
   uploadResume,
   type ResumeRead,
   type ResumeUploadResponse,
@@ -40,6 +41,7 @@ export const ResumeLibrary: React.FC = () => {
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [deletingResumeId, setDeletingResumeId] = useState<string | null>(null);
+  const [settingPrimaryResumeId, setSettingPrimaryResumeId] = useState<string | null>(null);
   const [latestUpload, setLatestUpload] = useState<ResumeUploadResponse | null>(null);
 
   const loadResumes = useCallback(async () => {
@@ -71,6 +73,11 @@ export const ResumeLibrary: React.FC = () => {
   const latestResume = useMemo(() => {
     if (resumes.length === 0) return null;
     return resumes[0];
+  }, [resumes]);
+
+  const defaultResume = useMemo(() => {
+    if (resumes.length === 0) return null;
+    return resumes.find((resume) => resume.is_primary) || resumes[0];
   }, [resumes]);
 
   const handleGoToProfile = () => {
@@ -138,6 +145,27 @@ export const ResumeLibrary: React.FC = () => {
       setDeleteError(error instanceof Error ? error.message : 'Unable to delete resume.');
     } finally {
       setDeletingResumeId(null);
+    }
+  };
+
+  const handleSetPrimaryResume = async (resumeId: string) => {
+    const token = getStoredAccessToken();
+    if (!token) {
+      router.push('/signin');
+      return;
+    }
+
+    setDeleteError(null);
+    setUploadError(null);
+    setSettingPrimaryResumeId(resumeId);
+
+    try {
+      await setPrimaryResume(resumeId, token);
+      await loadResumes();
+    } catch (error) {
+      setDeleteError(error instanceof Error ? error.message : 'Unable to update default resume.');
+    } finally {
+      setSettingPrimaryResumeId(null);
     }
   };
 
@@ -310,15 +338,25 @@ export const ResumeLibrary: React.FC = () => {
                                 <p className="text-xs text-muted-foreground mt-1">
                                   Uploaded {formatTimestamp(resume.created_at)}
                                 </p>
-                                <p className="text-xs text-muted-foreground mt-1">
-                                  {resume.mime_type || 'Unknown format'} • {resume.variant_type}
-                                </p>
+                                <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                                  <span>{resume.mime_type || 'Unknown format'} • {resume.variant_type}</span>
+                                  {resume.is_primary ? <Badge variant="success" size="sm">Default</Badge> : null}
+                                </div>
                               </div>
                             </div>
                             <div className="flex items-center gap-2">
                               <Badge variant={parsed ? 'success' : 'warning'} size="sm">
                                 {parsed ? 'Parsed' : 'Uploaded'}
                               </Badge>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                loading={settingPrimaryResumeId === resume.id}
+                                disabled={Boolean(settingPrimaryResumeId) || resume.is_primary}
+                                onClick={() => handleSetPrimaryResume(resume.id)}
+                              >
+                                {resume.is_primary ? 'Default Resume' : 'Set as Default'}
+                              </Button>
                               <Button
                                 variant="ghost"
                                 size="sm"
@@ -416,14 +454,17 @@ export const ResumeLibrary: React.FC = () => {
               </CardContent>
             </Card>
 
-            {latestResume && (
+            {defaultResume && (
               <Card>
                 <CardHeader>
-                  <CardTitle>Latest In Library</CardTitle>
+                  <CardTitle>Default Resume</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <p className="font-medium text-foreground">{latestResume.file_name}</p>
-                  <p className="text-sm text-muted-foreground mt-1">Uploaded {formatTimestamp(latestResume.created_at)}</p>
+                  <p className="font-medium text-foreground">{defaultResume.file_name}</p>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Used by default when creating applications and opening resume tailoring.
+                  </p>
+                  <p className="text-sm text-muted-foreground mt-1">Uploaded {formatTimestamp(defaultResume.created_at)}</p>
                 </CardContent>
               </Card>
             )}

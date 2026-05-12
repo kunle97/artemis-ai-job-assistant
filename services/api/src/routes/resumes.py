@@ -108,3 +108,21 @@ def delete_resume(
         raise HTTPException(status_code=404, detail="Resume not found.")
 
     return {"message": "Resume deleted."}
+
+
+@router.patch("/{resume_id}/primary", response_model=ResumeRead)
+def set_primary_resume(
+    resume_id: UUID,
+    current_user=Depends(get_current_user),
+    db: Session = Depends(get_db),
+    storage_service: StorageService = Depends(get_storage),
+):
+    """
+    Mark a resume as the authenticated user's default resume.
+    """
+    service = _build_resume_service(db, storage_service)
+    resume = service.set_primary_resume(current_user.id, resume_id)
+    if not resume:
+        raise HTTPException(status_code=404, detail="Resume not found.")
+
+    return resume

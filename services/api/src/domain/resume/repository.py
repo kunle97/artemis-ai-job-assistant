@@ -35,6 +35,26 @@ class ResumeRepository:
             .first()
         )
 
+    def get_primary_by_user_id(self, user_id):
+        return (
+            self.db.query(Resume)
+            .filter(Resume.user_id == user_id, Resume.is_primary.is_(True))
+            .order_by(Resume.updated_at.desc())
+            .first()
+        )
+
+    def set_primary(self, resume):
+        (
+            self.db.query(Resume)
+            .filter(Resume.user_id == resume.user_id, Resume.id != resume.id)
+            .update({Resume.is_primary: False}, synchronize_session=False)
+        )
+        resume.is_primary = True
+        self.db.add(resume)
+        self.db.commit()
+        self.db.refresh(resume)
+        return resume
+
     def delete(self, resume):
         self.db.delete(resume)
         self.db.commit()

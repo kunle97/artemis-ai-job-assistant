@@ -59,6 +59,7 @@ class ApplicationService:
 
         profile = self.profile_repository.get_by_user_id(user_id)
         resumes = self.resume_repository.get_by_user_id(user_id)
+        primary_resume = self.resume_repository.get_primary_by_user_id(user_id)
 
         selected_resume = None
         if payload.resume_id:
@@ -68,8 +69,10 @@ class ApplicationService:
             )
             if not selected_resume:
                 raise ValueError("Resume not found.")
+        elif primary_resume is not None:
+            selected_resume = primary_resume
         elif resumes:
-            # Default to most recently uploaded resume when not explicitly provided.
+            # Fall back to the most recently uploaded resume when no primary is set.
             selected_resume = resumes[0]
 
         is_ready = bool(profile and selected_resume)

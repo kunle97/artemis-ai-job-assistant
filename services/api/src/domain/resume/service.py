@@ -61,6 +61,8 @@ class ResumeService:
         extracted_len = len(parsed_result.get("extracted_text") or "")
         logger.info("[ResumeService] parse complete extracted_chars=%d", extracted_len)
 
+        existing_primary = self.repository.get_primary_by_user_id(user_id)
+
         resume = self.repository.create(
             user_id=user_id,
             file_name=upload_file.filename,
@@ -69,7 +71,7 @@ class ResumeService:
             extracted_text=parsed_result.get("extracted_text"),
             parsed_json=parsed_result.get("parsed_json"),
             variant_type="master",
-            is_primary=False,
+            is_primary=existing_primary is None,
         )
 
         missing_fields: list[str] = []
@@ -100,6 +102,20 @@ class ResumeService:
         """
         logger.info("[ResumeService] list_resumes user_id=%s", user_id)
         return self.repository.get_by_user_id(user_id)
+
+    def set_primary_resume(self, user_id, resume_id):
+        """
+        Mark one resume as the default primary resume for a user.
+        """
+        logger.info("[ResumeService] set_primary_resume start user_id=%s resume_id=%s", user_id, resume_id)
+        resume = self.repository.get_by_id_and_user_id(resume_id, user_id)
+        if not resume:
+            logger.warning("[ResumeService] set_primary_resume not found user_id=%s resume_id=%s", user_id, resume_id)
+            return None
+
+        updated = self.repository.set_primary(resume)
+        logger.info("[ResumeService] set_primary_resume complete user_id=%s resume_id=%s", user_id, resume_id)
+        return updated
 
     def delete_resume(self, user_id, resume_id):
         """
