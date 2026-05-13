@@ -21,6 +21,7 @@ SCRIPTS = {
     "async": "verify_async_pipeline_dispatch.py",
     "guardrails": "check_submission_guardrails.py",
     "feed": "check_feed_scan_persist.py",
+    "discovery": "check_job_source_discovery.py",
     "migrations": "check_db_migrations.py",
 }
 

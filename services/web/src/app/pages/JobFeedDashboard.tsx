@@ -146,10 +146,14 @@ export const JobFeedDashboard: React.FC = () => {
     try {
       const response = await scanJobFeed(token);
       setHasScanned(true);
+      const discoverySummary =
+        response.discovery_candidates_found != null
+          ? ` Discovery: ${response.discovery_candidates_found} candidate${response.discovery_candidates_found === 1 ? '' : 's'}, ${response.discovery_promoted_count ?? 0} promoted.`
+          : '';
       setScanMessage(
         response.new_jobs_found > 0
-          ? `Scan complete. ${response.new_jobs_found} new job${response.new_jobs_found === 1 ? '' : 's'} found.`
-          : 'Scan complete. No new jobs found.',
+          ? `Scan complete. ${response.new_jobs_found} new job${response.new_jobs_found === 1 ? '' : 's'} found.${discoverySummary}`
+          : `Scan complete. No new jobs found.${discoverySummary}`,
       );
       await loadFeed(0, undefined, sortOrder);
     } catch (error) {
@@ -486,7 +490,18 @@ export const JobFeedDashboard: React.FC = () => {
                       <Briefcase className="h-6 w-6 text-brand" />
                     </div>
                     <div className="flex-1">
-                      <h3 className="text-xl font-semibold text-foreground mb-1">{job.title}</h3>
+                      <div className="mb-1 flex items-center gap-2">
+                        <h3 className="text-xl font-semibold text-foreground">{job.title}</h3>
+                        {job.feed_status === 'new' && (
+                          <Badge
+                            variant="primary"
+                            size="sm"
+                            className="bg-emerald-100 text-emerald-900 border-emerald-200"
+                          >
+                            New
+                          </Badge>
+                        )}
+                      </div>
                       <div className="mb-3 flex flex-wrap items-center gap-3">
                         <p className="text-foreground">{job.company_name}</p>
                         <span className="h-4 w-px bg-border" aria-hidden="true" />

@@ -17,9 +17,10 @@ from src.deps.auth import get_current_user
 from src.domain.applications.repository import ApplicationRepository
 from src.domain.profile.repository import CandidateProfileRepository
 from src.domain.jobs.feed_service import JobFeedService
+from src.domain.jobs.discovery_service import JobSourceDiscoveryService, build_hosted_board_url, parse_csv_urls
 from src.domain.jobs.models import Job
 from src.domain.jobs.models import JobFeedStatus
-from src.domain.jobs.repository import JobPreferencesRepository, JobRepository, JobSourceRepository
+from src.domain.jobs.repository import JobPreferencesRepository, JobRepository, JobSourceDiscoveryRepository, JobSourceRepository, JobUserFeedRepository
 from src.domain.jobs.scoring.repository import ApplicationScoreRepository
 from src.domain.jobs.scoring.service import score_job_fit_preview
 from src.domain.jobs.schemas import (
@@ -32,6 +33,10 @@ from src.domain.jobs.schemas import (
     JobPreferencesUpsertRequest,
     JobRead,
     JobSearchRequest,
+    JobSourceDiscoveryPromoteRequest,
+    JobSourceDiscoveryPromoteResponse,
+    JobSourceDiscoveryRequest,
+    JobSourceDiscoveryResponse,
     JobSourceRead,
 )
 from src.domain.jobs.service import JobService
@@ -83,6 +88,12 @@ def _build_job_service(db: Session) -> JobService:
     )
 
 
+def _build_job_source_discovery_service(db: Session) -> JobSourceDiscoveryService:
+    return JobSourceDiscoveryService(
+        repository=JobSourceDiscoveryRepository(db),
+    )
+
+
 def _build_feed_job_reads(db: Session, user_id, jobs: list[Job]) -> list[FeedJobRead]:
     if not jobs:
         return []
@@ -90,6 +101,7 @@ def _build_feed_job_reads(db: Session, user_id, jobs: list[Job]) -> list[FeedJob
     application_repository = ApplicationRepository(db)
     profile_repository = CandidateProfileRepository(db)
     score_repository = ApplicationScoreRepository(db)
+    feed_repository = JobUserFeedRepository(db)
     profile = profile_repository.get_by_user_id(user_id)
 
     applications = application_repository.list_by_user_and_job_ids(
@@ -101,6 +113,11 @@ def _build_feed_job_reads(db: Session, user_id, jobs: list[Job]) -> list[FeedJob
         score.application_id: score
         for score in score_repository.list_by_application_ids([application.id for application in applications])
     }
+    job_ids = [job.id for job in jobs]
+    feed_statuses_by_job_id = feed_repository.get_statuses_for_user_and_job_ids(
+        user_id=user_id,
+        job_ids=job_ids,
+    )
 
     feed_jobs: list[FeedJobRead] = []
     for job in jobs:
@@ -121,6 +138,7 @@ def _build_feed_job_reads(db: Session, user_id, jobs: list[Job]) -> list[FeedJob
             fit_score=score.global_score if score else preview_score["global_score"],
             fit_recommendation=score.recommendation if score else preview_score["recommendation"],
             fit_score_confidence="high" if score else preview_score["confidence"],
+            feed_status=feed_statuses_by_job_id.get(job.id),
         )
         feed_jobs.append(FeedJobRead.model_validate(payload))
 
@@ -136,6 +154,52 @@ def list_job_sources(
     _ = current_user
     repository = JobSourceRepository(db)
     return repository.list_active()
+
+
+@router.post("/discovery/crawl", response_model=JobSourceDiscoveryResponse)
+def crawl_job_sources(
+    payload: JobSourceDiscoveryRequest,
+    current_user=Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Discover ATS source candidates from hosted URLs and career redirects."""
+    _ = current_user
+    service = _build_job_source_discovery_service(db)
+    run_id, candidates, provider_counts = service.discover(
+        hosted_urls=payload.hosted_urls,
+        career_urls=payload.career_urls,
+    )
+    return JobSourceDiscoveryResponse(
+        run_id=run_id,
+        total_candidates=len(candidates),
+        provider_counts=provider_counts,
+        candidates=candidates,
+    )
+
+
+@router.post("/discovery/promote", response_model=JobSourceDiscoveryPromoteResponse)
+def promote_job_source_candidates(
+    payload: JobSourceDiscoveryPromoteRequest,
+    current_user=Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Promote discovery candidates from a run into persistent job source mappings."""
+    _ = current_user
+    discovery_service = _build_job_source_discovery_service(db)
+    source_repository = JobSourceRepository(db)
+    promoted_sources, selected_candidates, skipped_count = discovery_service.promote_candidates(
+        source_repository=source_repository,
+        run_id=payload.run_id,
+        candidate_ids=payload.candidate_ids,
+        is_active=payload.is_active,
+    )
+    return JobSourceDiscoveryPromoteResponse(
+        run_id=payload.run_id,
+        selected_candidates=selected_candidates,
+        promoted_count=len(promoted_sources),
+        skipped_count=skipped_count,
+        promoted_sources=promoted_sources,
+    )
 
 
 @router.post("", response_model=JobRead)
@@ -280,9 +344,42 @@ def scan_job_feed(
     and returns the count of newly ingested jobs. Call GET /jobs/feed to
     display results.
     """
-    service = JobFeedService(user_id=current_user.id, db=db)
-    new_jobs = service.scan()
-    return FeedScanResponse(new_jobs_found=len(new_jobs))
+    preferences_repository = JobPreferencesRepository(db)
+    source_repository = JobSourceRepository(db)
+    preferences = preferences_repository.get_or_create_by_user_id(current_user.id)
+    enabled_sources = set(preferences.enabled_sources or [])
+
+    discovery_hosted_urls: list[str] = []
+    if enabled_sources:
+        for source_row in source_repository.list_active():
+            if source_row.source not in enabled_sources:
+                continue
+            hosted_url = build_hosted_board_url(source=source_row.source, board_token=source_row.board_token)
+            if hosted_url:
+                discovery_hosted_urls.append(hosted_url)
+
+    discovery_hosted_urls.extend(parse_csv_urls(settings.job_discovery_seed_hosted_urls))
+    discovery_career_urls = parse_csv_urls(settings.job_discovery_seed_career_urls)
+    discovery_hosted_urls = list(dict.fromkeys(discovery_hosted_urls))
+    discovery_career_urls = list(dict.fromkeys(discovery_career_urls))
+
+    discovery_service = _build_job_source_discovery_service(db)
+    discovery_summary = discovery_service.discover_and_promote(
+        source_repository=source_repository,
+        hosted_urls=discovery_hosted_urls,
+        career_urls=discovery_career_urls,
+        is_active=True,
+    )
+
+    feed_service = JobFeedService(user_id=current_user.id, db=db)
+    new_jobs = feed_service.scan()
+    return FeedScanResponse(
+        new_jobs_found=len(new_jobs),
+        discovery_run_id=discovery_summary["run_id"],
+        discovery_candidates_found=discovery_summary["candidates_found"],
+        discovery_promoted_count=discovery_summary["promoted_count"],
+        discovery_skipped_count=discovery_summary["skipped_count"],
+    )
 
 
 @router.get("/feed", response_model=FeedPage)
@@ -317,6 +414,9 @@ def get_job_feed(
     else:
         jobs, total = service.get_feed(skip=skip, limit=limit, query=query, sort=sort, sources=source_filter)
         page_jobs = _build_feed_job_reads(db=db, user_id=current_user.id, jobs=jobs)
+
+    # Preserve NEW status in this response, then transition delivered NEW jobs to SEEN.
+    service.mark_jobs_as_seen([job.id for job in page_jobs])
 
     next_offset = skip + limit
     has_next = next_offset < total

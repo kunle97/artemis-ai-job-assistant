@@ -15,7 +15,8 @@ from src.domain.applications.constants import APPLICATION_STATUS_ARCHIVED, AUTO_
 from src.domain.applications.repository import ApplicationRepository
 from src.domain.applications.factory import build_pipeline_service
 from src.domain.jobs.feed_service import JobFeedService
-from src.domain.jobs.repository import JobPreferencesRepository
+from src.domain.jobs.discovery_service import JobSourceDiscoveryService, build_hosted_board_url, parse_csv_urls
+from src.domain.jobs.repository import JobPreferencesRepository, JobSourceDiscoveryRepository, JobSourceRepository
 from src.infrastructure.db.session import SessionLocal
 
 from services.worker.celery_app import celery_app
@@ -124,6 +125,74 @@ def scan_job_feed_for_all_users() -> dict[str, int]:
         "failed_users": failed_users,
         "new_jobs_found": total_new_jobs,
     }
+
+
+@celery_app.task(name="discover_job_sources_for_all_users")
+def discover_job_sources_for_all_users() -> dict[str, int]:
+    """Run ATS source discovery and safe auto-promotion for users with enabled sources."""
+    logger.info("[Worker] Starting scheduled job source discovery for all users")
+
+    db = SessionLocal()
+    try:
+        preferences_repository = JobPreferencesRepository(db)
+        source_repository = JobSourceRepository(db)
+        discovery_service = JobSourceDiscoveryService(repository=JobSourceDiscoveryRepository(db))
+        user_ids = preferences_repository.list_user_ids_with_enabled_sources()
+        logger.info("[Worker] Scheduled source discovery will process %d user(s)", len(user_ids))
+
+        total_promoted = 0
+        failed_users = 0
+
+        for user_id in user_ids:
+            try:
+                preferences = preferences_repository.get_or_create_by_user_id(user_id)
+                enabled_sources = set(preferences.enabled_sources or [])
+
+                hosted_urls: list[str] = []
+                if enabled_sources:
+                    for source_row in source_repository.list_active():
+                        if source_row.source not in enabled_sources:
+                            continue
+                        hosted_url = build_hosted_board_url(source=source_row.source, board_token=source_row.board_token)
+                        if hosted_url:
+                            hosted_urls.append(hosted_url)
+
+                hosted_urls.extend(parse_csv_urls(settings.job_discovery_seed_hosted_urls))
+                career_urls = parse_csv_urls(settings.job_discovery_seed_career_urls)
+                hosted_urls = list(dict.fromkeys(hosted_urls))
+                career_urls = list(dict.fromkeys(career_urls))
+
+                summary = discovery_service.discover_and_promote(
+                    source_repository=source_repository,
+                    hosted_urls=hosted_urls,
+                    career_urls=career_urls,
+                    is_active=True,
+                )
+                total_promoted += summary["promoted_count"]
+                logger.info(
+                    "[Worker] Discovery complete for user %s: candidates=%d promoted=%d skipped=%d",
+                    user_id,
+                    summary["candidates_found"],
+                    summary["promoted_count"],
+                    summary["skipped_count"],
+                )
+            except Exception as exc:  # noqa: BLE001
+                failed_users += 1
+                logger.exception("[Worker] Source discovery failed for user %s: %s", user_id, exc)
+
+        logger.info(
+            "[Worker] Scheduled source discovery finished: users=%d failures=%d promoted=%d",
+            len(user_ids),
+            failed_users,
+            total_promoted,
+        )
+        return {
+            "scanned_users": len(user_ids),
+            "failed_users": failed_users,
+            "promoted_sources": total_promoted,
+        }
+    finally:
+        db.close()
 
 
 @celery_app.task(name="auto_archive_stale_submitted_applications")

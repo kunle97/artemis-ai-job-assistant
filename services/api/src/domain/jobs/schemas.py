@@ -78,6 +78,38 @@ class JobSearchRequest(BaseModel):
     location: str | None = None
 
 
+class JobSourceDiscoveryRequest(BaseModel):
+    hosted_urls: list[str] = Field(default_factory=list)
+    career_urls: list[str] = Field(default_factory=list)
+
+
+class JobSourceDiscoveryCandidateRead(BaseModel):
+    id: UUID
+    run_id: UUID
+    source_channel: str
+    input_url: str
+    discovered_url: str
+    detected_provider: str
+    raw_candidate_value: str | None = None
+    normalized_token: str | None = None
+    extraction_timestamp: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class JobSourceDiscoveryResponse(BaseModel):
+    run_id: UUID
+    total_candidates: int
+    provider_counts: dict[str, int]
+    candidates: list[JobSourceDiscoveryCandidateRead]
+
+
+class JobSourceDiscoveryPromoteRequest(BaseModel):
+    run_id: UUID
+    candidate_ids: list[UUID] = Field(default_factory=list)
+    is_active: bool = True
+
+
 class JobRead(BaseModel):
     id: UUID
     source: str
@@ -103,6 +135,7 @@ class FeedJobRead(JobRead):
     fit_score: float | None = None
     fit_recommendation: str | None = None
     fit_score_confidence: str | None = None
+    feed_status: JobFeedStatus | None = None
 
 
 class JobSourceRead(BaseModel):
@@ -118,8 +151,20 @@ class JobSourceRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class JobSourceDiscoveryPromoteResponse(BaseModel):
+    run_id: UUID
+    selected_candidates: int
+    promoted_count: int
+    skipped_count: int
+    promoted_sources: list[JobSourceRead]
+
+
 class FeedScanResponse(BaseModel):
     new_jobs_found: int
+    discovery_run_id: UUID | None = None
+    discovery_candidates_found: int | None = None
+    discovery_promoted_count: int | None = None
+    discovery_skipped_count: int | None = None
 
 
 class JobFeedStatusUpdateRequest(BaseModel):

@@ -57,6 +57,9 @@ class Settings(BaseSettings):
     automation_concurrency_retry_delay_seconds: int = 15
     max_pipeline_retries: int = 3
     job_scan_interval_hours: int = 24
+    job_discovery_interval_hours: int = 24
+    job_discovery_seed_hosted_urls: str = ""
+    job_discovery_seed_career_urls: str = ""
 
     class Config:
         env_file = (".env", f".env.{_app_env}")

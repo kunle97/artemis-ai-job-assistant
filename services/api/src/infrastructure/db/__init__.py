@@ -8,7 +8,7 @@ def register_models() -> None:
     from src.domain.applications.followup.models import FollowUp
     from src.domain.applications.models import Application
     from src.domain.auth.models import RevokedToken, User
-    from src.domain.jobs.models import Job, JobPreferences, JobUserFeed
+    from src.domain.jobs.models import Job, JobPreferences, JobSource, JobSourceDiscoveryCandidate, JobUserFeed
     from src.domain.jobs.scoring.models import ApplicationScore
     from src.domain.profile.models import CandidateProfile
     from src.domain.resume.models import Resume
@@ -20,6 +20,8 @@ def register_models() -> None:
         Resume,
         Job,
         JobPreferences,
+        JobSource,
+        JobSourceDiscoveryCandidate,
         JobUserFeed,
         Application,
         ApplicationAnswer,

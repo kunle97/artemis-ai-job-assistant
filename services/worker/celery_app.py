@@ -20,6 +20,10 @@ celery_app.conf.update(
     timezone="UTC",
     imports=("services.worker.tasks",),
     beat_schedule={
+        "discover-job-sources-for-all-users": {
+            "task": "discover_job_sources_for_all_users",
+            "schedule": settings.job_discovery_interval_hours * 60 * 60,
+        },
         "scan-job-feed-for-all-users": {
             "task": "scan_job_feed_for_all_users",
             "schedule": settings.job_scan_interval_hours * 60 * 60,

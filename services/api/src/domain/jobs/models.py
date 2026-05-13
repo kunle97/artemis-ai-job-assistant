@@ -136,3 +136,20 @@ class JobSource(Base):
         onupdate=lambda: datetime.now(UTC),
         nullable=False,
     )
+
+
+class JobSourceDiscoveryCandidate(Base):
+    """Raw ATS discovery candidates with source provenance and extraction metadata."""
+
+    __tablename__ = "job_source_discovery_candidates"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    run_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+    source_channel = Column(String(40), nullable=False)
+    input_url = Column(Text, nullable=False)
+    discovered_url = Column(Text, nullable=False)
+    detected_provider = Column(String(50), nullable=False)
+    raw_candidate_value = Column(String(255), nullable=True)
+    normalized_token = Column(String(255), nullable=True)
+    extraction_timestamp = Column(DateTime, default=lambda: datetime.now(UTC), nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(UTC), nullable=False)

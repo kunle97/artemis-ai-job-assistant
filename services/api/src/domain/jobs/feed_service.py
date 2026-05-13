@@ -318,6 +318,13 @@ class JobFeedService:
             status=status,
         )
 
+    def mark_jobs_as_seen(self, job_ids: list) -> int:
+        """Mark NEW feed entries as SEEN after they are delivered to the client once."""
+        return self._user_feed_repo.mark_new_as_seen_for_user_and_job_ids(
+            user_id=self.user_id,
+            job_ids=job_ids,
+        )
+
     def _fetch_board(self, source: str, board_token: str) -> list[dict]:
         """Fetch normalized jobs from a single board via the appropriate adapter."""
         adapter = get_adapter(source)

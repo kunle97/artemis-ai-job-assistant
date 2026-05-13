@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from sqlalchemy.orm import Session, joinedload
 
-from src.domain.jobs.models import Job, JobFeedStatus, JobPreferences, JobSource, JobUserFeed
+from src.domain.jobs.models import Job, JobFeedStatus, JobPreferences, JobSource, JobSourceDiscoveryCandidate, JobUserFeed
 
 
 class JobRepository:
@@ -172,6 +172,60 @@ class JobSourceRepository:
         return entry
 
 
+class JobSourceDiscoveryRepository:
+    """Repository for ATS discovery candidate evidence records."""
+
+    def __init__(self, db: Session):
+        self.db = db
+
+    def create_candidate(
+        self,
+        *,
+        run_id,
+        source_channel: str,
+        input_url: str,
+        discovered_url: str,
+        detected_provider: str,
+        raw_candidate_value: str | None,
+        normalized_token: str | None,
+    ) -> JobSourceDiscoveryCandidate:
+        candidate = JobSourceDiscoveryCandidate(
+            run_id=run_id,
+            source_channel=source_channel,
+            input_url=input_url,
+            discovered_url=discovered_url,
+            detected_provider=detected_provider,
+            raw_candidate_value=raw_candidate_value,
+            normalized_token=normalized_token,
+        )
+        self.db.add(candidate)
+        self.db.commit()
+        self.db.refresh(candidate)
+        return candidate
+
+    def list_by_run_id(self, run_id) -> list[JobSourceDiscoveryCandidate]:
+        return (
+            self.db.query(JobSourceDiscoveryCandidate)
+            .filter(JobSourceDiscoveryCandidate.run_id == run_id)
+            .order_by(JobSourceDiscoveryCandidate.created_at.asc())
+            .all()
+        )
+
+    def list_by_run_id_and_ids(self, run_id, candidate_ids: list) -> list[JobSourceDiscoveryCandidate]:
+        if not candidate_ids:
+            return self.list_by_run_id(run_id)
+
+        return (
+            self.db.query(JobSourceDiscoveryCandidate)
+            .filter(
+                JobSourceDiscoveryCandidate.run_id == run_id,
+                JobSourceDiscoveryCandidate.id.in_(candidate_ids),
+            )
+            .order_by(JobSourceDiscoveryCandidate.created_at.asc())
+            .all()
+        )
+
+
 class JobUserFeedRepository:
     def __init__(self, db: Session):
         self.db = db
@@ -216,3 +270,34 @@ class JobUserFeedRepository:
         if status is not None:
             query = query.filter(JobUserFeed.status == status)
         return query.all()
+
+    def get_statuses_for_user_and_job_ids(self, user_id, job_ids: list) -> dict:
+        if not job_ids:
+            return {}
+
+        rows = (
+            self.db.query(JobUserFeed.job_id, JobUserFeed.status)
+            .filter(
+                JobUserFeed.user_id == user_id,
+                JobUserFeed.job_id.in_(job_ids),
+            )
+            .all()
+        )
+        return {job_id: status for job_id, status in rows}
+
+    def mark_new_as_seen_for_user_and_job_ids(self, user_id, job_ids: list) -> int:
+        if not job_ids:
+            return 0
+
+        updated_count = (
+            self.db.query(JobUserFeed)
+            .filter(
+                JobUserFeed.user_id == user_id,
+                JobUserFeed.job_id.in_(job_ids),
+                JobUserFeed.status == JobFeedStatus.NEW,
+            )
+            .update({JobUserFeed.status: JobFeedStatus.SEEN}, synchronize_session=False)
+        )
+        if updated_count:
+            self.db.commit()
+        return updated_count

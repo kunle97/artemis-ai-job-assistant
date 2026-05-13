@@ -32,6 +32,7 @@ export interface JobItem {
   fit_score?: number | null;
   fit_recommendation?: 'apply_immediately' | 'worth_applying' | 'apply_if_specific_reason' | 'recommend_against' | null;
   fit_score_confidence?: 'high' | 'low' | null;
+  feed_status?: JobFeedStatus | null;
 }
 
 export interface FeedPageResponse {
@@ -54,6 +55,10 @@ export interface SearchJobsPayload {
 
 export interface ScanFeedResponse {
   new_jobs_found: number;
+  discovery_run_id?: string | null;
+  discovery_candidates_found?: number | null;
+  discovery_promoted_count?: number | null;
+  discovery_skipped_count?: number | null;
 }
 
 export interface CreateJobPayload {

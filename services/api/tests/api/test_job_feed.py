@@ -290,3 +290,58 @@ def test_patch_job_feed_status_updates_status(client, sample_user_payload, db_se
 
     db_session.refresh(link)
     assert link.status == JobFeedStatus.SAVED
+
+
+def test_get_feed_includes_feed_status_for_jobs(client, sample_user_payload, db_session):
+    """GET /jobs/feed includes per-job feed_status in response payload."""
+    token = _register_and_login(client, sample_user_payload)
+    user_id = current_user_id(token, client)
+
+    job = Job(
+        source="greenhouse",
+        source_job_id="job-status-1",
+        title="Platform Engineer",
+        company_name="Co",
+        apply_url="https://a.com/status-1",
+        is_active=True,
+    )
+    db_session.add(job)
+    db_session.commit()
+
+    db_session.add(JobUserFeed(user_id=user_id, job_id=job.id, status=JobFeedStatus.NEW))
+    db_session.commit()
+
+    response = client.get("/jobs/feed", headers={"Authorization": f"Bearer {token}"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert len(payload["jobs"]) == 1
+    assert payload["jobs"][0]["feed_status"] == "new"
+
+
+def test_get_feed_marks_new_jobs_seen_after_first_read(client, sample_user_payload, db_session):
+    """First feed read returns new; subsequent read returns seen for the same job."""
+    token = _register_and_login(client, sample_user_payload)
+    user_id = current_user_id(token, client)
+
+    job = Job(
+        source="greenhouse",
+        source_job_id="job-status-2",
+        title="Data Engineer",
+        company_name="Co",
+        apply_url="https://a.com/status-2",
+        is_active=True,
+    )
+    db_session.add(job)
+    db_session.commit()
+
+    db_session.add(JobUserFeed(user_id=user_id, job_id=job.id, status=JobFeedStatus.NEW))
+    db_session.commit()
+
+    first_response = client.get("/jobs/feed", headers={"Authorization": f"Bearer {token}"})
+    assert first_response.status_code == 200
+    assert first_response.json()["jobs"][0]["feed_status"] == "new"
+
+    second_response = client.get("/jobs/feed", headers={"Authorization": f"Bearer {token}"})
+    assert second_response.status_code == 200
+    assert second_response.json()["jobs"][0]["feed_status"] == "seen"
