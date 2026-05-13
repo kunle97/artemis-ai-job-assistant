@@ -17,6 +17,7 @@ import {
   RefreshCw,
   Send,
   Shield,
+  Wand2,
 } from 'lucide-react';
 import { getStoredAccessToken } from '../../services/auth/auth.service';
 import {
@@ -38,6 +39,8 @@ import {
 } from '../../services/applications/application-workspace.service';
 import {
   buildApplicationAnswerQuestionKey,
+  generateApplicationAnswer,
+  resolveApplicationAnswer,
   saveApplicationAnswer,
 } from '../../services/applications/application-answers.service';
 
@@ -204,6 +207,7 @@ export const ApplicationDetailWorkspace: React.FC = () => {
   const [editingValue, setEditingValue] = useState('');
   const [savingFieldKey, setSavingFieldKey] = useState<string | null>(null);
   const [textareaOverrideKey, setTextareaOverrideKey] = useState<string | null>(null);
+  const [generatingFieldKey, setGeneratingFieldKey] = useState<string | null>(null);
 
   const [automationState, setAutomationState] = useState<AutomationState>('idle');
   const [runTaskId, setRunTaskId] = useState<string | null>(null);
@@ -459,6 +463,88 @@ export const ApplicationDetailWorkspace: React.FC = () => {
       toast.error('Save failed', { description: message });
     } finally {
       setSavingFieldKey(null);
+    }
+  };
+
+  const handleGenerateAnswer = async (item: AutofillPreviewItem) => {
+    if (!token) {
+      toast.error('Not signed in', {
+        description: 'Please sign in again to generate answers.',
+      });
+      return;
+    }
+
+    setGeneratingFieldKey(item.key);
+    try {
+      const resolution = await resolveApplicationAnswer(token, item.questionText);
+      let generated = (resolution.resolved_answer || '').trim();
+      let generatedSource = resolution.source || item.source;
+      let generatedNeedsReview = Boolean(resolution.needs_review);
+
+      if (!generated && (resolution.source || 'unresolved') === 'unresolved') {
+        const generation = await generateApplicationAnswer(token, {
+          questionText: item.questionText,
+          pageTitle: jobTitle,
+          jobContext: [companyName, locationLabel, workModeLabel]
+            .filter((part) => part && !part.toLowerCase().startsWith('unknown'))
+            .join(' | '),
+        });
+        generated = (generation.answer_text || '').trim();
+        generatedSource = generation.source || generatedSource;
+        generatedNeedsReview = Boolean(generation.needs_review);
+      }
+
+      if (!generated) {
+        const fallback = (item.resolvedValue || '').trim();
+        if (fallback) {
+          setEditingFieldKey(item.key);
+          setTextareaOverrideKey(null);
+          setEditingValue(fallback);
+          toast.success('Using existing suggestion', {
+            description: 'No new generated answer yet, so Artemis loaded the current autofill suggestion.',
+          });
+          return;
+        }
+
+        setEditingFieldKey(item.key);
+        setTextareaOverrideKey(item.fieldType === 'textarea' ? item.key : null);
+        setEditingValue('');
+
+        toast.error('No generated answer', {
+          description: `No answer available yet (source: ${generatedSource || 'unresolved'}). Enter one manually and save it for reuse.`,
+        });
+        return;
+      }
+
+      setAutofillPreview((prev) => {
+        const next = prev.map((candidate) => (
+          candidate.key === item.key
+            ? {
+              ...candidate,
+              resolvedValue: generated,
+              source: generatedSource || candidate.source,
+              needsReview: generatedNeedsReview,
+            }
+            : candidate
+        ));
+        if (application?.updated_at) {
+          writeCachedAutofillPreview(application.updated_at, next);
+        }
+        return next;
+      });
+
+      setEditingFieldKey(item.key);
+      setTextareaOverrideKey(null);
+      setEditingValue(generated);
+
+      toast.success('Answer generated', {
+        description: `Review and save the generated answer if it looks right (source: ${generatedSource}).`,
+      });
+    } catch (generateError) {
+      const message = generateError instanceof Error ? generateError.message : 'Failed to generate answer.';
+      toast.error('Generation failed', { description: message });
+    } finally {
+      setGeneratingFieldKey(null);
     }
   };
 
@@ -752,6 +838,17 @@ export const ApplicationDetailWorkspace: React.FC = () => {
                         <div className="flex items-start justify-between gap-3">
                           <p className="text-sm font-medium text-foreground">{item.questionText}</p>
                           <div className="flex items-center gap-2">
+                            {!submitted && ['input', 'textarea'].includes(item.fieldType) ? (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => void handleGenerateAnswer(item)}
+                                loading={generatingFieldKey === item.key}
+                              >
+                                <Wand2 className="h-3.5 w-3.5" />
+                                Generate Answer
+                              </Button>
+                            ) : null}
                             {item.needsReview ? (
                               <Badge variant="warning" size="sm">Needs review</Badge>
                             ) : (
@@ -1156,9 +1253,6 @@ export const ApplicationDetailWorkspace: React.FC = () => {
                     <div className="flex items-center gap-2">
                       <Button variant="outline" fullWidth onClick={() => setConfirmSubmit(false)}>
                         Cancel
-                      </Button>
-                      <Button variant="outline" fullWidth onClick={() => router.push('/applications')}>
-                        Back
                       </Button>
                     </div>
                   </div>

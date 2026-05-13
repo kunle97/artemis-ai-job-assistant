@@ -294,6 +294,7 @@ def tailor_resume_for_application(
             user_id=current_user.id,
             application_id=application_id,
             resume_id=payload.resume_id,
+            job_description_override=payload.job_description,
         )
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc))

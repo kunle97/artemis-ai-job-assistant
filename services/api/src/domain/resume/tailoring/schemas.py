@@ -14,6 +14,7 @@ class TailorResumeRequest(BaseModel):
     """Optional resume override; defaults to application resume or latest."""
 
     resume_id: UUID | None = None
+    job_description: str | None = None
 
 
 class TailoringRecommendation(BaseModel):

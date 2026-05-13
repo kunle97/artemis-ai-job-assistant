@@ -36,7 +36,14 @@ class ResumeTailoringService:
         self.repository = repository
         self.llm_client = llm_client
 
-    def tailor_resume(self, *, user_id, application_id, resume_id=None) -> TailoredResumeResult:
+    def tailor_resume(
+        self,
+        *,
+        user_id,
+        application_id,
+        resume_id=None,
+        job_description_override: str | None = None,
+    ) -> TailoredResumeResult:
         logger.info(
             "[ResumeTailoringService] tailor_resume start user_id=%s application_id=%s resume_id=%s",
             user_id,
@@ -78,6 +85,9 @@ class ResumeTailoringService:
             raise ValueError("Job not found.")
 
         jd_text = (job.description or "").strip()
+        if not jd_text and (job_description_override or "").strip():
+            jd_text = (job_description_override or "").strip()
+
         if not jd_text:
             return TailoredResumeResult(
                 application_id=application_id,
@@ -89,7 +99,12 @@ class ResumeTailoringService:
             )
 
         profile = self.repository.get_profile_for_user(user_id)
-        context = self._build_context(selected_resume=selected_resume, profile=profile, job=job)
+        context = self._build_context(
+            selected_resume=selected_resume,
+            profile=profile,
+            job=job,
+            job_description=jd_text,
+        )
 
         if self.llm_client is None:
             return TailoredResumeResult(
@@ -128,7 +143,7 @@ class ResumeTailoringService:
             suggestions=suggestions,
         )
 
-    def _build_context(self, *, selected_resume, profile, job) -> TailoringContext:
+    def _build_context(self, *, selected_resume, profile, job, job_description: str | None = None) -> TailoringContext:
         parsed = (selected_resume.parsed_json or {}).get("normalized_data") or {}
         resume_text = (selected_resume.extracted_text or "").strip()
 
@@ -151,7 +166,7 @@ class ResumeTailoringService:
         return TailoringContext(
             resume_text=resume_text,
             profile_summary=" | ".join(profile_parts),
-            job_description=(job.description or "").strip(),
+            job_description=(job_description or job.description or "").strip(),
             job_title=(job.title or "").strip(),
             company_name=(job.company_name or "").strip(),
             skills=skills,

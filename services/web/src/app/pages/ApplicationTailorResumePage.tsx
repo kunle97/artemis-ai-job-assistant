@@ -26,6 +26,8 @@ export const ApplicationTailorResumePage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [jobTitle, setJobTitle] = useState<string>('Tailor Resume');
   const [companyName, setCompanyName] = useState<string>('');
+  const [jobDescriptionMissing, setJobDescriptionMissing] = useState(false);
+  const [customJobDescription, setCustomJobDescription] = useState('');
   const [availableResumes, setAvailableResumes] = useState<ResumeRead[]>([]);
   const [selectedResumeId, setSelectedResumeId] = useState<string>('');
   const [tailoringLoading, setTailoringLoading] = useState(false);
@@ -58,6 +60,8 @@ export const ApplicationTailorResumePage: React.FC = () => {
       setSelectedResumeId(defaultResume?.id || '');
       setJobTitle(job?.title || 'Tailor Resume');
       setCompanyName(job?.company_name || '');
+      const hasJobDescription = Boolean(job?.description?.trim());
+      setJobDescriptionMissing(!hasJobDescription);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'Unable to load tailoring page.');
     } finally {
@@ -88,8 +92,10 @@ export const ApplicationTailorResumePage: React.FC = () => {
     setTailoringError(null);
 
     try {
+      const trimmedCustomDescription = customJobDescription.trim();
       const result = await tailorResumeForApplication(token, applicationId, {
         resume_id: selectedResumeId || null,
+        job_description: jobDescriptionMissing ? (trimmedCustomDescription || null) : null,
       });
       setTailoringResult(result);
 
@@ -185,9 +191,29 @@ export const ApplicationTailorResumePage: React.FC = () => {
               </div>
             )}
 
+            {jobDescriptionMissing ? (
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-foreground">Job Description</label>
+                <textarea
+                  value={customJobDescription}
+                  onChange={(event) => setCustomJobDescription(event.target.value)}
+                  rows={8}
+                  placeholder="Paste the job description here to generate tailoring suggestions."
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                />
+                <p className="text-xs text-muted-foreground">
+                  This field appears only because the original job post is missing a description.
+                </p>
+              </div>
+            ) : null}
+
             <Button
               onClick={handleTailorResume}
-              disabled={availableResumes.length === 0 || tailoringLoading}
+              disabled={
+                availableResumes.length === 0
+                || tailoringLoading
+                || (jobDescriptionMissing && customJobDescription.trim().length === 0)
+              }
               loading={tailoringLoading}
             >
               Generate Suggestions

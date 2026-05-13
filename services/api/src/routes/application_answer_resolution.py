@@ -4,6 +4,8 @@ Application answer resolution API routes.
 Provides an endpoint to resolve a raw question into the best available answer.
 """
 
+import logging
+
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -17,6 +19,8 @@ from src.domain.application_answers.resolution import (
 )
 from src.domain.profile.repository import CandidateProfileRepository
 from src.infrastructure.db.session import get_db
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(
     prefix="/application-answer-resolution",
@@ -43,4 +47,17 @@ def resolve_application_answer(
     db: Session = Depends(get_db),
 ):
     resolver = _build_resolver(db)
-    return resolver.resolve(user_id=current_user.id, question_text=payload.question_text)
+    logger.info(
+        "[ApplicationAnswerResolutionRoute] Resolve request user_id=%s question_text=%s",
+        current_user.id,
+        (payload.question_text or "")[:180],
+    )
+    result = resolver.resolve(user_id=current_user.id, question_text=payload.question_text)
+    logger.info(
+        "[ApplicationAnswerResolutionRoute] Resolve result user_id=%s source=%s resolved=%s intent_key=%s",
+        current_user.id,
+        result.source,
+        bool(result.resolved_answer),
+        result.intent_key,
+    )
+    return result

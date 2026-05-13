@@ -25,6 +25,9 @@ from src.routes.application_answers import router as application_answers_router
 from src.routes.application_answer_resolution import (
     router as application_answer_resolution_router,
 )
+from src.routes.application_answer_generation import (
+    router as application_answer_generation_router,
+)
 from src.routes.application_readiness import router as application_readiness_router
 from src.routes.application_planning import router as application_planning_router
 from src.routes.automation import router as automation_router
@@ -73,6 +76,7 @@ app.include_router(followup_router)
 app.include_router(applications_router)
 app.include_router(application_answers_router)
 app.include_router(application_answer_resolution_router)
+app.include_router(application_answer_generation_router)
 app.include_router(application_readiness_router)
 app.include_router(application_planning_router)
 app.include_router(automation_router)

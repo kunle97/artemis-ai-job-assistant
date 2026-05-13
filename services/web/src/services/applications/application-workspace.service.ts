@@ -349,6 +349,7 @@ export async function tailorResumeForApplication(
   applicationId: string,
   payload: {
     resume_id?: string | null;
+    job_description?: string | null;
   },
 ): Promise<TailoredResumeResultRecord> {
   try {

@@ -135,3 +135,32 @@ def test_tailor_resume_parses_llm_json_suggestions():
     assert first.proposed_text
     assert first.reason
     assert "python" in first.matched_keywords
+
+
+def test_tailor_resume_uses_job_description_override_when_missing():
+    owner = uuid.uuid4()
+    repo, application, resume = _build_repo(owner_user_id=owner, include_job_description=False)
+
+    llm_client = MagicMock()
+    llm_client.complete.return_value = (
+        '{"suggestions": ['
+        '{"section":"summary","current_text":"Experienced engineer",'
+        '"proposed_text":"Backend engineer focused on observability and Python APIs.",'
+        '"reason":"Align with provided JD",'
+        '"matched_keywords":["python","observability"],'
+        '"missing_keywords":["fastapi"]}'
+        ']}'
+    )
+
+    service = ResumeTailoringService(repository=repo, llm_client=llm_client)
+    result = service.tailor_resume(
+        user_id=owner,
+        application_id=application.id,
+        resume_id=resume.id,
+        job_description_override=(
+            "Need strong Python experience, observability ownership, and API platform delivery."
+        ),
+    )
+
+    assert result.is_fallback is False
+    assert len(result.suggestions) > 0

@@ -11,6 +11,7 @@ Resolution order:
 
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass
 
@@ -36,6 +37,8 @@ from src.domain.application_answers.constants import (
 from src.domain.application_answers.intents.constants import DEFAULT_INTENT_ANSWERS
 from src.domain.application_answers.intents.detector import IntentDetector
 
+logger = logging.getLogger(__name__)
+
 
 @dataclass
 class ResolvedApplicationAnswer:
@@ -59,6 +62,10 @@ class ApplicationAnswerResolver:
         normalized_question = self._normalize_text(question_text)
         normalized_question_key = self._build_question_key(question_text)
         if not normalized_question:
+            logger.info(
+                "[ApplicationAnswerResolver] unresolved-empty-question user_id=%s",
+                user_id,
+            )
             return ResolvedApplicationAnswer(
                 resolved_answer=None,
                 source=SOURCE_UNRESOLVED,
@@ -71,6 +78,7 @@ class ApplicationAnswerResolver:
 
         key_match = self._find_question_key_match(saved_answers, normalized_question_key)
         if key_match:
+            logger.info("[ApplicationAnswerResolver] source=%s user_id=%s", SOURCE_SAVED_ANSWER_EXACT, user_id)
             return ResolvedApplicationAnswer(
                 resolved_answer=key_match.answer_text,
                 source=SOURCE_SAVED_ANSWER_EXACT,
@@ -80,6 +88,7 @@ class ApplicationAnswerResolver:
 
         exact_match = self._find_exact_saved_match(saved_answers, normalized_question)
         if exact_match:
+            logger.info("[ApplicationAnswerResolver] source=%s user_id=%s", SOURCE_SAVED_ANSWER_EXACT, user_id)
             return ResolvedApplicationAnswer(
                 resolved_answer=exact_match.answer_text,
                 source=SOURCE_SAVED_ANSWER_EXACT,
@@ -89,6 +98,7 @@ class ApplicationAnswerResolver:
 
         fuzzy_saved_match = self._find_best_saved_match(saved_answers, normalized_question)
         if fuzzy_saved_match:
+            logger.info("[ApplicationAnswerResolver] source=%s user_id=%s", SOURCE_SAVED_ANSWER_FUZZY, user_id)
             return ResolvedApplicationAnswer(
                 resolved_answer=fuzzy_saved_match.answer_text,
                 source=SOURCE_SAVED_ANSWER_FUZZY,
@@ -102,6 +112,7 @@ class ApplicationAnswerResolver:
                 intent_key=detected_intent,
             )
             if user_intent_answer:
+                logger.info("[ApplicationAnswerResolver] source=%s user_id=%s intent_key=%s", SOURCE_USER_INTENT_ANSWER, user_id, detected_intent)
                 return ResolvedApplicationAnswer(
                     resolved_answer=user_intent_answer.answer_text,
                     source=SOURCE_USER_INTENT_ANSWER,
@@ -111,6 +122,7 @@ class ApplicationAnswerResolver:
 
             default_intent_answer = DEFAULT_INTENT_ANSWERS.get(detected_intent)
             if default_intent_answer:
+                logger.info("[ApplicationAnswerResolver] source=%s user_id=%s intent_key=%s", SOURCE_DEFAULT_INTENT_ANSWER, user_id, detected_intent)
                 return ResolvedApplicationAnswer(
                     resolved_answer=default_intent_answer,
                     source=SOURCE_DEFAULT_INTENT_ANSWER,
@@ -118,6 +130,7 @@ class ApplicationAnswerResolver:
                     intent_key=detected_intent,
                 )
 
+        logger.info("[ApplicationAnswerResolver] source=%s user_id=%s intent_key=%s", SOURCE_UNRESOLVED, user_id, detected_intent)
         return ResolvedApplicationAnswer(
             resolved_answer=None,
             source=SOURCE_UNRESOLVED,

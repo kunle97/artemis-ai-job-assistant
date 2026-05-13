@@ -35,6 +35,13 @@ export interface ApplicationAnswerResolution {
   intent_key: string | null;
 }
 
+export interface ApplicationAnswerGeneration {
+  answer_text: string | null;
+  source: string;
+  needs_review: boolean;
+  intent_key: string | null;
+}
+
 export function buildApplicationAnswerQuestionKey(questionText: string): string {
   return questionText
     .toLowerCase()
@@ -150,5 +157,42 @@ export async function resolveApplicationAnswer(
       }
     }
     throw new Error('Unable to run answer resolution right now.');
+  }
+}
+
+export async function generateApplicationAnswer(
+  token: string,
+  payload: {
+    questionText: string;
+    pageTitle?: string | null;
+    jobContext?: string | null;
+  },
+): Promise<ApplicationAnswerGeneration> {
+  try {
+    const response = await httpClient.post<ApplicationAnswerGeneration>(
+      '/application-answer-generation',
+      {
+        question_text: payload.questionText,
+        page_title: payload.pageTitle ?? null,
+        job_context: payload.jobContext ?? null,
+      },
+      {
+        headers: buildAuthHeader(token),
+      },
+    );
+    return response.data;
+  } catch (error) {
+    if (axios.isAxiosError<ApiErrorBody>(error)) {
+      const status = error.response?.status;
+      const detail = error.response?.data?.detail?.trim();
+      if (status === 401) {
+        redirectToLandingOnSessionExpired();
+        throw new Error('Session expired. Redirecting to home.');
+      }
+      if (status) {
+        throw new Error(detail || `Failed to generate answer with status ${status}.`);
+      }
+    }
+    throw new Error('Unable to generate an answer right now.');
   }
 }
