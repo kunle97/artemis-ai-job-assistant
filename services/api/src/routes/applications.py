@@ -11,6 +11,7 @@ from uuid import UUID
 
 from src.core.config import settings
 from src.deps.auth import get_current_user
+from src.deps.storage import get_storage
 from src.domain.application_answers.repository import ApplicationAnswerRepository
 from src.domain.applications.readiness import ApplicationReadinessService
 from src.domain.applications.factory import build_pipeline_service
@@ -32,10 +33,12 @@ from src.domain.jobs.repository import JobUserFeedRepository
 from src.domain.jobs.scoring.repository import ApplicationScoreRepository
 from src.domain.profile.repository import CandidateProfileRepository
 from src.domain.resume.repository import ResumeRepository
+from src.domain.resume.schemas import ResumeRead
 from src.domain.resume.tailoring.repository import ResumeTailoringRepository
 from src.domain.resume.tailoring.schemas import TailorResumeRequest, TailoredResumeResult
 from src.domain.resume.tailoring.service import ResumeTailoringService
 from src.infrastructure.db.session import get_db
+from src.integrations.storage.base import StorageService
 
 router = APIRouter(prefix="/applications", tags=["applications"])
 celery_dispatch = Celery(
@@ -70,7 +73,10 @@ def _build_readiness_service(db: Session) -> ApplicationReadinessService:
     )
 
 
-def _build_resume_tailoring_service(db: Session) -> ResumeTailoringService:
+def _build_resume_tailoring_service(
+    db: Session,
+    storage_service: StorageService | None = None,
+) -> ResumeTailoringService:
     llm_client = None
     if settings.groq_api_key:
         from src.integrations.groq.client import GroqClient
@@ -88,6 +94,7 @@ def _build_resume_tailoring_service(db: Session) -> ResumeTailoringService:
             job_repository=JobRepository(db),
         ),
         llm_client=llm_client,
+        storage_service=storage_service,
     )
 
 
@@ -291,6 +298,31 @@ def tailor_resume_for_application(
 
     try:
         return service.tailor_resume(
+            user_id=current_user.id,
+            application_id=application_id,
+            resume_id=payload.resume_id,
+            job_description_override=payload.job_description,
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
+    except ValueError as exc:
+        detail = str(exc)
+        status_code = 404 if detail in {"Application not found.", "Job not found.", "Resume not found."} else 400
+        raise HTTPException(status_code=status_code, detail=detail)
+
+
+@router.post("/{application_id}/tailor-resume/create", response_model=ResumeRead)
+def create_tailored_resume_for_application(
+    application_id: UUID,
+    payload: TailorResumeRequest,
+    current_user=Depends(get_current_user),
+    db: Session = Depends(get_db),
+    storage_service: StorageService = Depends(get_storage),
+):
+    service = _build_resume_tailoring_service(db, storage_service)
+
+    try:
+        return service.create_tailored_resume(
             user_id=current_user.id,
             application_id=application_id,
             resume_id=payload.resume_id,

@@ -190,3 +190,36 @@ export async function setPrimaryResume(resumeId: string, token: string): Promise
     throw new Error('Unable to update the default resume right now. Please try again.');
   }
 }
+
+export async function downloadResume(resumeId: string, token: string): Promise<Blob> {
+  try {
+    const response = await httpClient.get<Blob>(`/resumes/${resumeId}/download`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      responseType: 'blob',
+    });
+
+    return response.data;
+  } catch (error) {
+    if (axios.isAxiosError<ApiErrorBody>(error)) {
+      const status = error.response?.status;
+      const detail = error.response?.data?.detail?.trim();
+
+      if (status === 401) {
+        redirectToLandingOnSessionExpired();
+        throw new Error('Session expired. Redirecting to sign in.');
+      }
+
+      if (status === 404) {
+        throw new Error(detail || 'Resume not found.');
+      }
+
+      if (status) {
+        throw new Error(detail || `Unable to download resume (status ${status}).`);
+      }
+    }
+
+    throw new Error('Unable to download resume right now. Please try again.');
+  }
+}

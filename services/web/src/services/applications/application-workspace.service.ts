@@ -123,6 +123,20 @@ export interface TailoredResumeResultRecord {
   suggestions: TailoringRecommendationRecord[];
 }
 
+export interface CreatedTailoredResumeRecord {
+  id: string;
+  user_id: string;
+  file_name: string;
+  file_path: string;
+  mime_type?: string | null;
+  extracted_text?: string | null;
+  parsed_json?: Record<string, unknown> | null;
+  variant_type: string;
+  is_primary: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface ApplicationCreatePayload {
   job_id: string;
   resume_id?: string | null;
@@ -363,6 +377,28 @@ export async function tailorResumeForApplication(
     return response.data;
   } catch (error) {
     parseApiError(error, 'Failed to tailor resume with status {status}.');
+  }
+}
+
+export async function createTailoredResumeForApplication(
+  token: string,
+  applicationId: string,
+  payload: {
+    resume_id?: string | null;
+    job_description?: string | null;
+  },
+): Promise<CreatedTailoredResumeRecord> {
+  try {
+    const response = await httpClient.post<CreatedTailoredResumeRecord>(
+      `/applications/${applicationId}/tailor-resume/create`,
+      payload,
+      {
+        headers: buildAuthHeader(token),
+      },
+    );
+    return response.data;
+  } catch (error) {
+    parseApiError(error, 'Failed to create tailored resume with status {status}.');
   }
 }
 

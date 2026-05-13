@@ -164,3 +164,66 @@ def test_tailor_resume_uses_job_description_override_when_missing():
 
     assert result.is_fallback is False
     assert len(result.suggestions) > 0
+
+
+def test_create_tailored_resume_saves_resume_and_links_application():
+    owner = uuid.uuid4()
+    repo, application, resume = _build_repo(owner_user_id=owner)
+
+    llm_client = MagicMock()
+    llm_client.complete.return_value = (
+        '{"suggestions": ['
+        '{"section":"summary","current_text":"Backend engineer with Python and distributed systems experience.",'
+        '"proposed_text":"Backend engineer building scalable Python APIs with strong observability practices.",'
+        '"reason":"Matches JD language",'
+        '"matched_keywords":["python","observability"],'
+        '"missing_keywords":["fastapi"]}'
+        ']}'
+    )
+
+    fake_storage = MagicMock()
+    fake_storage.save_upload.return_value = "/tmp/tailored-resume.txt"
+
+    created_resume = MagicMock()
+    created_resume.id = uuid.uuid4()
+    created_resume.file_name = "resume-tailored.txt"
+    repo.create_resume.return_value = created_resume
+
+    service = ResumeTailoringService(repository=repo, llm_client=llm_client, storage_service=fake_storage)
+    result = service.create_tailored_resume(
+        user_id=owner,
+        application_id=application.id,
+        resume_id=resume.id,
+    )
+
+    assert result == created_resume
+    assert fake_storage.save_upload.called
+    assert repo.create_resume.called
+    repo.update_application_resume.assert_called_once_with(application.id, created_resume.id)
+
+
+def test_tailor_resume_parses_top_level_list_response():
+    owner = uuid.uuid4()
+    repo, application, resume = _build_repo(owner_user_id=owner)
+
+    llm_client = MagicMock()
+    llm_client.complete.return_value = (
+        '['
+        '{"section":"summary","current_text":"Experienced engineer",'
+        '"proposed_text":"Backend engineer focused on scalable Python systems.",'
+        '"reason":"Align with JD keywords",'
+        '"matched_keywords":["python"],'
+        '"missing_keywords":["observability"]}'
+        ']'
+    )
+
+    service = ResumeTailoringService(repository=repo, llm_client=llm_client)
+    result = service.tailor_resume(
+        user_id=owner,
+        application_id=application.id,
+        resume_id=resume.id,
+    )
+
+    assert result.is_fallback is False
+    assert len(result.suggestions) == 1
+    assert result.suggestions[0].section == "summary"

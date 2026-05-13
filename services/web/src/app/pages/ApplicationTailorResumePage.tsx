@@ -8,6 +8,7 @@ import { AppShell } from '../components/AppShell';
 import { Button, Card, CardContent, CardHeader, CardTitle } from '../components/ui';
 import { getStoredAccessToken } from '../../services/auth/auth.service';
 import {
+  createTailoredResumeForApplication,
   getApplicationById,
   getJobById,
   tailorResumeForApplication,
@@ -31,6 +32,7 @@ export const ApplicationTailorResumePage: React.FC = () => {
   const [availableResumes, setAvailableResumes] = useState<ResumeRead[]>([]);
   const [selectedResumeId, setSelectedResumeId] = useState<string>('');
   const [tailoringLoading, setTailoringLoading] = useState(false);
+  const [creatingTailoredResume, setCreatingTailoredResume] = useState(false);
   const [tailoringResult, setTailoringResult] = useState<TailoredResumeResultRecord | null>(null);
   const [tailoringError, setTailoringError] = useState<string | null>(null);
 
@@ -114,6 +116,29 @@ export const ApplicationTailorResumePage: React.FC = () => {
       toast.error('Tailor Resume failed', { description: message });
     } finally {
       setTailoringLoading(false);
+    }
+  };
+
+  const handleCreateTailoredResume = async () => {
+    if (!token || !applicationId) return;
+
+    setCreatingTailoredResume(true);
+    try {
+      const trimmedCustomDescription = customJobDescription.trim();
+      const created = await createTailoredResumeForApplication(token, applicationId, {
+        resume_id: selectedResumeId || null,
+        job_description: jobDescriptionMissing ? (trimmedCustomDescription || null) : null,
+      });
+
+      toast.success('Tailored resume saved', {
+        description: `${created.file_name} has been saved to your resume library and linked to this application.`,
+      });
+      router.push('/resumes');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to create tailored resume.';
+      toast.error('Create tailored resume failed', { description: message });
+    } finally {
+      setCreatingTailoredResume(false);
     }
   };
 
@@ -245,6 +270,22 @@ export const ApplicationTailorResumePage: React.FC = () => {
             <CardTitle>Recommendations</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
+            {tailoringResult && tailoringResult.suggestions.length > 0 && !tailoringResult.is_fallback ? (
+              <div className="rounded-lg border border-success/30 bg-success/5 p-3">
+                <p className="text-sm text-muted-foreground">
+                  Save a tailored resume draft to your account for this application.
+                </p>
+                <Button
+                  className="mt-3"
+                  onClick={handleCreateTailoredResume}
+                  loading={creatingTailoredResume}
+                  disabled={creatingTailoredResume}
+                >
+                  Create Tailored Resume
+                </Button>
+              </div>
+            ) : null}
+
             {tailoringResult && tailoringResult.suggestions.length === 0 && !tailoringError ? (
               <p className="text-sm text-muted-foreground">No tailoring suggestions were returned for this context.</p>
             ) : null}

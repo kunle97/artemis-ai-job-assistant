@@ -4,9 +4,10 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation';
 import { AppShell } from '../components/AppShell';
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle } from '../components/ui';
-import { AlertCircle, CheckCircle, FileText, Loader2, Trash2, Upload } from 'lucide-react';
+import { AlertCircle, CheckCircle, Download, FileText, Loader2, Trash2, Upload } from 'lucide-react';
 import { getStoredAccessToken } from '../../services/auth/auth.service';
 import {
+  downloadResume,
   deleteResume,
   getResumes,
   setPrimaryResume,
@@ -41,6 +42,7 @@ export const ResumeLibrary: React.FC = () => {
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [deletingResumeId, setDeletingResumeId] = useState<string | null>(null);
+  const [downloadingResumeId, setDownloadingResumeId] = useState<string | null>(null);
   const [settingPrimaryResumeId, setSettingPrimaryResumeId] = useState<string | null>(null);
   const [latestUpload, setLatestUpload] = useState<ResumeUploadResponse | null>(null);
 
@@ -166,6 +168,33 @@ export const ResumeLibrary: React.FC = () => {
       setDeleteError(error instanceof Error ? error.message : 'Unable to update default resume.');
     } finally {
       setSettingPrimaryResumeId(null);
+    }
+  };
+
+  const handleDownloadResume = async (resume: ResumeRead) => {
+    const token = getStoredAccessToken();
+    if (!token) {
+      router.push('/signin');
+      return;
+    }
+
+    setDeleteError(null);
+    setDownloadingResumeId(resume.id);
+
+    try {
+      const blob = await downloadResume(resume.id, token);
+      const objectUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = objectUrl;
+      link.download = resume.file_name || 'resume';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(objectUrl);
+    } catch (error) {
+      setDeleteError(error instanceof Error ? error.message : 'Unable to download resume.');
+    } finally {
+      setDownloadingResumeId(null);
     }
   };
 
@@ -358,14 +387,26 @@ export const ResumeLibrary: React.FC = () => {
                                 {resume.is_primary ? 'Default Resume' : 'Set as Default'}
                               </Button>
                               <Button
+                                variant="outline"
+                                size="sm"
+                                loading={downloadingResumeId === resume.id}
+                                disabled={Boolean(downloadingResumeId)}
+                                onClick={() => void handleDownloadResume(resume)}
+                                aria-label="Download resume"
+                                title="Download"
+                              >
+                                <Download className="h-4 w-4" />
+                              </Button>
+                              <Button
                                 variant="ghost"
                                 size="sm"
                                 loading={deletingResumeId === resume.id}
                                 disabled={Boolean(deletingResumeId)}
                                 onClick={() => handleDeleteResume(resume.id)}
+                                aria-label="Delete resume"
+                                title="Delete"
                               >
                                 <Trash2 className="h-4 w-4" />
-                                Delete
                               </Button>
                             </div>
                           </div>

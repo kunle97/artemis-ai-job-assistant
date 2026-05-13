@@ -117,6 +117,20 @@ class ResumeService:
         logger.info("[ResumeService] set_primary_resume complete user_id=%s resume_id=%s", user_id, resume_id)
         return updated
 
+    def get_resume_download(self, user_id, resume_id):
+        """
+        Resolve a resume owned by the user to a downloadable path/URL.
+        """
+        logger.info("[ResumeService] get_resume_download start user_id=%s resume_id=%s", user_id, resume_id)
+        resume = self.repository.get_by_id_and_user_id(resume_id, user_id)
+        if not resume:
+            logger.warning("[ResumeService] get_resume_download not found user_id=%s resume_id=%s", user_id, resume_id)
+            return None, None
+
+        read_path = self.storage_service.get_read_path(resume.file_path)
+        logger.info("[ResumeService] get_resume_download complete user_id=%s resume_id=%s", user_id, resume_id)
+        return resume, read_path
+
     def delete_resume(self, user_id, resume_id):
         """
         Delete a resume owned by a user from storage and persistence.

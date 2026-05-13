@@ -37,3 +37,9 @@ class ResumeTailoringRepository:
 
     def get_job(self, job_id):
         return self.job_repository.get_by_id(job_id)
+
+    def create_resume(self, **resume_data):
+        return self.resume_repository.create(**resume_data)
+
+    def update_application_resume(self, application_id, resume_id):
+        return self.application_repository.update_fields(application_id, resume_id=resume_id)

@@ -9,8 +9,10 @@ when LLM is unavailable or generation fails.
 from __future__ import annotations
 
 from datetime import UTC, datetime
+import io
 import json
 import logging
+from pathlib import Path
 import re
 
 from src.domain.resume.tailoring.models import TailoringContext
@@ -32,9 +34,10 @@ _SYSTEM_PROMPT = (
 class ResumeTailoringService:
     """Business logic for per-application resume tailoring."""
 
-    def __init__(self, *, repository, llm_client=None):
+    def __init__(self, *, repository, llm_client=None, storage_service=None):
         self.repository = repository
         self.llm_client = llm_client
+        self.storage_service = storage_service
 
     def tailor_resume(
         self,
@@ -143,6 +146,81 @@ class ResumeTailoringService:
             suggestions=suggestions,
         )
 
+    def create_tailored_resume(
+        self,
+        *,
+        user_id,
+        application_id,
+        resume_id=None,
+        job_description_override: str | None = None,
+    ):
+        if self.storage_service is None:
+            raise ValueError("Storage service unavailable.")
+
+        application = self.repository.get_application(application_id)
+        if application is None:
+            raise ValueError("Application not found.")
+        if application.user_id != user_id:
+            raise PermissionError("Forbidden")
+
+        selected_resume = None
+        if resume_id is not None:
+            selected_resume = self.repository.get_resume_by_user(user_id, resume_id)
+            if selected_resume is None:
+                raise ValueError("Resume not found.")
+        elif application.resume_id is not None:
+            selected_resume = self.repository.get_resume_by_user(user_id, application.resume_id)
+
+        if selected_resume is None:
+            selected_resume = self.repository.get_primary_resume_for_user(user_id)
+        if selected_resume is None:
+            selected_resume = self.repository.get_latest_resume_for_user(user_id)
+        if selected_resume is None:
+            raise ValueError("No resume available to tailor.")
+
+        result = self.tailor_resume(
+            user_id=user_id,
+            application_id=application_id,
+            resume_id=selected_resume.id,
+            job_description_override=job_description_override,
+        )
+        if result.is_fallback or not result.suggestions:
+            raise ValueError(result.message or "Unable to create tailored resume from current context.")
+
+        source_text = (selected_resume.extracted_text or "").strip()
+        tailored_text = self._build_tailored_resume_text(source_text, result.suggestions)
+
+        source_name = Path(selected_resume.file_name or "resume").stem
+        timestamp = datetime.now(UTC).strftime("%Y%m%d%H%M")
+        file_name = f"{source_name}-tailored-{timestamp}.txt"
+        upload_file = _InMemoryUploadFile(
+            filename=file_name,
+            content=tailored_text.encode("utf-8"),
+            content_type="text/plain",
+        )
+        stored_path = self.storage_service.save_upload(upload_file)
+
+        created = self.repository.create_resume(
+            user_id=user_id,
+            file_name=file_name,
+            file_path=stored_path,
+            mime_type="text/plain",
+            extracted_text=tailored_text,
+            parsed_json={
+                "status": "generated",
+                "generated_from_resume_id": str(selected_resume.id),
+                "application_id": str(application_id),
+                "tailoring": {
+                    "generated_at": result.generated_at.isoformat(),
+                    "suggestions": [item.model_dump() for item in result.suggestions],
+                },
+            },
+            variant_type="tailored",
+            is_primary=False,
+        )
+        self.repository.update_application_resume(application_id, created.id)
+        return created
+
     def _build_context(self, *, selected_resume, profile, job, job_description: str | None = None) -> TailoringContext:
         parsed = (selected_resume.parsed_json or {}).get("normalized_data") or {}
         resume_text = (selected_resume.extracted_text or "").strip()
@@ -198,8 +276,17 @@ class ResumeTailoringService:
             logger.warning("[ResumeTailoringService] Failed to parse LLM response")
             return []
 
+        # Some models return a top-level JSON array instead of
+        # {"suggestions": [...]}. Normalize both formats.
+        if isinstance(parsed, list):
+            suggestion_items = parsed
+        elif isinstance(parsed, dict):
+            suggestion_items = parsed.get("suggestions", [])
+        else:
+            suggestion_items = []
+
         result: list[TailoringRecommendation] = []
-        for item in parsed.get("suggestions", []):
+        for item in suggestion_items:
             try:
                 result.append(
                     TailoringRecommendation(
@@ -216,7 +303,7 @@ class ResumeTailoringService:
 
         return [s for s in result if s.proposed_text.strip() and s.reason.strip()]
 
-    def _parse_llm_json(self, raw: str) -> dict | None:
+    def _parse_llm_json(self, raw: str) -> dict | list | None:
         candidate = raw.strip()
         if candidate.startswith("```"):
             candidate = re.sub(r"^```(?:json)?", "", candidate).strip()
@@ -242,3 +329,52 @@ class ResumeTailoringService:
         for token in filtered:
             freq[token] = freq.get(token, 0) + 1
         return [k for k, _ in sorted(freq.items(), key=lambda item: item[1], reverse=True)[:12]]
+
+    def _build_tailored_resume_text(
+        self,
+        source_text: str,
+        suggestions: list[TailoringRecommendation],
+    ) -> str:
+        tailored_text = source_text
+        if not tailored_text:
+            tailored_text = ""
+
+        for suggestion in suggestions:
+            current = (suggestion.current_text or "").strip()
+            proposed = (suggestion.proposed_text or "").strip()
+            if current and proposed and current in tailored_text:
+                tailored_text = tailored_text.replace(current, proposed, 1)
+
+        if not tailored_text.strip():
+            tailored_text = "\n\n".join(
+                [
+                    "Tailored Resume Draft",
+                    *[
+                        f"[{item.section}]\n{item.proposed_text.strip()}"
+                        for item in suggestions
+                        if item.proposed_text.strip()
+                    ],
+                ]
+            )
+
+        suggestions_block = "\n\n".join(
+            [
+                f"Section: {item.section}\nReason: {item.reason}\nProposed:\n{item.proposed_text.strip()}"
+                for item in suggestions
+                if item.proposed_text.strip()
+            ]
+        )
+
+        return (
+            f"{tailored_text.strip()}\n\n"
+            "---\n"
+            "Tailoring Notes\n"
+            f"{suggestions_block}\n"
+        )
+
+
+class _InMemoryUploadFile:
+    def __init__(self, *, filename: str, content: bytes, content_type: str):
+        self.filename = filename
+        self.file = io.BytesIO(content)
+        self.content_type = content_type

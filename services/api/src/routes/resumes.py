@@ -6,8 +6,11 @@ Business logic stays in the resume service layer.
 """
 
 from uuid import UUID
+import os
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi.responses import FileResponse, StreamingResponse
+import requests
 from sqlalchemy.orm import Session
 
 from src.deps.auth import get_current_user
@@ -126,3 +129,54 @@ def set_primary_resume(
         raise HTTPException(status_code=404, detail="Resume not found.")
 
     return resume
+
+
+@router.get("/{resume_id}/download")
+def download_resume(
+    resume_id: UUID,
+    current_user=Depends(get_current_user),
+    db: Session = Depends(get_db),
+    storage_service: StorageService = Depends(get_storage),
+):
+    """
+    Download a resume for the authenticated user.
+
+    For local storage, returns a file response.
+    For remote storage (e.g. S3), redirects to a pre-signed URL.
+    """
+    service = _build_resume_service(db, storage_service)
+    resume, read_path = service.get_resume_download(current_user.id, resume_id)
+    if not resume or not read_path:
+        raise HTTPException(status_code=404, detail="Resume not found.")
+
+    if isinstance(read_path, str) and read_path.startswith("http"):
+        upstream = requests.get(read_path, stream=True, timeout=30)
+        if upstream.status_code >= 400:
+            raise HTTPException(status_code=404, detail="Resume file not found.")
+
+        media_type = upstream.headers.get("content-type") or resume.mime_type or "application/octet-stream"
+
+        def iter_content():
+            try:
+                for chunk in upstream.iter_content(chunk_size=1024 * 64):
+                    if chunk:
+                        yield chunk
+            finally:
+                upstream.close()
+
+        return StreamingResponse(
+            iter_content(),
+            media_type=media_type,
+            headers={
+                "Content-Disposition": f'attachment; filename="{resume.file_name}"',
+            },
+        )
+
+    if not os.path.exists(read_path):
+        raise HTTPException(status_code=404, detail="Resume file not found.")
+
+    return FileResponse(
+        path=read_path,
+        media_type=resume.mime_type or "application/octet-stream",
+        filename=resume.file_name,
+    )
