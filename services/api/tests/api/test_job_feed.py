@@ -345,3 +345,58 @@ def test_get_feed_marks_new_jobs_seen_after_first_read(client, sample_user_paylo
     second_response = client.get("/jobs/feed", headers={"Authorization": f"Bearer {token}"})
     assert second_response.status_code == 200
     assert second_response.json()["jobs"][0]["feed_status"] == "seen"
+
+
+def test_get_feed_handles_null_job_created_at(client, sample_user_payload, db_session):
+    """GET /jobs/feed should not fail when legacy jobs have null created_at values."""
+    token = _register_and_login(client, sample_user_payload)
+    user_id = current_user_id(token, client)
+
+    older_job = Job(
+        source="greenhouse",
+        source_job_id="legacy-null-created-at",
+        title="Legacy Job",
+        company_name="Co",
+        apply_url="https://a.com/legacy-null",
+        is_active=True,
+        created_at=None,
+        updated_at=None,
+    )
+    db_session.add(older_job)
+    db_session.commit()
+
+    db_session.add(JobUserFeed(user_id=user_id, job_id=older_job.id, status=JobFeedStatus.NEW))
+    db_session.commit()
+
+    response = client.get("/jobs/feed?skip=0&limit=12&sort=newest", headers={"Authorization": f"Bearer {token}"})
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["total"] >= 1
+
+
+def test_get_feed_last_page_handles_null_timestamps(client, sample_user_payload, db_session):
+    """Last-page pagination should not 500 when some feed jobs have null timestamps."""
+    token = _register_and_login(client, sample_user_payload)
+    user_id = current_user_id(token, client)
+
+    for idx in range(15):
+        job = Job(
+            source="greenhouse",
+            source_job_id=f"legacy-last-page-{idx}",
+            title=f"Legacy Job {idx}",
+            company_name="Co",
+            apply_url=f"https://a.com/legacy-last-page-{idx}",
+            is_active=True,
+            created_at=None,
+            updated_at=None,
+        )
+        db_session.add(job)
+        db_session.flush()
+        db_session.add(JobUserFeed(user_id=user_id, job_id=job.id, status=JobFeedStatus.NEW))
+
+    db_session.commit()
+
+    response = client.get("/jobs/feed?skip=12&limit=12&sort=newest", headers={"Authorization": f"Bearer {token}"})
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["skip"] == 12

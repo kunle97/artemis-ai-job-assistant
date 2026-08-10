@@ -43,6 +43,7 @@ from src.domain.automation.fill.handlers.uploads import (
     upload_resume,
 )
 from src.domain.automation.fill.constants import (
+    FILL_ACTION_TIMEOUT_MS,
     INTER_FIELD_DELAY_MAX_MS,
     INTER_FIELD_DELAY_MIN_MS,
 )
@@ -238,11 +239,22 @@ class AutomationFillService:
                 prepare_application_page(page, runtime_url)
                 page.wait_for_timeout(800)
 
+            page.set_default_timeout(FILL_ACTION_TIMEOUT_MS)
+
             # Simulate human presence before touching any fields
             simulate_mouse_movement(page)
 
-            for planned_field in plan.fields:
+            for field_index, planned_field in enumerate(plan.fields, start=1):
                 field_dict = planned_field.model_dump()
+
+                logger.info(
+                    "[AutomationFill] Field start index=%s/%s type=%s role=%s label=%s",
+                    field_index,
+                    len(plan.fields),
+                    field_dict.get("field_type"),
+                    field_dict.get("classified_role"),
+                    (field_dict.get("label") or "")[:120],
+                )
 
                 result = self._fill_planned_field(
                     page=page,
@@ -252,6 +264,13 @@ class AutomationFillService:
                     platform=platform,
                 )
                 fill_results.append(result)
+                logger.info(
+                    "[AutomationFill] Field complete index=%s/%s role=%s status=%s",
+                    field_index,
+                    len(plan.fields),
+                    field_dict.get("classified_role"),
+                    result.fill_status,
+                )
 
                 # Keep a short random pause between fields to avoid bot-like
                 # machine-speed transitions while preserving throughput.

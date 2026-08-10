@@ -219,8 +219,8 @@ def authenticate() -> str:
     return token
 
 
-def fetch_resume_path(token: str, storage_mode: str) -> str:
-    """Fetch the most recent resume path from the API for a storage mode."""
+def fetch_resume(token: str, storage_mode: str) -> dict:
+    """Fetch the most recent resume record for a storage mode."""
     log(f"Fetching resume from API for storage={storage_mode}...")
     resp, _ = _run_timed(
         "Fetching resumes",
@@ -266,7 +266,35 @@ def fetch_resume_path(token: str, storage_mode: str) -> str:
         sys.exit(1)
 
     log(f"✅ Using resume: id={resume.get('id')}  path={path}")
-    return path
+    return resume
+
+
+def ensure_local_resume(token: str) -> dict:
+    """Return a local resume record, uploading RESUME_PATH when necessary."""
+    try:
+        return fetch_resume(token, "local")
+    except SystemExit:
+        if not os.path.isfile(RESUME_PATH):
+            raise ValueError(f"Configured local resume does not exist: {RESUME_PATH}")
+
+        log(f"Uploading local resume: {RESUME_PATH}")
+        with open(RESUME_PATH, "rb") as resume_file:
+            response, _ = _run_timed(
+                "Uploading local resume",
+                lambda: requests.post(
+                    f"{BASE_URL}/resumes/upload",
+                    files={"file": (os.path.basename(RESUME_PATH), resume_file, "application/pdf")},
+                    headers={"Authorization": f"Bearer {token}"},
+                    timeout=120,
+                ),
+            )
+        if response.status_code not in (200, 201):
+            raise ValueError(
+                f"Local resume upload failed — HTTP {response.status_code}: {response.text}"
+            )
+        resume = response.json()
+        log(f"✅ Uploaded local resume: id={resume.get('id')} path={resume.get('file_path')}")
+        return resume
 
 
 def clear_applications_for_current_user(token: str) -> None:
@@ -378,7 +406,13 @@ def get_or_create_job(token: str, application_url: str) -> str:
     return job_id
 
 
-def create_application(token: str, job_id: str) -> str:
+def create_application(
+    token: str,
+    job_id: str,
+    resume_id: str,
+    *,
+    replace_existing: bool = False,
+) -> str:
     """Create an application for the given job. Returns the application ID."""
     log(f"Creating application for job {job_id}...")
     
@@ -386,12 +420,51 @@ def create_application(token: str, job_id: str) -> str:
         "Creating application",
         lambda: requests.post(
             f"{BASE_URL}/applications",
-            json={"job_id": job_id},
+            json={"job_id": job_id, "resume_id": resume_id},
             headers={"Authorization": f"Bearer {token}"},
             timeout=15,
         ),
     )
     
+    if resp.status_code == 400 and "already created" in resp.text.lower():
+        applications_response = requests.get(
+            f"{BASE_URL}/applications",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=15,
+        )
+        applications_response.raise_for_status()
+        existing = next(
+            (
+                item
+                for item in applications_response.json()
+                if str(item.get("job_id")) == str(job_id)
+            ),
+            None,
+        )
+        if existing and str(existing.get("resume_id")) == str(resume_id):
+            app_id = str(existing["id"])
+            log(f"  ✓ Reusing existing application with selected resume: {app_id}")
+            return app_id
+        if existing and replace_existing:
+            existing_id = str(existing["id"])
+            log(f"  Replacing stale test application {existing_id} with the selected local resume...")
+            delete_response = requests.delete(
+                f"{BASE_URL}/applications/{existing_id}",
+                params={"restore_to_feed": False},
+                headers={"Authorization": f"Bearer {token}"},
+                timeout=15,
+            )
+            if delete_response.status_code != 204:
+                raise ValueError(
+                    f"Could not replace existing application {existing_id}: {delete_response.text}"
+                )
+            return create_application(token, job_id, resume_id, replace_existing=False)
+
+        raise ValueError(
+            "Existing application uses a different resume. "
+            "Pass --replace-existing to replace only this test application's record."
+        )
+
     if resp.status_code not in (200, 201):
         log(f"  ❌ Application creation failed — HTTP {resp.status_code}: {resp.text}")
         raise ValueError(f"Could not create application for job {job_id}")
@@ -443,7 +516,14 @@ def authorize_application(token: str, app_id: str) -> dict:
 
 # ─── PIPELINE RUNNER ─────────────────────────────────────────────────────────
 
-def run_pipeline(token: str, job: dict, run_dir: str, resume_path: str | None = None, enable_submit: bool = False) -> None:
+def run_pipeline(
+    token: str,
+    job: dict,
+    run_dir: str,
+    resume_id: str,
+    enable_submit: bool = False,
+    replace_existing: bool = False,
+) -> None:
     """Run the pipeline orchestrator for a job and track status progression."""
     label = job["label"]
     section(f"[{label}]  {job['application_url']}")
@@ -458,7 +538,12 @@ def run_pipeline(token: str, job: dict, run_dir: str, resume_path: str | None = 
         job_id = get_or_create_job(token, job["application_url"])
 
         # Step 2: Create application
-        application_id = create_application(token, job_id)
+        application_id = create_application(
+            token,
+            job_id,
+            resume_id,
+            replace_existing=replace_existing,
+        )
 
         # Step 3: Run pipeline orchestrator
         log(f"Running pipeline for application {application_id}...")
@@ -622,6 +707,11 @@ def main() -> None:
             "POST /applications/{id}/submit. Disabled by default."
         ),
     )
+    parser.add_argument(
+        "--replace-existing",
+        action="store_true",
+        help="Replace only an existing application for a configured test job when its resume differs.",
+    )
     args = parser.parse_args()
 
     section("Artemis pipeline orchestrator runner")
@@ -645,15 +735,25 @@ def main() -> None:
         clear_applications_for_current_user(token)
 
     if args.storage == "s3":
-        resume_override = fetch_resume_path(token, "s3")
+        resume = fetch_resume(token, "s3")
     else:
-        # Keep local mode deterministic via the script constant.
-        resume_override = RESUME_PATH
-        log(f"Resume   : {resume_override}")
+        resume = ensure_local_resume(token)
+
+    resume_id = str(resume.get("id") or "")
+    if not resume_id:
+        raise ValueError("Selected resume record does not include an id.")
+    log(f"Resume ID: {resume_id}")
 
     for i, job in enumerate(JOBS, start=1):
         log(f"\n▶ Job {i}/{len(JOBS)}: {job['label']}")
-        run_pipeline(token, job, run_dir, resume_path=resume_override, enable_submit=args.enable_submit)
+        run_pipeline(
+            token,
+            job,
+            run_dir,
+            resume_id=resume_id,
+            enable_submit=args.enable_submit,
+            replace_existing=args.replace_existing,
+        )
         if i < len(JOBS):
             log("Waiting 3 s before next job...")
             time.sleep(3)

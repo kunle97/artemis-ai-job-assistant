@@ -4,6 +4,8 @@ Automation fill API routes.
 Executes safe high-confidence field entry without submitting the form.
 """
 
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
@@ -28,6 +30,7 @@ from src.infrastructure.db.session import get_db
 from src.integrations.groq.client import GroqClient
 
 router = APIRouter(prefix="/automation-fill", tags=["automation-fill"])
+logger = logging.getLogger(__name__)
 
 
 def _build_service(db: Session) -> AutomationFillService:
@@ -71,8 +74,25 @@ def fill_application_safely(
     current_user=Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    logger.info(
+        "[AutomationFillRoute] fill start user_id=%s url=%s inspected_fields=%s application_id=%s",
+        current_user.id,
+        payload.application_url,
+        len(payload.inspected_fields),
+        payload.application_id,
+    )
     service = _build_service(db)
     try:
-        return service.fill_safe_fields(user_id=current_user.id, payload=payload)
+        result = service.fill_safe_fields(user_id=current_user.id, payload=payload)
+        logger.info(
+            "[AutomationFillRoute] fill complete user_id=%s url=%s filled=%s skipped=%s unresolved=%s screenshot=%s",
+            current_user.id,
+            result.application_url,
+            result.filled_count,
+            result.skipped_count,
+            len(result.unresolved_fields),
+            result.screenshot_path,
+        )
+        return result
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))

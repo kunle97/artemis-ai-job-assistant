@@ -7,6 +7,7 @@ Pure utility functions for reading files back regardless of where they are store
 import os
 import shutil
 import tempfile
+from pathlib import Path
 from urllib.parse import unquote
 
 import boto3
@@ -73,5 +74,22 @@ def open_stored_file(read_path: str) -> tuple[str, bool]:
     local_path = read_path
     if not os.path.isabs(local_path) and local_path.startswith("uploads/"):
         local_path = str(API_SERVICE_DIR / local_path)
+
+    # Local paths may be persisted by the host API and later consumed by a
+    # Docker worker where the repository has a different absolute prefix.
+    # Preserve only the stable path below services/api in that case.
+    if os.path.isabs(local_path) and not os.path.exists(local_path):
+        normalized_parts = Path(local_path).parts
+        try:
+            services_index = normalized_parts.index("services")
+        except ValueError:
+            services_index = -1
+        if (
+            services_index >= 0
+            and normalized_parts[services_index : services_index + 3]
+            == ("services", "api", "uploads")
+        ):
+            relative_parts = normalized_parts[services_index + 2 :]
+            local_path = str(API_SERVICE_DIR.joinpath(*relative_parts))
 
     return local_path, False

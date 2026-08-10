@@ -4,6 +4,7 @@ Handlers for radio group fields.
 
 from __future__ import annotations
 
+from src.domain.automation.fill.constants import RADIO_ACTIVATION_TIMEOUT_MS
 from src.domain.automation.fill.helpers import score_choice_match
 from src.domain.automation.fill.models import AutomationFillFieldResult
 
@@ -150,6 +151,23 @@ def _click_radio_option(
     option_value: str | None,
     option_index: int = -1,
 ) -> bool:
+    # Custom ATS radios commonly hide the input behind a styled label. Try the
+    # question-scoped, exact-label click first; it is both precise and avoids
+    # waiting on several hidden-input activation attempts.
+    if field_label and option_label:
+        try:
+            scoped = page.locator(
+                f'div:has-text("{field_label}"):has(label:text-is("{option_label}"))'
+            ).last
+            if scoped.count() > 0:
+                target_label = scoped.locator(f'label:text-is("{option_label}")').first
+                if target_label.count() > 0:
+                    target_label.scroll_into_view_if_needed(timeout=RADIO_ACTIVATION_TIMEOUT_MS)
+                    target_label.click(timeout=RADIO_ACTIVATION_TIMEOUT_MS)
+                    return True
+        except Exception:
+            pass
+
     # Strategy 1: scan each radio in the named group, match by label text.
     # This is the most reliable strategy on platforms (e.g. Ashby) where all
     # radio inputs share the same value attribute, making value-based selectors
@@ -192,22 +210,7 @@ def _click_radio_option(
         except Exception:
             pass
 
-    # Strategy 4: scope by the question label text and click the matching option.
-    if field_label and option_label:
-        try:
-            scoped = page.locator(
-                f'div:has-text("{field_label}"):has(label:text-is("{option_label}"))'
-            ).last
-            if scoped.count() > 0:
-                target_label = scoped.locator(f'label:text-is("{option_label}")').first
-                if target_label.count() > 0:
-                    target_label.scroll_into_view_if_needed()
-                    target_label.click()
-                    return True
-        except Exception:
-            pass
-
-    # Strategy 5: page-wide label fallback — used when name is absent.
+    # Final strategy: page-wide label fallback — used when name is absent.
     if option_label:
         try:
             locator = page.get_by_label(option_label, exact=False).first
@@ -229,29 +232,35 @@ def _click_radio_option(
 
 
 def _activate_radio(page, radio) -> bool:
+    # Playwright's check() is the fastest and most direct path. It dispatches
+    # the input/change events expected by React-based ATS forms, and force=True
+    # supports visually hidden inputs used by custom radio controls.
+    try:
+        radio.check(force=True, timeout=RADIO_ACTIVATION_TIMEOUT_MS)
+        if radio.is_checked(timeout=RADIO_ACTIVATION_TIMEOUT_MS):
+            return True
+    except Exception:
+        pass
+
     try:
         radio_id = radio.get_attribute("id")
         if radio_id:
             lbl = page.locator(f'label[for="{radio_id}"]')
             if lbl.count() > 0:
-                lbl.scroll_into_view_if_needed()
-                lbl.click()
-                return True
+                lbl.scroll_into_view_if_needed(timeout=RADIO_ACTIVATION_TIMEOUT_MS)
+                lbl.click(timeout=RADIO_ACTIVATION_TIMEOUT_MS)
+                if radio.is_checked(timeout=RADIO_ACTIVATION_TIMEOUT_MS):
+                    return True
     except Exception:
         pass
 
     try:
         parent_label = radio.locator('xpath=ancestor::label[1]').first
         if parent_label.count() > 0:
-            parent_label.scroll_into_view_if_needed()
-            parent_label.click()
-            return True
-    except Exception:
-        pass
-
-    try:
-        radio.check(force=True)
-        return True
+            parent_label.scroll_into_view_if_needed(timeout=RADIO_ACTIVATION_TIMEOUT_MS)
+            parent_label.click(timeout=RADIO_ACTIVATION_TIMEOUT_MS)
+            if radio.is_checked(timeout=RADIO_ACTIVATION_TIMEOUT_MS):
+                return True
     except Exception:
         pass
 
@@ -259,7 +268,7 @@ def _activate_radio(page, radio) -> bool:
         radio.dispatch_event("click")
         radio.dispatch_event("input")
         radio.dispatch_event("change")
-        return True
+        return radio.is_checked(timeout=RADIO_ACTIVATION_TIMEOUT_MS)
     except Exception:
         pass
 

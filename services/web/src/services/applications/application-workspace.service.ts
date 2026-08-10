@@ -73,6 +73,7 @@ export interface AutomationInspectedField {
   name: string | null;
   placeholder: string | null;
   required: boolean;
+  options: Array<Record<string, unknown>>;
 }
 
 export interface ApplicationPageInspectionRecord {

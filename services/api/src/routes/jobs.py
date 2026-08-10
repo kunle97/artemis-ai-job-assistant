@@ -4,6 +4,7 @@ Jobs API routes.
 Thin HTTP endpoints for searching and listing normalized job records.
 """
 
+from datetime import UTC, datetime
 from uuid import UUID
 from typing import Literal
 
@@ -132,7 +133,25 @@ def _build_feed_job_reads(db: Session, user_id, jobs: list[Job]) -> list[FeedJob
                 "confidence": "low",
             }
         )
-        payload = JobRead.model_validate(job).model_dump(mode="python")
+
+        # Legacy rows can have null timestamps; coerce before strict schema validation.
+        payload = {
+            "id": job.id,
+            "source": job.source,
+            "source_job_id": job.source_job_id,
+            "title": job.title,
+            "company_name": job.company_name,
+            "location": job.location,
+            "workplace_type": job.workplace_type,
+            "description": job.description,
+            "apply_url": job.apply_url,
+            "salary_min": job.salary_min,
+            "salary_max": job.salary_max,
+            "currency": job.currency,
+            "is_active": job.is_active,
+            "created_at": job.created_at or datetime.min.replace(tzinfo=UTC),
+            "updated_at": job.updated_at or datetime.min.replace(tzinfo=UTC),
+        }
         payload.update(
             application_id=application.id if application else None,
             fit_score=score.global_score if score else preview_score["global_score"],
@@ -406,7 +425,10 @@ def get_job_feed(
         all_jobs, _ = service.get_feed(skip=0, limit=None, query=query, sort="newest", sources=source_filter)
         all_feed_jobs = _build_feed_job_reads(db=db, user_id=current_user.id, jobs=all_jobs)
         all_feed_jobs.sort(
-            key=lambda job: (job.fit_score if job.fit_score is not None else -1, job.created_at),
+            key=lambda job: (
+                job.fit_score if job.fit_score is not None else -1,
+                job.created_at or datetime.min,
+            ),
             reverse=True,
         )
         total = len(all_feed_jobs)

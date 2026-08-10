@@ -7,6 +7,7 @@ This service is intentionally separate from JobService to avoid bloat.
 
 from __future__ import annotations
 
+from datetime import datetime
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -39,6 +40,11 @@ from src.integrations.adapters.registry import get_adapter
 logger = logging.getLogger(__name__)
 
 _MAX_WORKERS = 10
+
+
+def _sort_created_at_value(job) -> datetime:
+    """Return a stable sort value even when legacy rows have null created_at."""
+    return job.created_at or datetime.min
 
 _IN_PROGRESS_APPLICATION_STATUSES = {
     APPLICATION_STATUS_NEEDS_REVIEW,
@@ -239,7 +245,7 @@ class JobFeedService:
         elif sort == "salary_low":
             filtered.sort(key=lambda job: (job.salary_min or job.salary_max or 0))
         else:
-            filtered.sort(key=lambda job: job.created_at, reverse=True)
+            filtered.sort(key=_sort_created_at_value, reverse=True)
 
         total = len(filtered)
         if limit is None:

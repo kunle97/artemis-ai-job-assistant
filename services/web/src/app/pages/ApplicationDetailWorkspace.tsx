@@ -68,7 +68,7 @@ interface AutofillPreviewItem {
 }
 
 // Bump this when preview extraction changes so stale sessionStorage entries do not hide new fields.
-const AUTOFILL_PREVIEW_CACHE_PREFIX = 'autofill-preview-cache:v3';
+const AUTOFILL_PREVIEW_CACHE_PREFIX = 'autofill-preview-cache:v5';
 
 interface AutofillPreviewCacheEntry {
   applicationUpdatedAt: string;
@@ -230,7 +230,7 @@ export const ApplicationDetailWorkspace: React.FC = () => {
       try {
         const parsed = JSON.parse(raw) as AutofillPreviewCacheEntry;
         if (parsed.applicationUpdatedAt !== applicationUpdatedAt) return null;
-        return (parsed.items || []).map((item) => ({
+        const items = (parsed.items || []).map((item) => ({
           key: item.key,
           questionText: item.questionText,
           resolvedValue: item.resolvedValue || '',
@@ -240,6 +240,16 @@ export const ApplicationDetailWorkspace: React.FC = () => {
           inputSubtype: item.inputSubtype ?? null,
           options: Array.isArray(item.options) ? item.options : [],
         }));
+
+        // An empty or entirely unresolved plan is not a useful cache hit. It can
+        // be produced by a transient inspection/planning failure and previously
+        // prevented every later visit from trying the preview pipeline again.
+        if (items.length === 0 || items.every((item) => item.resolvedValue.trim().length === 0)) {
+          window.sessionStorage.removeItem(getPreviewCacheKey(applicationId));
+          return null;
+        }
+
+        return items;
       } catch {
         return null;
       }

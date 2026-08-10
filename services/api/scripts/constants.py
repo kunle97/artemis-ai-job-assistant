@@ -12,7 +12,7 @@ TEST_APPLICATION_URLS = [
 ]
 
 TEST_RESUME_PATH = "/Users/kunle/Documents/dev/artemis-ai-job-assistant/services/api/uploads/resumes/5cd41e3c-df8c-4716-8dd1-245348603d97.pdf"
-RESUME_PATH = "/Users/kunle/Documents/dev/artemis-ai-job-assistant/services/api/uploads/resumes/9c310282-3ebd-4e8a-a92a-25bf715d8156.pdf"
+RESUME_PATH = "/Users/kunle/Documents/dev/artemis-ai-job-assistant/services/api/uploads/resumes/test-resume.pdf"
 
 JOBS = [
     # {
@@ -51,8 +51,8 @@ JOBS = [
     #     "resume_file_path": RESUME_PATH,
     # },
     {
-        "label": "Cohere - Ashby",
-        "application_url": "https://jobs.ashbyhq.com/cohere/9baccd88-c051-474f-bfe8-6867fca54cee/application",
+        "label": "Kaizen Labs - Ashby",
+        "application_url": "https://jobs.ashbyhq.com/kaizenlabs/6d5218e7-699e-4885-a78b-417808c9cac0/application",
         "resume_file_path": RESUME_PATH,
     },
 ]

@@ -4,6 +4,8 @@ Automation planning API routes.
 Builds a fill plan from inspected form fields before any browser actions run.
 """
 
+import logging
+
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
@@ -25,6 +27,7 @@ from src.infrastructure.db.session import get_db
 from src.integrations.groq.client import GroqClient
 
 router = APIRouter(prefix="/automation-planning", tags=["automation-planning"])
+logger = logging.getLogger(__name__)
 
 
 def _build_open_ended_provider(db: Session, profile_repo: CandidateProfileRepository):
@@ -72,5 +75,18 @@ def build_automation_fill_plan(
     current_user=Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    logger.info(
+        "[AutomationPlanningRoute] build start user_id=%s url=%s inspected_fields=%s",
+        current_user.id,
+        payload.application_url,
+        len(payload.inspected_fields),
+    )
     service = _build_service(db)
-    return service.build_fill_plan(user_id=current_user.id, payload=payload)
+    result = service.build_fill_plan(user_id=current_user.id, payload=payload)
+    logger.info(
+        "[AutomationPlanningRoute] build complete user_id=%s url=%s planned_fields=%s",
+        current_user.id,
+        payload.application_url,
+        len(result.fields),
+    )
+    return result
