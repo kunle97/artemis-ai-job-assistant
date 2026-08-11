@@ -37,6 +37,7 @@ import {
   type ApplicationRecord,
   type ApplicationStatusRecord,
 } from '../../services/applications/application-workspace.service';
+import { deriveApplicationStatusPresentation } from '../../services/applications/application-status';
 import {
   buildApplicationAnswerQuestionKey,
   generateApplicationAnswer,
@@ -562,6 +563,36 @@ export const ApplicationDetailWorkspace: React.FC = () => {
     void loadWorkspace();
   }, [loadWorkspace]);
 
+  useEffect(() => {
+    if (!token || !applicationId || !['queued', 'running'].includes(automationState)) return;
+
+    let pollInFlight = false;
+    const pollStatus = async () => {
+      if (pollInFlight) return;
+      pollInFlight = true;
+      try {
+        const latestStatus = await getApplicationStatus(token, applicationId);
+        setStatus(latestStatus);
+
+        const latest = normalizeStatus(latestStatus.status);
+        if (latest === 'failed' || latestStatus.failure_reason) {
+          setAutomationState('failure');
+        } else if (['filled', 'authorized', 'submitted', 'ready_to_submit'].includes(latest)) {
+          setAutomationState('success');
+        }
+      } catch {
+        // Keep the current UI state and retry; loadWorkspace exposes persistent
+        // API failures through the page-level error flow.
+      } finally {
+        pollInFlight = false;
+      }
+    };
+
+    const intervalId = window.setInterval(() => void pollStatus(), 2_000);
+    void pollStatus();
+    return () => window.clearInterval(intervalId);
+  }, [applicationId, automationState, token]);
+
   const readinessItems = useMemo(() => {
     if (!readiness || !status) return [];
     return buildReadinessItems(readiness, status);
@@ -589,6 +620,9 @@ export const ApplicationDetailWorkspace: React.FC = () => {
   const canRunAutomation = !loading && !hasBlockingReadiness && !automationRunning && !submitted;
   const canAuthorize = automationComplete && !authorized && !submitted;
   const canSubmit = automationComplete && authorized && !hasBlockingReadiness && !submitted;
+  const statusPill = status
+    ? deriveApplicationStatusPresentation(status)
+    : { label: 'Draft', variant: 'default' };
 
   const readinessVerdict: 'ready' | 'blocked' | 'needs review' = hasBlockingReadiness
     ? 'blocked'
@@ -740,8 +774,8 @@ export const ApplicationDetailWorkspace: React.FC = () => {
             <h1 className="text-3xl font-semibold text-foreground">{jobTitle}</h1>
             <p className="text-lg text-muted-foreground mt-1">{companyName}</p>
           </div>
-          <Badge variant={submitted ? 'success' : hasBlockingReadiness ? 'blocked' : 'in-progress'} size="lg">
-            {submitted ? 'Submitted' : hasBlockingReadiness ? 'Blocked' : 'In Progress'}
+          <Badge variant={statusPill.variant} size="lg">
+            {statusPill.label}
           </Badge>
         </div>
 

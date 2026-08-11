@@ -16,6 +16,7 @@ import {
   AlertDialogTitle,
 } from '../components/ui/alert-dialog';
 import { Plus, CheckCircle, Clock, XCircle, ArrowRight, AlertCircle, Trash2 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { ScoreIndicator } from '../components/ui/ScoreIndicator';
 import type { ScoreRecommendation } from '../components/ui/ScoreIndicator';
 import {
@@ -26,8 +27,12 @@ import {
   type ApplicationRecord,
   type ApplicationStatusRecord,
 } from '../../services/applications/application-workspace.service';
+import {
+  deriveApplicationStatusPresentation,
+  type ApplicationStatusCategory,
+} from '../../services/applications/application-status';
 
-type ApplicationStatus = 'draft' | 'ready' | 'blocked' | 'submitted' | 'in-progress';
+type ApplicationStatus = ApplicationStatusCategory;
 
 interface ApplicationDisplay {
   id: string;
@@ -36,12 +41,14 @@ interface ApplicationDisplay {
   company: string;
   rawStatus: string;
   status: ApplicationStatus;
+  statusLabel: string;
+  statusVariant: string;
   lastUpdated: string;
   fitScore?: number | null;
   fitRecommendation?: ScoreRecommendation;
 }
 
-const statusConfig: Record<ApplicationStatus, { label: string; variant: any; icon: any }> = {
+const statusConfig: Record<ApplicationStatus, { label: string; variant: string; icon: LucideIcon }> = {
   draft: { label: 'Draft', variant: 'default', icon: Clock },
   ready: { label: 'Ready to Submit', variant: 'ready', icon: CheckCircle },
   blocked: { label: 'Blocked', variant: 'blocked', icon: XCircle },
@@ -50,27 +57,11 @@ const statusConfig: Record<ApplicationStatus, { label: string; variant: any; ico
 };
 
 function mapApplicationStatus(apiStatus: string): ApplicationStatus {
-  const normalized = apiStatus.trim().toLowerCase();
-
-  if (['submitted', 'applied'].includes(normalized)) return 'submitted';
-  if (['failed', 'rejected', 'archived', 'needs_review'].includes(normalized)) return 'blocked';
-  if (['filled', 'awaiting_submission', 'ready', 'offer_received', 'interviewing'].includes(normalized)) return 'ready';
-  if (['queued', 'inspecting', 'inspected', 'planning', 'planned', 'filling', 'in_progress', 'in-progress'].includes(normalized)) {
-    return 'in-progress';
-  }
-  if (['saved', 'draft'].includes(normalized)) return 'draft';
-
-  return 'draft';
+  return deriveApplicationStatusPresentation({ status: apiStatus }).category;
 }
 
 function deriveApplicationStatus(status: ApplicationStatusRecord): ApplicationStatus {
-  const normalized = status.status.trim().toLowerCase();
-  if (['submitted', 'applied'].includes(normalized)) return 'submitted';
-  if (['queued', 'inspecting', 'inspected', 'planning', 'planned', 'filling', 'in_progress', 'in-progress'].includes(normalized)) {
-    return 'in-progress';
-  }
-  if (status.manual_review_required || status.missing_items.length > 0) return 'blocked';
-  return mapApplicationStatus(status.status);
+  return deriveApplicationStatusPresentation(status).category;
 }
 
 export const ApplicationsDashboard: React.FC = () => {
@@ -103,6 +94,7 @@ export const ApplicationsDashboard: React.FC = () => {
           getApplicationStatus(token, app.id),
           getJobById(token, app.job_id),
         ]);
+        const statusPresentation = deriveApplicationStatusPresentation(statusRecord);
         displayApps.push({
           id: app.id,
           jobId: app.job_id,
@@ -110,12 +102,15 @@ export const ApplicationsDashboard: React.FC = () => {
           company: job?.company_name || 'Unknown company',
           rawStatus: statusRecord.status,
           status: deriveApplicationStatus(statusRecord),
+          statusLabel: statusPresentation.label,
+          statusVariant: statusPresentation.variant,
           lastUpdated: new Date(app.updated_at).toLocaleDateString(),
           fitScore: job?.fit_score ?? null,
           fitRecommendation: job?.fit_recommendation ?? null,
         });
       } catch (statusErr) {
         console.warn(`Failed to load status for application ${app.id}:`, statusErr);
+        const statusPresentation = deriveApplicationStatusPresentation(app);
         displayApps.push({
           id: app.id,
           jobId: app.job_id,
@@ -123,6 +118,8 @@ export const ApplicationsDashboard: React.FC = () => {
           company: 'Unknown company',
           rawStatus: app.status,
           status: mapApplicationStatus(app.status),
+          statusLabel: statusPresentation.label,
+          statusVariant: statusPresentation.variant,
           lastUpdated: new Date(app.updated_at).toLocaleDateString(),
           fitScore: null,
           fitRecommendation: null,
@@ -246,7 +243,7 @@ export const ApplicationsDashboard: React.FC = () => {
           ].map((item) => (
             <button
               key={item.key}
-              onClick={() => setFilter(item.key as any)}
+              onClick={() => setFilter(item.key as ApplicationStatus | 'all')}
               className={`text-left p-4 rounded-lg border-2 transition-all ${
                 filter === item.key
                   ? 'border-brand bg-brand/5'
@@ -286,8 +283,8 @@ export const ApplicationsDashboard: React.FC = () => {
                         <p className="text-foreground">{app.company}</p>
                       </td>
                       <td className="px-6 py-4">
-                        <Badge variant={statusConfig[app.status].variant} size="sm">
-                          {statusConfig[app.status].label}
+                        <Badge variant={app.statusVariant} size="sm">
+                          {app.statusLabel}
                         </Badge>
                       </td>
                       <td className="px-6 py-4">
